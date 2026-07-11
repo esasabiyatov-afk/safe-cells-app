@@ -131,7 +131,14 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
     try:
         assert css.status_code == 200
         assert javascript.status_code == 200
+        stylesheet = css.get_data(as_text=True)
         script = javascript.get_data(as_text=True)
+        assert "--free-border:" in stylesheet
+        assert "--normal-border:" in stylesheet
+        assert "--expiring-border:" in stylesheet
+        assert "--overdue-border:" in stylesheet
+        assert "border: 2px solid var(--cell-accent)" in stylesheet
+        assert "inset 0 5px 0 var(--cell-accent)" in stylesheet
         assert "15_000" in script
         assert "setInterval" in script
         assert "innerHTML" not in script

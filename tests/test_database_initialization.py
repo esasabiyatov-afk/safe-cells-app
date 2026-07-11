@@ -109,9 +109,9 @@ def test_seed_values_are_exact(
         ).fetchone()[0] == 17
         config = dict(connection.execute("SELECT key, value FROM config"))
         assert config == {
-            "currency_code": "",
-            "currency_scale": "",
-            "deposit_amount_minor": "",
+            "currency_code": "KGS",
+            "currency_scale": "0",
+            "deposit_amount_minor": "1500",
             "expiring_soon_days": "7",
         }
 
@@ -127,6 +127,13 @@ def test_repeated_initialization_is_idempotent_and_preserves_admin_changes(
             WHERE height_mm = 50 AND period_from_days = 1
             """
         )
+        connection.execute(
+            """
+            UPDATE config
+            SET value = '2000', updated_by = 'test-admin'
+            WHERE key = 'deposit_amount_minor'
+            """
+        )
 
     result = initialize_databases(settings, cells_csv_path=cells_csv_path)
 
@@ -140,6 +147,40 @@ def test_repeated_initialization_is_idempotent_and_preserves_admin_changes(
             WHERE height_mm = 50 AND period_from_days = 1
             """
         ).fetchone()[0] == 99
+        assert connection.execute(
+            "SELECT value FROM config WHERE key = 'deposit_amount_minor'"
+        ).fetchone()[0] == "2000"
+
+
+def test_reinitialization_fills_previously_unconfigured_money_settings(
+    settings: Settings, cells_csv_path: Path, initialized_databases
+) -> None:
+    paths = DatabasePaths.from_settings(settings)
+    with _connect_writable(paths.working) as connection:
+        connection.execute(
+            """
+            UPDATE config SET value = ''
+            WHERE key IN ('deposit_amount_minor', 'currency_code', 'currency_scale')
+              AND updated_by = 'system-seed'
+            """
+        )
+
+    initialize_databases(settings, cells_csv_path=cells_csv_path)
+
+    with _connect_readonly(paths.working) as connection:
+        money_config = dict(
+            connection.execute(
+                """
+                SELECT key, value FROM config
+                WHERE key IN ('deposit_amount_minor', 'currency_code', 'currency_scale')
+                """
+            )
+        )
+    assert money_config == {
+        "currency_code": "KGS",
+        "currency_scale": "0",
+        "deposit_amount_minor": "1500",
+    }
 
 
 def test_conflicting_existing_cell_height_aborts_seed(

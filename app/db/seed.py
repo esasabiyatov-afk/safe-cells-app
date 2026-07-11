@@ -38,9 +38,9 @@ TARIFF_PERIODS: tuple[tuple[int, int | None], ...] = (
 )
 INITIAL_CONFIG: dict[str, str] = {
     "expiring_soon_days": "7",
-    "deposit_amount_minor": "",
-    "currency_code": "",
-    "currency_scale": "",
+    "deposit_amount_minor": "1500",
+    "currency_code": "KGS",
+    "currency_scale": "0",
 }
 
 
@@ -120,4 +120,12 @@ def seed_working_database(
             VALUES(?, ?, ?, ?)
             """,
             (key, value, applied_at, "system-seed"),
+        )
+        connection.execute(
+            """
+            UPDATE main.config
+            SET value = ?, updated_at = ?, updated_by = ?
+            WHERE key = ? AND value = '' AND updated_by = 'system-seed'
+            """,
+            (value, applied_at, "system-seed", key),
         )

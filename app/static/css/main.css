@@ -6,14 +6,18 @@
   --ink-soft: #64707c;
   --line: #cbc9c0;
   --line-dark: #9fa5ab;
-  --free: #58765b;
-  --free-bg: #e1eadf;
-  --normal: #406989;
-  --normal-bg: #dfe9ef;
-  --expiring: #aa7726;
-  --expiring-bg: #f4e6c7;
-  --overdue: #923c2c;
-  --overdue-bg: #efd7d0;
+  --free: #315f39;
+  --free-border: #4d7d53;
+  --free-bg: #c9dfc7;
+  --normal: #245779;
+  --normal-border: #477896;
+  --normal-bg: #c7ddeb;
+  --expiring: #805308;
+  --expiring-border: #a87315;
+  --expiring-bg: #efd083;
+  --overdue: #7d291e;
+  --overdue-border: #a34536;
+  --overdue-bg: #e8b6ab;
   --shadow: 0 16px 42px rgba(31, 42, 58, 0.09);
 }
 
@@ -180,7 +184,7 @@ main {
 .stat-card::before {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 6px;
   content: "";
 }
 
@@ -188,6 +192,16 @@ main {
 .stat-normal::before { background: var(--normal); }
 .stat-expiring::before { background: var(--expiring); }
 .stat-overdue::before { background: var(--overdue); }
+
+.stat-free { border-color: var(--free-border); background: #edf5eb; }
+.stat-normal { border-color: var(--normal-border); background: #edf4f8; }
+.stat-expiring { border-color: var(--expiring-border); background: #faf0d8; }
+.stat-overdue { border-color: var(--overdue-border); background: #f8e6e2; }
+
+.stat-free strong { color: var(--free); }
+.stat-normal strong { color: var(--normal); }
+.stat-expiring strong { color: var(--expiring); }
+.stat-overdue strong { color: var(--overdue); }
 
 .stat-label {
   display: block;
@@ -349,8 +363,9 @@ main {
 }
 
 .legend-dot {
-  width: 9px;
-  height: 9px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid currentcolor;
   border-radius: 2px;
 }
 
@@ -383,26 +398,30 @@ main {
 }
 
 .cell {
+  --cell-accent: var(--line-dark);
   position: relative;
   min-height: 78px;
   padding: 9px 6px;
-  border: 1px solid var(--line);
+  border: 2px solid var(--cell-accent);
   border-radius: 4px;
   color: var(--ink);
+  box-shadow: inset 0 5px 0 var(--cell-accent);
   text-align: center;
-  transition: transform 90ms ease, box-shadow 90ms ease, border-color 90ms ease;
+  transition: transform 90ms ease, box-shadow 90ms ease;
 }
 
 .cell:hover {
   z-index: 1;
   transform: translateY(-2px);
-  box-shadow: 0 5px 12px rgba(28, 41, 56, 0.15);
+  box-shadow:
+    inset 0 5px 0 var(--cell-accent),
+    0 5px 12px rgba(28, 41, 56, 0.2);
 }
 
-.cell.free { background: var(--free-bg); border-color: #a8bba5; }
-.cell.normal { background: var(--normal-bg); border-color: #a9bfcd; }
-.cell.expiring { background: var(--expiring-bg); border-color: #d8bd82; }
-.cell.overdue { background: var(--overdue-bg); border-color: #d1a096; }
+.cell.free { --cell-accent: var(--free-border); background: var(--free-bg); }
+.cell.normal { --cell-accent: var(--normal-border); background: var(--normal-bg); }
+.cell.expiring { --cell-accent: var(--expiring-border); background: var(--expiring-bg); }
+.cell.overdue { --cell-accent: var(--overdue-border); background: var(--overdue-bg); }
 
 .cell.overdue::after {
   position: absolute;
@@ -424,8 +443,9 @@ main {
 .cell-height {
   display: block;
   margin-top: 5px;
-  color: var(--ink-soft);
+  color: #3f4b57;
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.03em;
 }
 
