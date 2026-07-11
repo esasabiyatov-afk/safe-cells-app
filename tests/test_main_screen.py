@@ -31,6 +31,12 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "https://" not in html
     assert 'src="/static/js/main.js"' in html
     assert 'href="/static/css/main.css"' in html
+    assert 'data-rental-url="/api/rental/calculate"' in html
+    assert 'id="rentalContinue"' in html
+    assert (
+        'class="primary-button" id="rentalContinue" type="button" disabled' in html
+    )
+    assert 'name="currency"' not in html
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Cache-Control"] == "no-store"
@@ -143,6 +149,9 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "setInterval" in script
         assert "innerHTML" not in script
         assert "clearDisplayedData" in script
+        assert "requestRentalQuote" in script
+        assert "syncDaysFromDates" in script
+        assert "syncEndFromDays" in script
     finally:
         css.close()
         javascript.close()

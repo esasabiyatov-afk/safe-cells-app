@@ -7,7 +7,12 @@ from datetime import date
 from flask import Flask, request
 
 from app.config import Settings
-from app.routes import cells_blueprint, main_blueprint, system_blueprint
+from app.routes import (
+    cells_blueprint,
+    main_blueprint,
+    rental_blueprint,
+    system_blueprint,
+)
 from app.services.employee import get_employee_username
 
 
@@ -27,6 +32,7 @@ def create_app(settings: Settings) -> Flask:
     app.extensions["safe_cells_settings"] = settings
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
+    app.register_blueprint(rental_blueprint)
     app.register_blueprint(system_blueprint)
 
     @app.after_request

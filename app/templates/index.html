@@ -10,6 +10,7 @@
 <body
   data-cells-url="{{ url_for('cells.cells_list') }}"
   data-search-url="{{ url_for('cells.cells_search') }}"
+  data-rental-url="{{ url_for('rental.calculate') }}"
 >
   <header class="page-header">
     <div class="brand-block">
@@ -145,6 +146,62 @@
       </div>
     </dl>
     <p class="dialog-note">На этом этапе доступен только просмотр состояния.</p>
+  </dialog>
+
+  <dialog class="rental-dialog" id="rentalDialog" aria-labelledby="rentalDialogTitle">
+    <button class="dialog-close" id="rentalDialogClose" type="button" aria-label="Закрыть калькулятор">×</button>
+    <p class="section-kicker">Расчёт аренды</p>
+    <h2 id="rentalDialogTitle">Ячейка № —</h2>
+    <p class="rental-cell-summary" id="rentalCellSummary">—</p>
+
+    <form id="rentalForm" novalidate>
+      <div class="rental-fields">
+        <label class="rental-field">
+          <span>Дата начала</span>
+          <input id="rentalStartDate" type="date" required>
+        </label>
+        <label class="rental-field">
+          <span>Дата окончания</span>
+          <input id="rentalEndDate" type="date">
+        </label>
+        <label class="rental-field">
+          <span>Количество дней</span>
+          <input id="rentalDays" type="number" min="1" step="1" inputmode="numeric">
+        </label>
+      </div>
+      <p class="rental-hint">Можно изменить дату окончания или количество дней — второе поле пересчитается автоматически.</p>
+
+      <div class="calculation-error" id="rentalError" role="alert" hidden></div>
+
+      <section class="quote-panel" id="quotePanel" aria-live="polite">
+        <div class="quote-row">
+          <span>Срок аренды</span>
+          <strong id="quoteDays">—</strong>
+        </div>
+        <div class="quote-row">
+          <span>Применённый тариф</span>
+          <strong id="quoteTariff">—</strong>
+        </div>
+        <div class="quote-row">
+          <span>Стоимость аренды</span>
+          <strong id="quoteRentPrice">—</strong>
+        </div>
+        <div class="quote-row">
+          <span>Залог</span>
+          <strong id="quoteDeposit">—</strong>
+        </div>
+        <div class="quote-row quote-total">
+          <span>Итого к оплате</span>
+          <strong id="quoteTotal">—</strong>
+        </div>
+      </section>
+
+      <div class="rental-actions">
+        <button class="secondary-button" id="rentalBack" type="button">Назад</button>
+        <button class="primary-button" id="rentalContinue" type="button" disabled>Занять ячейку</button>
+      </div>
+      <p class="dialog-note">Калькулятор работает только на чтение. Оформление договора будет подключено на следующем этапе.</p>
+    </form>
   </dialog>
 </body>
 </html>

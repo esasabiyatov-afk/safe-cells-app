@@ -2,6 +2,12 @@
 
 from app.routes.cells import cells_blueprint
 from app.routes.main import main_blueprint
+from app.routes.rental import rental_blueprint
 from app.routes.system import system_blueprint
 
-__all__ = ["cells_blueprint", "main_blueprint", "system_blueprint"]
+__all__ = [
+    "cells_blueprint",
+    "main_blueprint",
+    "rental_blueprint",
+    "system_blueprint",
+]

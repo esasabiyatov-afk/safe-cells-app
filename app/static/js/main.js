@@ -14,6 +14,10 @@ const state = {
   counts: { free: 0, normal: 0, expiring: 0, overdue: 0 },
   privateMatches: null,
   searchSequence: 0,
+  asOfDate: null,
+  activeRentalCell: null,
+  activeQuote: null,
+  quoteSequence: 0,
 };
 
 const elements = {
@@ -40,6 +44,22 @@ const elements = {
   dialogSize: document.getElementById("dialogSize"),
   dialogEndDate: document.getElementById("dialogEndDate"),
   dialogDays: document.getElementById("dialogDays"),
+  rentalDialog: document.getElementById("rentalDialog"),
+  rentalDialogClose: document.getElementById("rentalDialogClose"),
+  rentalDialogTitle: document.getElementById("rentalDialogTitle"),
+  rentalCellSummary: document.getElementById("rentalCellSummary"),
+  rentalForm: document.getElementById("rentalForm"),
+  rentalStartDate: document.getElementById("rentalStartDate"),
+  rentalEndDate: document.getElementById("rentalEndDate"),
+  rentalDays: document.getElementById("rentalDays"),
+  rentalError: document.getElementById("rentalError"),
+  quoteDays: document.getElementById("quoteDays"),
+  quoteTariff: document.getElementById("quoteTariff"),
+  quoteRentPrice: document.getElementById("quoteRentPrice"),
+  quoteDeposit: document.getElementById("quoteDeposit"),
+  quoteTotal: document.getElementById("quoteTotal"),
+  rentalBack: document.getElementById("rentalBack"),
+  rentalContinue: document.getElementById("rentalContinue"),
 };
 
 function setConnection(mode, text) {
@@ -102,6 +122,7 @@ function clearDisplayedData() {
   state.cells = [];
   state.counts = { free: 0, normal: 0, expiring: 0, overdue: 0 };
   state.privateMatches = null;
+  state.asOfDate = null;
   elements.statFree.textContent = "—";
   elements.statNormal.textContent = "—";
   elements.statExpiring.textContent = "—";
@@ -158,6 +179,10 @@ function daysLabel(cell) {
 }
 
 function openCellDialog(cell) {
+  if (cell.status === "free") {
+    openRentalCalculator(cell);
+    return;
+  }
   elements.dialogTitle.textContent = `№ ${cell.number}`;
   elements.dialogStatus.textContent = STATUS_LABELS[cell.status];
   elements.dialogStatus.className = `status-badge ${cell.status}`;
@@ -165,6 +190,163 @@ function openCellDialog(cell) {
   elements.dialogEndDate.textContent = formatDate(cell.end_date);
   elements.dialogDays.textContent = daysLabel(cell);
   elements.dialog.showModal();
+}
+
+function parseIsoDateUtc(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const result = new Date(Date.UTC(year, month - 1, day));
+  if (
+    result.getUTCFullYear() !== year
+    || result.getUTCMonth() !== month - 1
+    || result.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return result;
+}
+
+function isoFromUtcDate(value) {
+  return value.toISOString().slice(0, 10);
+}
+
+function syncDaysFromDates() {
+  const start = parseIsoDateUtc(elements.rentalStartDate.value);
+  const end = parseIsoDateUtc(elements.rentalEndDate.value);
+  if (!start || !end || end < start) {
+    elements.rentalDays.value = "";
+    return false;
+  }
+  elements.rentalDays.value = String(Math.round((end - start) / 86_400_000) + 1);
+  return true;
+}
+
+function syncEndFromDays() {
+  const start = parseIsoDateUtc(elements.rentalStartDate.value);
+  const days = Number(elements.rentalDays.value);
+  if (!start || !Number.isInteger(days) || days < 1) {
+    elements.rentalEndDate.value = "";
+    return false;
+  }
+  const end = new Date(start.getTime());
+  end.setUTCDate(end.getUTCDate() + days - 1);
+  elements.rentalEndDate.value = isoFromUtcDate(end);
+  return true;
+}
+
+function money(value) {
+  return `${new Intl.NumberFormat("ru-RU").format(value)} сом`;
+}
+
+function resetQuote() {
+  state.activeQuote = null;
+  elements.quoteDays.textContent = "—";
+  elements.quoteTariff.textContent = "—";
+  elements.quoteRentPrice.textContent = "—";
+  elements.quoteDeposit.textContent = "—";
+  elements.quoteTotal.textContent = "—";
+}
+
+function showRentalError(message) {
+  elements.rentalError.textContent = message;
+  elements.rentalError.hidden = false;
+}
+
+function clearRentalError() {
+  elements.rentalError.textContent = "";
+  elements.rentalError.hidden = true;
+}
+
+async function requestRentalQuote() {
+  const cell = state.activeRentalCell;
+  const startDate = elements.rentalStartDate.value;
+  const endDate = elements.rentalEndDate.value;
+  const rentDays = Number(elements.rentalDays.value);
+  const sequence = ++state.quoteSequence;
+  if (
+    !cell
+    || !parseIsoDateUtc(startDate)
+    || !parseIsoDateUtc(endDate)
+    || !Number.isInteger(rentDays)
+    || rentDays < 1
+  ) {
+    resetQuote();
+    showRentalError("Укажите корректный срок аренды.");
+    return;
+  }
+
+  clearRentalError();
+  elements.quoteDays.textContent = "Расчёт…";
+  try {
+    const response = await fetch(elements.body.dataset.rentalUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cell_number: cell.number,
+        start_date: startDate,
+        end_date: endDate,
+        rent_days: rentDays,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось выполнить расчёт");
+    }
+    if (sequence !== state.quoteSequence || !elements.rentalDialog.open) {
+      return;
+    }
+    state.activeQuote = payload;
+    const period = payload.period_to_days === null
+      ? `${payload.period_from_days}+ дней`
+      : `${payload.period_from_days}–${payload.period_to_days} дней`;
+    elements.quoteDays.textContent = `${payload.rent_days} дн.`;
+    elements.quoteTariff.textContent = `${payload.price_per_day} сом/день · ${period}`;
+    elements.quoteRentPrice.textContent = money(payload.rent_price);
+    elements.quoteDeposit.textContent = money(payload.deposit_amount);
+    elements.quoteTotal.textContent = money(payload.total_amount);
+    clearRentalError();
+  } catch (error) {
+    if (sequence !== state.quoteSequence) {
+      return;
+    }
+    resetQuote();
+    showRentalError(errorMessage(error, "Не удалось выполнить расчёт"));
+  }
+}
+
+let quoteTimer = null;
+function scheduleRentalQuote() {
+  window.clearTimeout(quoteTimer);
+  state.quoteSequence += 1;
+  quoteTimer = window.setTimeout(requestRentalQuote, 180);
+}
+
+function openRentalCalculator(cell) {
+  state.activeRentalCell = cell;
+  state.activeQuote = null;
+  elements.rentalDialogTitle.textContent = `Ячейка № ${cell.number}`;
+  elements.rentalCellSummary.textContent = `Высота ${cell.height_mm} мм · ${cell.width_mm} × ${cell.depth_mm} мм`;
+  const startDate = state.asOfDate || isoFromUtcDate(new Date());
+  elements.rentalStartDate.value = startDate;
+  elements.rentalDays.value = "1";
+  syncEndFromDays();
+  resetQuote();
+  clearRentalError();
+  elements.rentalDialog.showModal();
+  scheduleRentalQuote();
+}
+
+function closeRentalCalculator() {
+  window.clearTimeout(quoteTimer);
+  state.quoteSequence += 1;
+  state.activeRentalCell = null;
+  state.activeQuote = null;
+  elements.rentalDialog.close();
 }
 
 function createCellButton(cell) {
@@ -257,6 +439,7 @@ async function refreshCells() {
     }
     state.cells = payload.cells;
     state.counts = payload.counts;
+    state.asOfDate = payload.as_of_date;
     populateHeightFilter(state.cells);
     renderStats();
     clearError();
@@ -288,6 +471,30 @@ elements.dialogClose.addEventListener("click", () => elements.dialog.close());
 elements.dialog.addEventListener("click", (event) => {
   if (event.target === elements.dialog) {
     elements.dialog.close();
+  }
+});
+elements.rentalStartDate.addEventListener("input", () => {
+  if (elements.rentalDays.value) {
+    syncEndFromDays();
+  } else {
+    syncDaysFromDates();
+  }
+  scheduleRentalQuote();
+});
+elements.rentalEndDate.addEventListener("input", () => {
+  syncDaysFromDates();
+  scheduleRentalQuote();
+});
+elements.rentalDays.addEventListener("input", () => {
+  syncEndFromDays();
+  scheduleRentalQuote();
+});
+elements.rentalForm.addEventListener("submit", (event) => event.preventDefault());
+elements.rentalDialogClose.addEventListener("click", closeRentalCalculator);
+elements.rentalBack.addEventListener("click", closeRentalCalculator);
+elements.rentalDialog.addEventListener("click", (event) => {
+  if (event.target === elements.rentalDialog) {
+    closeRentalCalculator();
   }
 });
 
