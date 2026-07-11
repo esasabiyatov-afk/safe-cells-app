@@ -1,0 +1,5 @@
+{
+  "database_directory": "\\\\SERVER\\SHARE\\safe-cells",
+  "working_database_name": "vault_cells.sqlite3",
+  "archive_database_name": "vault_archive.sqlite3"
+}

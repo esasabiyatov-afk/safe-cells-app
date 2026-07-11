@@ -1,0 +1,9 @@
+[project]
+name = "safe-cells"
+version = "0.1.0"
+description = "Локальное приложение учёта банковских сейфовых ячеек"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
