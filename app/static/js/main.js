@@ -57,7 +57,6 @@ const elements = {
   quoteTariff: document.getElementById("quoteTariff"),
   quoteRentPrice: document.getElementById("quoteRentPrice"),
   quoteDeposit: document.getElementById("quoteDeposit"),
-  quoteTotal: document.getElementById("quoteTotal"),
   rentalBack: document.getElementById("rentalBack"),
   rentalContinue: document.getElementById("rentalContinue"),
 };
@@ -249,7 +248,6 @@ function resetQuote() {
   elements.quoteTariff.textContent = "—";
   elements.quoteRentPrice.textContent = "—";
   elements.quoteDeposit.textContent = "—";
-  elements.quoteTotal.textContent = "—";
 }
 
 function showRentalError(message) {
@@ -308,7 +306,6 @@ async function requestRentalQuote() {
     elements.quoteTariff.textContent = `${payload.price_per_day} сом/день · ${period}`;
     elements.quoteRentPrice.textContent = money(payload.rent_price);
     elements.quoteDeposit.textContent = money(payload.deposit_amount);
-    elements.quoteTotal.textContent = money(payload.total_amount);
     clearRentalError();
   } catch (error) {
     if (sequence !== state.quoteSequence) {

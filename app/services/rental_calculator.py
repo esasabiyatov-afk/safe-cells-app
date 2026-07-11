@@ -44,7 +44,6 @@ class RentalQuote:
     price_per_day: int
     rent_price: int
     deposit_amount: int
-    total_amount: int
     currency_code: str = "KGS"
     currency_label: str = "сом"
 
@@ -137,7 +136,7 @@ def calculate_rental_quote(
     end_date_value: object | None = None,
     rent_days_value: object | None = None,
 ) -> RentalQuote:
-    """Recalculate dates, tariff, deposit and total using a short RO connection."""
+    """Recalculate dates, rental price and separate deposit using a short RO connection."""
 
     if not isinstance(cell_number, str) or not cell_number.strip():
         raise RentalValidationError("Не указан номер ячейки.")
@@ -213,6 +212,5 @@ def calculate_rental_quote(
         price_per_day=price_per_day,
         rent_price=rent_price,
         deposit_amount=deposit,
-        total_amount=rent_price + deposit,
         currency_code=currency_code,
     )

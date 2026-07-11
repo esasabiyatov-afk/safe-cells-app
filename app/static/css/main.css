@@ -601,16 +601,44 @@ main {
   text-align: right;
 }
 
-.quote-total {
+.quote-row:last-child {
   min-height: 56px;
   background: #e5edf2;
 }
 
-.quote-total span,
-.quote-total strong {
+.quote-row:last-child span,
+.quote-row:last-child strong {
   color: var(--ink);
   font-size: 16px;
   font-weight: 750;
+}
+
+.deposit-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 2px solid #8a6b23;
+  border-radius: 5px;
+  background: #fff4ce;
+  color: #4f3a0d;
+}
+
+.deposit-panel div {
+  display: grid;
+  gap: 3px;
+}
+
+.deposit-panel span,
+.deposit-panel strong {
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.deposit-panel small {
+  font-size: 11px;
 }
 
 .rental-actions {

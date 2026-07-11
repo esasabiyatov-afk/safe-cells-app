@@ -37,6 +37,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
         'class="primary-button" id="rentalContinue" type="button" disabled' in html
     )
     assert 'name="currency"' not in html
+    assert "Сумма аренды" in html
+    assert "Залог отдельно" in html
+    assert "Не входит в сумму аренды" in html
+    assert "Итого к оплате" not in html
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Cache-Control"] == "no-store"

@@ -74,7 +74,6 @@ def test_every_height_and_tariff_boundary(
             assert quote.price_per_day == expected_rate
             assert quote.rent_price == rent_days * expected_rate
             assert quote.deposit_amount == 1500
-            assert quote.total_amount == quote.rent_price + 1500
             assert quote.currency_code == "KGS"
             assert quote.currency_label == "сом"
 
@@ -92,7 +91,7 @@ def test_quote_accepts_end_date_and_recomputes_days(
     assert quote.end_date == "2026-07-30"
     assert quote.price_per_day == 15
     assert quote.rent_price == 450
-    assert quote.total_amount == 1950
+    assert quote.deposit_amount == 1500
 
 
 def test_quote_accepts_days_and_recomputes_end_date(
@@ -107,7 +106,7 @@ def test_quote_accepts_days_and_recomputes_end_date(
     assert quote.end_date == "2026-07-31"
     assert quote.price_per_day == 10
     assert quote.rent_price == 310
-    assert quote.total_amount == 1810
+    assert quote.deposit_amount == 1500
 
 
 @pytest.mark.parametrize(
@@ -236,7 +235,7 @@ def test_rental_api_success_and_no_cache(
     assert payload["price_per_day"] == 15
     assert payload["rent_price"] == 450
     assert payload["deposit_amount"] == 1500
-    assert payload["total_amount"] == 1950
+    assert "total_amount" not in payload
     assert payload["currency_label"] == "сом"
 
 
