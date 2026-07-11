@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Учёт сейфовых ячеек</title>
+<style>
+  :root{
+    --paper: #f2efe8;
+    --paper-2: #e8e3d8;
+    --ink: #1f2a3a;
+    --ink-soft: #4c5866;
+    --steel: #8b93a1;
+    --steel-line: #c9cabf;
+    --free: #5b7b5e;
+    --free-bg: #e3ebe0;
+    --soon: #b8862f;
+    --soon-bg: #f3e7cc;
+    --occ: #a8442f;
+    --occ-bg: #f1ddd6;
+    --overdue: #7a2b1f;
+    --overdue-bg: #ecc9c0;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    min-height:100vh;
+  }
+  header{
+    padding:28px 32px 20px;
+    border-bottom:1px solid var(--steel-line);
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:16px;
+  }
+  .brand{
+    font-family: Georgia, "Times New Roman", serif;
+    font-size:26px;
+    letter-spacing:0.5px;
+    font-weight:600;
+  }
+  .brand span{ color:var(--ink-soft); font-family:inherit; font-weight:400; font-size:16px; display:block; margin-top:2px;}
+  .stats{ display:flex; gap:22px; }
+  .stat{ text-align:right; }
+  .stat b{ display:block; font-size:22px; font-family:Georgia, serif; }
+  .stat small{ color:var(--ink-soft); font-size:12px; text-transform:uppercase; letter-spacing:0.5px; }
+
+  .toolbar{
+    padding:16px 32px;
+    display:flex;
+    gap:14px;
+    align-items:center;
+    flex-wrap:wrap;
+    border-bottom:1px solid var(--steel-line);
+    background:var(--paper-2);
+  }
+  .toolbar input, .toolbar select{
+    padding:8px 12px;
+    border:1px solid var(--steel-line);
+    background:#fff;
+    border-radius:3px;
+    font-size:14px;
+    color:var(--ink);
+  }
+  .legend{ display:flex; gap:16px; margin-left:auto; font-size:13px; color:var(--ink-soft);}
+  .legend i{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle;}
+
+  .vault{
+    padding:28px 32px 60px;
+    display:grid;
+    grid-template-columns:repeat(14, minmax(0,1fr));
+    gap:6px;
+    max-width:1400px;
+  }
+  .cell{
+    aspect-ratio:1;
+    border:1px solid var(--steel-line);
+    background:var(--free-bg);
+    border-radius:4px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    font-size:11px;
+    color:var(--ink);
+    position:relative;
+    transition:transform .08s ease;
+  }
+  .cell:hover{ transform:translateY(-2px); box-shadow:0 3px 8px rgba(0,0,0,0.12); }
+  .cell .num{ font-weight:700; font-size:13px; }
+  .cell .size{ font-size:9px; color:var(--ink-soft); text-transform:uppercase; margin-top:1px;}
+  .cell.small{ }
+  .cell.medium .num{ font-size:14px; }
+  .cell.large{ }
+  .cell.occupied{ background:var(--occ-bg); border-color:#d3a99a; }
+  .cell.soon{ background:var(--soon-bg); border-color:#dcbf85; }
+  .cell.overdue{ background:var(--overdue-bg); border-color:#c99a8c; }
+  .cell.overdue::after{
+    content:"!"; position:absolute; top:3px; right:5px; font-weight:800; color:var(--overdue); font-size:11px;
+  }
+
+  /* модальное окно */
+  .overlay{
+    position:fixed; inset:0; background:rgba(31,42,58,0.45);
+    display:none; align-items:center; justify-content:center; z-index:50;
+  }
+  .overlay.open{ display:flex; }
+  .modal{
+    background:var(--paper); border:1px solid var(--steel-line); border-radius:6px;
+    width:380px; max-width:92vw; padding:24px; box-shadow:0 12px 32px rgba(0,0,0,0.25);
+  }
+  .modal h2{ margin:0 0 2px; font-family:Georgia, serif; font-size:22px; }
+  .modal .sub{ color:var(--ink-soft); font-size:13px; margin-bottom:16px; }
+  .field{ margin-bottom:12px; }
+  .field label{ display:block; font-size:12px; color:var(--ink-soft); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.3px;}
+  .field input, .field select{
+    width:100%; padding:8px 10px; border:1px solid var(--steel-line); border-radius:3px; font-size:14px; background:#fff;
+  }
+  .badge{
+    display:inline-block; padding:3px 9px; border-radius:12px; font-size:12px; font-weight:600;
+  }
+  .badge.free{ background:var(--free-bg); color:var(--free); }
+  .badge.occupied{ background:var(--occ-bg); color:var(--occ); }
+  .badge.soon{ background:var(--soon-bg); color:var(--soon); }
+  .badge.overdue{ background:var(--overdue-bg); color:var(--overdue); }
+
+  .modal-actions{ display:flex; gap:10px; margin-top:18px; }
+  button{
+    font-family:inherit; font-size:14px; padding:9px 16px; border-radius:4px; border:1px solid var(--steel-line);
+    cursor:pointer; background:#fff;
+  }
+  button.primary{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  button.danger{ background:var(--occ); color:#fff; border-color:var(--occ); }
+  button.ghost{ background:transparent; }
+  .close-x{ position:absolute; top:14px; right:16px; border:none; background:none; font-size:18px; cursor:pointer; color:var(--ink-soft);}
+  .modal{ position:relative; }
+
+  .note{
+    padding:10px 32px; font-size:12px; color:var(--ink-soft); border-top:1px solid var(--steel-line);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Сейфовые ячейки<span>Учёт статуса аренды — тестовый макет</span></div>
+  <div class="stats">
+    <div class="stat"><b id="statFree">-</b><small>Свободно</small></div>
+    <div class="stat"><b id="statOcc">-</b><small>Занято</small></div>
+    <div class="stat"><b id="statSoon">-</b><small>Истекает</small></div>
+    <div class="stat"><b id="statOver">-</b><small>Просрочено</small></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <input id="search" type="text" placeholder="Номер ячейки или ФИО арендатора">
+  <select id="filterStatus">
+    <option value="">Все статусы</option>
+    <option value="free">Свободна</option>
+    <option value="occupied">Занята</option>
+    <option value="soon">Истекает</option>
+    <option value="overdue">Просрочена</option>
+  </select>
+  <select id="filterSize">
+    <option value="">Все размеры</option>
+    <option value="small">Малая</option>
+    <option value="medium">Средняя</option>
+    <option value="large">Большая</option>
+  </select>
+  <div class="legend">
+    <span><i style="background:var(--free-bg);border:1px solid var(--free)"></i>Свободна</span>
+    <span><i style="background:var(--occ-bg);border:1px solid var(--occ)"></i>Занята</span>
+    <span><i style="background:var(--soon-bg);border:1px solid var(--soon)"></i>Истекает ≤7дн</span>
+    <span><i style="background:var(--overdue-bg);border:1px solid var(--overdue)"></i>Просрочена</span>
+  </div>
+</div>
+
+<div class="vault" id="vault"></div>
+
+<div class="note">Тестовый макет: данные хранятся только в памяти браузера и сбросятся при перезагрузке страницы. В рабочей версии данные будут сохраняться в общей базе на сетевом диске.</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<script>
+const SIZES = ['small','medium','large'];
+const SIZE_LABEL = {small:'Малая', medium:'Средняя', large:'Большая'};
+const NAMES = ['Иванов И.И.','Петрова С.А.','Сидоров К.М.','Кузнецова Е.В.','Смирнов А.П.','Волкова Н.С.','Морозов Д.А.','Егорова Т.Л.'];
+
+let safes = [];
+const TOTAL = 126;
+const today = new Date();
+
+function fmtDate(d){
+  return d.toISOString().slice(0,10);
+}
+function addDays(base, days){
+  const d = new Date(base);
+  d.setDate(d.getDate()+days);
+  return d;
+}
+
+function initData(){
+  for(let i=1;i<=TOTAL;i++){
+    const size = SIZES[i % 3 === 0 ? 2 : (i % 2 === 0 ? 1 : 0)];
+    // распределение: ~45% свободны, остальное занято с разным сроком
+    const roll = Math.random();
+    let status='free', renter=null, openDate=null, endDate=null;
+    if(roll > 0.45){
+      status='occupied';
+      renter = NAMES[Math.floor(Math.random()*NAMES.length)];
+      const openOffset = -Math.floor(Math.random()*300)-10;
+      openDate = fmtDate(addDays(today, openOffset));
+      // немного сделаем просроченных и скоро истекающих для демонстрации
+      const endRoll = Math.random();
+      let endOffset;
+      if(endRoll < 0.12) endOffset = -Math.floor(Math.random()*20)-1; // просрочено
+      else if(endRoll < 0.30) endOffset = Math.floor(Math.random()*7)+1; // скоро истекает
+      else endOffset = Math.floor(Math.random()*300)+30;
+      endDate = fmtDate(addDays(today, endOffset));
+    }
+    safes.push({
+      id:i,
+      number: 'A-' + String(i).padStart(3,'0'),
+      size, status, renter, openDate, endDate
+    });
+  }
+}
+
+function computeState(safe){
+  if(safe.status === 'free') return 'free';
+  const end = new Date(safe.endDate);
+  const diffDays = Math.ceil((end - today) / (1000*60*60*24));
+  if(diffDays < 0) return 'overdue';
+  if(diffDays <= 7) return 'soon';
+  return 'occupied';
+}
+
+const STATE_LABEL = {free:'Свободна', occupied:'Занята', soon:'Истекает', overdue:'Просрочена'};
+
+function render(){
+  const vault = document.getElementById('vault');
+  vault.innerHTML = '';
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const fStatus = document.getElementById('filterStatus').value;
+  const fSize = document.getElementById('filterSize').value;
+
+  let counts = {free:0, occupied:0, soon:0, overdue:0};
+
+  safes.forEach(safe => {
+    const state = computeState(safe);
+    if(state === 'occupied') counts.occupied++;
+    else counts[state]++;
+
+    if(q){
+      const inNumber = safe.number.toLowerCase().includes(q);
+      const inRenter = safe.renter && safe.renter.toLowerCase().includes(q);
+      if(!inNumber && !inRenter) return;
+    }
+    if(fStatus && state !== fStatus) return;
+    if(fSize && safe.size !== fSize) return;
+
+    const div = document.createElement('div');
+    div.className = `cell ${safe.size} ${state}`;
+    div.innerHTML = `<div class="num">${safe.number}</div><div class="size">${SIZE_LABEL[safe.size]}</div>`;
+    div.onclick = () => openModal(safe.id);
+    vault.appendChild(div);
+  });
+
+  document.getElementById('statFree').textContent = counts.free;
+  document.getElementById('statOcc').textContent = counts.occupied;
+  document.getElementById('statSoon').textContent = counts.soon;
+  document.getElementById('statOver').textContent = counts.overdue;
+}
+
+function openModal(id){
+  const safe = safes.find(s => s.id === id);
+  const state = computeState(safe);
+  const box = document.getElementById('modalBox');
+
+  let fields = '';
+  if(safe.status === 'occupied'){
+    fields = `
+      <div class="field"><label>Арендатор</label><input id="f-renter" value="${safe.renter || ''}"></div>
+      <div class="field"><label>Дата открытия</label><input id="f-open" type="date" value="${safe.openDate || ''}"></div>
+      <div class="field"><label>Дата окончания аренды</label><input id="f-end" type="date" value="${safe.endDate || ''}"></div>
+    `;
+  }
+
+  box.innerHTML = `
+    <button class="close-x" onclick="closeModal()">✕</button>
+    <h2>${safe.number}</h2>
+    <div class="sub">${SIZE_LABEL[safe.size]} ячейка &nbsp;·&nbsp; <span class="badge ${state}">${STATE_LABEL[state]}</span></div>
+    ${fields}
+    <div class="modal-actions">
+      ${safe.status === 'free'
+        ? `<button class="primary" onclick="assignSafe(${id})">Занять ячейку</button>`
+        : `<button class="primary" onclick="saveSafe(${id})">Сохранить</button>
+           <button class="danger" onclick="freeSafe(${id})">Освободить</button>`
+      }
+      <button class="ghost" onclick="closeModal()">Закрыть</button>
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeModal(){
+  document.getElementById('overlay').classList.remove('open');
+}
+
+function assignSafe(id){
+  const safe = safes.find(s => s.id === id);
+  safe.status = 'occupied';
+  safe.renter = '';
+  safe.openDate = fmtDate(today);
+  safe.endDate = fmtDate(addDays(today, 365));
+  closeModal();
+  render();
+  openModal(id);
+}
+
+function saveSafe(id){
+  const safe = safes.find(s => s.id === id);
+  safe.renter = document.getElementById('f-renter').value || 'Без имени';
+  safe.openDate = document.getElementById('f-open').value;
+  safe.endDate = document.getElementById('f-end').value;
+  closeModal();
+  render();
+}
+
+function freeSafe(id){
+  const safe = safes.find(s => s.id === id);
+  safe.status = 'free';
+  safe.renter = null;
+  safe.openDate = null;
+  safe.endDate = null;
+  closeModal();
+  render();
+}
+
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('filterStatus').addEventListener('change', render);
+document.getElementById('filterSize').addEventListener('change', render);
+document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') closeModal(); });
+
+initData();
+render();
+</script>
+</body>
+</html>

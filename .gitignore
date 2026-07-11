@@ -1,0 +1,43 @@
+# Local development tools and Python environments
+.tools/
+.venv/
+venv/
+
+# Python caches and test artefacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local runtime state
+instance/
+local/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+
+# Backups, generated documents, and build outputs
+backups/
+generated_documents/
+downloads/
+build/
+dist/
+
+# Machine-specific configuration and secrets
+.env
+.env.*
+config.local.*
+local_config.*
+secrets.*
+private_templates/
+templates_local/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
