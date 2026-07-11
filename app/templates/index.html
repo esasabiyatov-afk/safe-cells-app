@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Сейфовые ячейки</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+</head>
+<body
+  data-cells-url="{{ url_for('cells.cells_list') }}"
+  data-search-url="{{ url_for('cells.cells_search') }}"
+>
+  <header class="page-header">
+    <div class="brand-block">
+      <p class="eyebrow">Локальная банковская система</p>
+      <h1>Сейфовые ячейки</h1>
+      <p class="brand-subtitle">Оперативный контроль аренды</p>
+    </div>
+
+    <div class="header-side">
+      <div class="employee" aria-label="Текущий сотрудник">
+        <span class="employee-label">Сотрудник</span>
+        <strong>{{ employee }}</strong>
+      </div>
+      <div class="connection-state" id="connectionState" role="status">
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span>Проверка данных…</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="stats" aria-label="Сводка по ячейкам">
+      <article class="stat-card stat-free">
+        <span class="stat-label">Свободно</span>
+        <strong id="statFree">—</strong>
+      </article>
+      <article class="stat-card stat-normal">
+        <span class="stat-label">В норме</span>
+        <strong id="statNormal">—</strong>
+      </article>
+      <article class="stat-card stat-expiring">
+        <span class="stat-label">Истекает</span>
+        <strong id="statExpiring">—</strong>
+      </article>
+      <article class="stat-card stat-overdue">
+        <span class="stat-label">Просрочено</span>
+        <strong id="statOverdue">—</strong>
+      </article>
+    </section>
+
+    <section class="workspace" aria-labelledby="vaultTitle">
+      <div class="workspace-heading">
+        <div>
+          <p class="section-kicker">Хранилище</p>
+          <h2 id="vaultTitle">Все ячейки</h2>
+        </div>
+        <p class="result-count" id="resultCount">Загрузка…</p>
+      </div>
+
+      <div class="toolbar" aria-label="Поиск и фильтры">
+        <label class="search-field">
+          <span class="visually-hidden">Поиск</span>
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input
+            id="searchInput"
+            type="search"
+            maxlength="100"
+            autocomplete="off"
+            placeholder="Номер ячейки, ФИО или номер счёта"
+          >
+        </label>
+
+        <label class="filter-field">
+          <span>Статус</span>
+          <select id="statusFilter">
+            <option value="">Все</option>
+            <option value="free">Свободна</option>
+            <option value="normal">В норме</option>
+            <option value="expiring">Истекает</option>
+            <option value="overdue">Просрочена</option>
+          </select>
+        </label>
+
+        <label class="filter-field">
+          <span>Высота</span>
+          <select id="heightFilter">
+            <option value="">Все размеры</option>
+          </select>
+        </label>
+
+        <button class="refresh-button" id="refreshButton" type="button">
+          <span aria-hidden="true">↻</span>
+          Обновить
+        </button>
+      </div>
+
+      <div class="status-row">
+        <div class="legend" aria-label="Обозначения статусов">
+          <span><i class="legend-dot free"></i>Свободна</span>
+          <span><i class="legend-dot normal"></i>В норме</span>
+          <span><i class="legend-dot expiring"></i>Истекает</span>
+          <span><i class="legend-dot overdue"></i>Просрочена</span>
+        </div>
+        <p class="updated-at" id="updatedAt">Данные ещё не получены</p>
+      </div>
+
+      <div class="error-banner" id="errorBanner" role="alert" hidden>
+        <strong>Данные временно недоступны</strong>
+        <span id="errorMessage"></span>
+      </div>
+
+      <div class="vault-grid" id="vaultGrid" aria-live="polite" aria-busy="true"></div>
+
+      <div class="empty-state" id="emptyState" hidden>
+        <strong>Ячейки не найдены</strong>
+        <span>Измените поисковый запрос или фильтры.</span>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <span>Режим просмотра</span>
+    <span>Данные автоматически обновляются каждые 15 секунд</span>
+  </footer>
+
+  <dialog class="cell-dialog" id="cellDialog" aria-labelledby="dialogTitle">
+    <button class="dialog-close" id="dialogClose" type="button" aria-label="Закрыть">×</button>
+    <p class="section-kicker">Ячейка</p>
+    <h2 id="dialogTitle">—</h2>
+    <span class="status-badge" id="dialogStatus">—</span>
+    <dl class="cell-details">
+      <div>
+        <dt>Размер</dt>
+        <dd id="dialogSize">—</dd>
+      </div>
+      <div>
+        <dt>Окончание аренды</dt>
+        <dd id="dialogEndDate">—</dd>
+      </div>
+      <div>
+        <dt>До окончания / просрочка</dt>
+        <dd id="dialogDays">—</dd>
+      </div>
+    </dl>
+    <p class="dialog-note">На этом этапе доступен только просмотр состояния.</p>
+  </dialog>
+</body>
+</html>

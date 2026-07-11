@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+from typing import Callable
+
+from app import create_app
+from app.config import Settings
+from app.db.schema import initialize_databases
+
+
+def _ready_app(settings: Settings, cells_csv_path: Path):
+    initialize_databases(settings, cells_csv_path=cells_csv_path)
+    app = create_app(settings)
+    app.config["TODAY_PROVIDER"] = lambda: date(2026, 7, 1)
+    app.config["EMPLOYEE_PROVIDER"] = lambda: "test-user"
+    return app
+
+
+def test_main_page_uses_only_local_assets_and_security_headers(
+    settings: Settings, cells_csv_path: Path
+) -> None:
+    app = _ready_app(settings, cells_csv_path)
+
+    response = app.test_client().get("/")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "test-user" in html
+    assert "http://" not in html
+    assert "https://" not in html
+    assert 'src="/static/js/main.js"' in html
+    assert 'href="/static/css/main.css"' in html
+    assert "default-src 'self'" in response.headers["Content-Security-Policy"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_employee_name_is_escaped(
+    settings: Settings, cells_csv_path: Path
+) -> None:
+    app = _ready_app(settings, cells_csv_path)
+    app.config["EMPLOYEE_PROVIDER"] = lambda: "<script>test</script>"
+
+    html = app.test_client().get("/").get_data(as_text=True)
+
+    assert "<script>test</script>" not in html
+    assert "&lt;script&gt;test&lt;/script&gt;" in html
+
+
+def test_cells_api_returns_126_safe_rows(
+    settings: Settings, cells_csv_path: Path
+) -> None:
+    app = _ready_app(settings, cells_csv_path)
+
+    response = app.test_client().get("/api/cells")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert len(payload["cells"]) == 126
+    assert payload["counts"] == {
+        "free": 126,
+        "normal": 0,
+        "expiring": 0,
+        "overdue": 0,
+    }
+    assert "client_full_name" not in payload["cells"][0]
+    assert "account_number" not in payload["cells"][0]
+
+
+def test_private_search_api_uses_post_and_returns_no_personal_fields(
+    settings: Settings,
+    cells_csv_path: Path,
+    insert_test_contract: Callable[..., None],
+) -> None:
+    app = create_app(settings)
+    app.config["TODAY_PROVIDER"] = lambda: date(2026, 7, 1)
+    insert_test_contract(
+        cell_number="1",
+        end_date="2026-07-09",
+        client_name="Секретный Тестовый Клиент",
+        account_number="PRIVATE-TEST-ACCOUNT",
+    )
+
+    response = app.test_client().post(
+        "/api/cells/search", json={"query": "секретный"}
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload == {"matched_numbers": ["1"]}
+    assert "Секретный" not in response.get_data(as_text=True)
+    assert "PRIVATE-TEST-ACCOUNT" not in response.get_data(as_text=True)
+    assert app.test_client().get("/api/cells/search").status_code == 405
+
+
+def test_search_rejects_invalid_and_oversized_payload(
+    settings: Settings, cells_csv_path: Path
+) -> None:
+    app = _ready_app(settings, cells_csv_path)
+    client = app.test_client()
+
+    assert client.post("/api/cells/search", json={}).status_code == 400
+    assert client.post(
+        "/api/cells/search", json={"query": "x" * 101}
+    ).status_code == 400
+
+
+def test_missing_database_shows_safe_api_error_without_creation(tmp_path: Path) -> None:
+    missing = tmp_path / "offline network"
+    settings = Settings(database_directory=missing, testing=True)
+    app = create_app(settings)
+
+    response = app.test_client().get("/api/cells")
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "message": "Не удалось получить данные с сетевого диска. Проверьте подключение к сети"
+    }
+    assert not missing.exists()
+
+
+def test_frontend_assets_are_available_and_contain_refresh_logic(
+    settings: Settings, cells_csv_path: Path
+) -> None:
+    app = _ready_app(settings, cells_csv_path)
+    client = app.test_client()
+
+    css = client.get("/static/css/main.css")
+    javascript = client.get("/static/js/main.js")
+    try:
+        assert css.status_code == 200
+        assert javascript.status_code == 200
+        script = javascript.get_data(as_text=True)
+        assert "15_000" in script
+        assert "setInterval" in script
+        assert "innerHTML" not in script
+        assert "clearDisplayedData" in script
+    finally:
+        css.close()
+        javascript.close()

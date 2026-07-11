@@ -1,5 +1,7 @@
 """HTTP route blueprints."""
 
+from app.routes.cells import cells_blueprint
+from app.routes.main import main_blueprint
 from app.routes.system import system_blueprint
 
-__all__ = ["system_blueprint"]
+__all__ = ["cells_blueprint", "main_blueprint", "system_blueprint"]
