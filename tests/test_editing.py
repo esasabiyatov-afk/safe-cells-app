@@ -17,7 +17,7 @@ WHEN = datetime(2026, 7, 13, 9, 0, tzinfo=timezone(timedelta(hours=6)))
 def payload(**overrides):
     value = {"operation_id": str(uuid4()), "contract_ref": "contract-test-1", "cell_number": "1",
         "client_full_name": "Исправленный Клиент", "id_card_number": "NEW-ID",
-        "id_card_issuer": "Новый орган", "id_card_expiry_date": "2032-01-01", "account_number": "NEW-ACCOUNT"}
+        "id_card_issuer": "Новый орган", "id_card_issue_date": "2020-01-01", "account_number": "NEW-ACCOUNT"}
     value.update(overrides); return value
 
 def test_edit_updates_active_contract_and_writes_full_audit(
@@ -49,7 +49,7 @@ def test_edit_rejects_stale_contract(settings, insert_test_contract):
 def test_edit_rejects_no_changes(settings, insert_test_contract):
     insert_test_contract(cell_number="1", end_date="2026-07-20")
     unchanged = payload(client_full_name="Тестовый Клиент", id_card_number="TEST-ID-1",
-        id_card_issuer="Тестовый орган", id_card_expiry_date="2030-12-31", account_number="TEST-ACCOUNT")
+        id_card_issuer="Тестовый орган", id_card_issue_date="2017-09-12", account_number="TEST-ACCOUNT")
     with pytest.raises(EditingValidationError, match="не изменены"):
         edit_contract(settings, payload=unchanged, employee="editor", occurred_at=WHEN)
 
@@ -69,3 +69,13 @@ def test_repeated_edit_operation_does_not_duplicate_audit(settings, insert_test_
     paths = DatabasePaths.from_settings(settings)
     with open_readonly(paths.archive) as con:
         assert con.execute("SELECT COUNT(*) FROM log WHERE action='contract.edited'").fetchone()[0] == 1
+
+def test_edit_rejects_future_id_card_issue_date(settings, insert_test_contract):
+    insert_test_contract(cell_number="1", end_date="2026-07-20")
+    with pytest.raises(EditingValidationError, match="не может быть в будущем"):
+        edit_contract(
+            settings,
+            payload=payload(id_card_issue_date="2026-07-14"),
+            employee="editor",
+            occurred_at=WHEN,
+        )

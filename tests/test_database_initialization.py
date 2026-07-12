@@ -205,7 +205,7 @@ def test_database_unique_constraint_blocks_two_active_contracts(
     insert_sql = """
         INSERT INTO contracts(
             contract_id, cell_number, client_full_name,
-            id_card_number, id_card_issuer, id_card_expiry_date,
+            id_card_number, id_card_issuer, id_card_issue_date,
             account_number, start_date, end_date, rent_days,
             price_per_day_minor, rent_price_minor, deposit_amount_minor,
             created_at, created_by, updated_at, updated_by

@@ -52,7 +52,7 @@ def insert_test_contract(
             client_name,
             f"TEST-ID-{cell_number}",
             "Тестовый орган",
-            "2030-12-31",
+            "2017-09-12",
             account_number,
             effective_start_date,
             end_date,
@@ -71,7 +71,7 @@ def insert_test_contract(
                 """
                 INSERT INTO contracts(
                     contract_id, cell_number, client_full_name,
-                    id_card_number, id_card_issuer, id_card_expiry_date,
+                    id_card_number, id_card_issuer, id_card_issue_date,
                     account_number, start_date, end_date, rent_days,
                     price_per_day_minor, rent_price_minor, deposit_amount_minor,
                     created_at, created_by, updated_at, updated_by

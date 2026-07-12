@@ -15,12 +15,13 @@ from app.routes import (
     contracts_blueprint,
     editing_blueprint,
     documents_blueprint,
+    employee_blueprint,
     main_blueprint,
     rental_blueprint,
     renewals_blueprint,
     system_blueprint,
 )
-from app.services.employee import get_employee_username
+from app.services.employee import default_employee_profile_path, get_employee_username
 
 
 def create_app(settings: Settings) -> Flask:
@@ -35,6 +36,10 @@ def create_app(settings: Settings) -> Flask:
         TESTING=settings.testing,
         TODAY_PROVIDER=date.today,
         EMPLOYEE_PROVIDER=get_employee_username,
+        EMPLOYEE_PROFILE_PATH=(
+            settings.database_directory / ".test-employee-profiles.json"
+            if settings.testing else default_employee_profile_path()
+        ),
         DOWNLOADS_DIRECTORY_PROVIDER=lambda: Path.home() / "Downloads",
     )
     app.extensions["safe_cells_settings"] = settings
@@ -44,6 +49,7 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(closures_blueprint)
     app.register_blueprint(contracts_blueprint)
     app.register_blueprint(editing_blueprint)
+    app.register_blueprint(employee_blueprint)
     app.register_blueprint(documents_blueprint)
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(renewals_blueprint)

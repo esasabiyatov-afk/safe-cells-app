@@ -11,8 +11,10 @@ from typing import Iterable, Mapping
 from docx import Document
 
 
-PLACEHOLDER_RE = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
-ANY_PLACEHOLDER_RE = re.compile(r"\{\{([^{}]+)\}\}")
+PLACEHOLDER_RE = re.compile(
+    r"\{\{(?P<legacy>[A-Z][A-Z0-9_]*)\}\}"
+    r"|\[(?P<bank>[А-Яа-яЁёA-Za-z][А-Яа-яЁёA-Za-z0-9_.]{0,79})\]"
+)
 
 
 class DocumentTemplateError(ValueError):
@@ -44,16 +46,37 @@ def _container_paragraphs(container) -> Iterable:
 
 
 def _replace_in_paragraph(paragraph, values: Mapping[str, str]) -> None:
-    original = "".join(run.text for run in paragraph.runs)
+    runs = list(paragraph.runs)
+    original = "".join(run.text for run in runs)
     if not original or not PLACEHOLDER_RE.search(original):
         return
-    replaced = PLACEHOLDER_RE.sub(lambda match: values[match.group(1)], original)
-    if paragraph.runs:
-        paragraph.runs[0].text = replaced
-        for run in paragraph.runs[1:]:
-            run.text = ""
-    else:
-        paragraph.add_run(replaced)
+    boundaries: list[tuple[int, int]] = []
+    offset = 0
+    for run in runs:
+        boundaries.append((offset, offset + len(run.text)))
+        offset += len(run.text)
+
+    def locate(position: int) -> tuple[int, int]:
+        for index, (start, end) in enumerate(boundaries):
+            if start <= position < end:
+                return index, position - start
+        raise DocumentTemplateError("Не удалось обработать расположение поля в DOCX.")
+
+    for match in reversed(list(PLACEHOLDER_RE.finditer(original))):
+        start_run, start_offset = locate(match.start())
+        end_run, end_offset_last = locate(match.end() - 1)
+        end_offset = end_offset_last + 1
+        replacement = values[match.group("legacy") or match.group("bank")]
+        if start_run == end_run:
+            run = runs[start_run]
+            run.text = run.text[:start_offset] + replacement + run.text[end_offset:]
+            continue
+        start = runs[start_run]
+        end = runs[end_run]
+        start.text = start.text[:start_offset] + replacement
+        for index in range(start_run + 1, end_run):
+            runs[index].text = ""
+        end.text = end.text[end_offset:]
 
 
 def _safe_child(directory: Path, file_name: str) -> Path:
@@ -71,7 +94,11 @@ def inspect_placeholders(document) -> set[str]:
 
     found: set[str] = set()
     for paragraph in _paragraphs(document):
-        found.update(ANY_PLACEHOLDER_RE.findall("".join(run.text for run in paragraph.runs)))
+        text = "".join(run.text for run in paragraph.runs)
+        found.update(
+            match.group("legacy") or match.group("bank")
+            for match in PLACEHOLDER_RE.finditer(text)
+        )
     return found
 
 

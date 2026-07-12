@@ -72,7 +72,7 @@ def test_private_details_are_read_only_and_include_hidden_history(
     assert details.client_full_name == "Секретный Тестовый Клиент"
     assert details.id_card_number == "TEST-ID-1"
     assert details.id_card_issuer == "Тестовый орган"
-    assert details.id_card_expiry_date == "2030-12-31"
+    assert details.id_card_issue_date == "2017-09-12"
     assert details.account_number == "PRIVATE-TEST-ACCOUNT"
     assert details.created_at == "2026-07-01T09:00:00+06:00"
     assert len(details.renewals) == 1

@@ -35,6 +35,7 @@ const state = {
   editOperationId: null,
   editSubmitting: false,
   documentSubmitting: false,
+  employeeSubmitting: false,
 };
 
 const elements = {
@@ -72,7 +73,7 @@ const elements = {
   privateDetails: document.getElementById("privateDetails"),
   privateIdCardNumber: document.getElementById("privateIdCardNumber"),
   privateIdCardIssuer: document.getElementById("privateIdCardIssuer"),
-  privateIdCardExpiryDate: document.getElementById("privateIdCardExpiryDate"),
+  privateIdCardIssueDate: document.getElementById("privateIdCardIssueDate"),
   privateAccountNumber: document.getElementById("privateAccountNumber"),
   privateCreatedAt: document.getElementById("privateCreatedAt"),
   historyControls: document.getElementById("historyControls"),
@@ -112,7 +113,7 @@ const elements = {
   editAccountNumber: document.getElementById("editAccountNumber"),
   editIdCardNumber: document.getElementById("editIdCardNumber"),
   editIdCardIssuer: document.getElementById("editIdCardIssuer"),
-  editIdCardExpiryDate: document.getElementById("editIdCardExpiryDate"),
+  editIdCardIssueDate: document.getElementById("editIdCardIssueDate"),
   editBack: document.getElementById("editBack"),
   editSubmit: document.getElementById("editSubmit"),
   documentAction: document.getElementById("documentAction"),
@@ -123,6 +124,12 @@ const elements = {
   documentError: document.getElementById("documentError"),
   documentBack: document.getElementById("documentBack"),
   documentSubmit: document.getElementById("documentSubmit"),
+  employeeName: document.getElementById("employeeName"),
+  employeeDialog: document.getElementById("employeeDialog"),
+  employeeForm: document.getElementById("employeeForm"),
+  employeeFullName: document.getElementById("employeeFullName"),
+  employeeError: document.getElementById("employeeError"),
+  employeeSubmit: document.getElementById("employeeSubmit"),
   closureDialog: document.getElementById("closureDialog"),
   closureDialogClose: document.getElementById("closureDialogClose"),
   closureDialogTitle: document.getElementById("closureDialogTitle"),
@@ -167,7 +174,7 @@ const elements = {
   accountNumber: document.getElementById("accountNumber"),
   idCardNumber: document.getElementById("idCardNumber"),
   idCardIssuer: document.getElementById("idCardIssuer"),
-  idCardExpiryDate: document.getElementById("idCardExpiryDate"),
+  idCardIssueDate: document.getElementById("idCardIssueDate"),
   contractBack: document.getElementById("contractBack"),
   contractSubmit: document.getElementById("contractSubmit"),
 };
@@ -178,6 +185,38 @@ function setConnection(mode, text) {
     elements.connection.classList.add(mode);
   }
   elements.connection.querySelector("span:last-child").textContent = text;
+}
+
+function initializeEmployeeProfile() {
+  if (elements.body.dataset.employeeProfileRequired === "true") {
+    elements.employeeDialog.showModal();
+  }
+}
+
+async function saveEmployeeProfile(event) {
+  event.preventDefault();
+  if (state.employeeSubmitting) return;
+  state.employeeSubmitting = true;
+  elements.employeeSubmit.disabled = true;
+  elements.employeeError.hidden = true;
+  try {
+    const response = await fetch(elements.body.dataset.employeeProfileUrl, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Safe-Cells-Token": elements.body.dataset.privateToken},
+      body: JSON.stringify({full_name: elements.employeeFullName.value}),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Не удалось сохранить имя сотрудника");
+    elements.employeeName.textContent = payload.full_name;
+    elements.body.dataset.employeeProfileRequired = "false";
+    elements.employeeDialog.close();
+  } catch (error) {
+    elements.employeeError.textContent = errorMessage(error, "Не удалось сохранить имя сотрудника");
+    elements.employeeError.hidden = false;
+  } finally {
+    state.employeeSubmitting = false;
+    elements.employeeSubmit.disabled = false;
+  }
 }
 
 function showError(message) {
@@ -385,7 +424,7 @@ function formatDateTime(value) {
 function clearPrivateValues() {
   elements.privateIdCardNumber.textContent = "";
   elements.privateIdCardIssuer.textContent = "";
-  elements.privateIdCardExpiryDate.textContent = "";
+  elements.privateIdCardIssueDate.textContent = "";
   elements.privateAccountNumber.textContent = "";
   elements.privateCreatedAt.textContent = "";
   elements.renewalList.replaceChildren();
@@ -463,7 +502,7 @@ async function togglePrivateDetails() {
     }
     elements.privateIdCardNumber.textContent = payload.id_card_number;
     elements.privateIdCardIssuer.textContent = payload.id_card_issuer;
-    elements.privateIdCardExpiryDate.textContent = formatDate(payload.id_card_expiry_date);
+    elements.privateIdCardIssueDate.textContent = formatDate(payload.id_card_issue_date);
     elements.privateAccountNumber.textContent = payload.account_number;
     elements.privateCreatedAt.textContent = formatDateTime(payload.created_at);
     renderRenewals(payload.renewals);
@@ -583,7 +622,7 @@ async function openEditDialog() {
     elements.editAccountNumber.value = payload.account_number;
     elements.editIdCardNumber.value = payload.id_card_number;
     elements.editIdCardIssuer.value = payload.id_card_issuer;
-    elements.editIdCardExpiryDate.value = payload.id_card_expiry_date;
+    elements.editIdCardIssueDate.value = payload.id_card_issue_date;
     state.editOperationId = createOperationId();
     elements.editDialog.showModal();
   } catch (error) {
@@ -604,7 +643,7 @@ async function submitEdit(event) {
       body: JSON.stringify({operation_id: state.editOperationId, contract_ref: cell.contract_ref,
         cell_number: cell.number, client_full_name: elements.editClientFullName.value,
         account_number: elements.editAccountNumber.value, id_card_number: elements.editIdCardNumber.value,
-        id_card_issuer: elements.editIdCardIssuer.value, id_card_expiry_date: elements.editIdCardExpiryDate.value}),
+        id_card_issuer: elements.editIdCardIssuer.value, id_card_issue_date: elements.editIdCardIssueDate.value}),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.message || "Не удалось сохранить изменения");
@@ -1247,7 +1286,7 @@ async function submitContract(event) {
         client_full_name: elements.clientFullName.value,
         id_card_number: elements.idCardNumber.value,
         id_card_issuer: elements.idCardIssuer.value,
-        id_card_expiry_date: elements.idCardExpiryDate.value,
+        id_card_issue_date: elements.idCardIssueDate.value,
         account_number: elements.accountNumber.value,
         start_date: quote.start_date,
         end_date: quote.end_date,
@@ -1409,6 +1448,8 @@ async function refreshCells() {
 }
 
 elements.search.addEventListener("input", scheduleSearch);
+elements.employeeForm.addEventListener("submit", saveEmployeeProfile);
+elements.employeeDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.status.addEventListener("change", renderGrid);
 elements.height.addEventListener("change", renderGrid);
 elements.refresh.addEventListener("click", refreshCells);
@@ -1505,5 +1546,6 @@ elements.contractDialog.addEventListener("cancel", (event) => {
   cancelContractWorkflow();
 });
 
+initializeEmployeeProfile();
 refreshCells();
 window.setInterval(refreshCells, 15_000);

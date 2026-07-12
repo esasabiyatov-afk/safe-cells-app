@@ -34,7 +34,7 @@ class EditingData:
     client_full_name: str
     id_card_number: str
     id_card_issuer: str
-    id_card_expiry_date: str
+    id_card_issue_date: str
     account_number: str
 
 
@@ -61,15 +61,15 @@ def _text(value: object, label: str, maximum: int) -> str:
 def validate_editing_payload(payload: object) -> EditingData:
     if not isinstance(payload, dict):
         raise EditingValidationError("Переданы неверные данные формы.")
-    allowed = {"operation_id", "contract_ref", "cell_number", "client_full_name", "id_card_number", "id_card_issuer", "id_card_expiry_date", "account_number"}
+    allowed = {"operation_id", "contract_ref", "cell_number", "client_full_name", "id_card_number", "id_card_issuer", "id_card_issue_date", "account_number"}
     if set(payload) - allowed:
         raise EditingValidationError("Попытка изменить запрещённое поле.")
     operation_id = _text(payload.get("operation_id"), "Операция", 100)
     try: UUID(operation_id)
     except ValueError as exc: raise EditingValidationError("Неверный идентификатор операции.") from exc
-    expiry = _text(payload.get("id_card_expiry_date"), "Дата окончания ID-карты", 10)
-    try: date.fromisoformat(expiry)
-    except ValueError as exc: raise EditingValidationError("Укажите корректную дату окончания ID-карты.") from exc
+    issue_date = _text(payload.get("id_card_issue_date"), "Дата выдачи ID-карты", 10)
+    try: date.fromisoformat(issue_date)
+    except ValueError as exc: raise EditingValidationError("Укажите корректную дату выдачи ID-карты.") from exc
     return EditingData(
         operation_id=operation_id,
         contract_ref=_text(payload.get("contract_ref"), "Договор", 100),
@@ -77,7 +77,7 @@ def validate_editing_payload(payload: object) -> EditingData:
         client_full_name=_text(payload.get("client_full_name"), "ФИО клиента", 200),
         id_card_number=_text(payload.get("id_card_number"), "Номер ID-карты", 100),
         id_card_issuer=_text(payload.get("id_card_issuer"), "Орган выдачи", 200),
-        id_card_expiry_date=expiry,
+        id_card_issue_date=issue_date,
         account_number=_text(payload.get("account_number"), "Номер счёта", 100),
     )
 
@@ -87,6 +87,8 @@ def edit_contract(settings: Settings, *, payload: object, employee: str, occurre
     employee_name = _text(employee, "Сотрудник", 128)
     if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
         raise EditingValidationError("Время операции должно содержать часовой пояс.")
+    if date.fromisoformat(data.id_card_issue_date) > occurred_at.date():
+        raise EditingValidationError("Дата выдачи ID-карты не может быть в будущем.")
     timestamp = occurred_at.isoformat(timespec="seconds")
     phase = "opening"
     try:
@@ -107,14 +109,14 @@ def edit_contract(settings: Settings, *, payload: object, employee: str, occurre
             ).fetchone()
             if row is None:
                 raise EditingConflictError("Договор изменён или закрыт. Обновите экран.")
-            fields = ("client_full_name", "id_card_number", "id_card_issuer", "id_card_expiry_date", "account_number")
+            fields = ("client_full_name", "id_card_number", "id_card_issuer", "id_card_issue_date", "account_number")
             new_values = {name: getattr(data, name) for name in fields}
             changes = {name: {"old": str(row[name]), "new": new_values[name]} for name in fields if str(row[name]) != new_values[name]}
             if not changes:
                 raise EditingValidationError("Данные не изменены.")
             connection.execute(
                 """UPDATE contracts SET client_full_name=?, id_card_number=?, id_card_issuer=?,
-                   id_card_expiry_date=?, account_number=?, updated_at=?, updated_by=?
+                   id_card_issue_date=?, account_number=?, updated_at=?, updated_by=?
                    WHERE contract_id=? AND cell_number=?""",
                 (*new_values.values(), timestamp, employee_name, data.contract_ref, data.cell_number),
             )

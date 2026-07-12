@@ -19,7 +19,7 @@ from app.db.connections import (
 from app.db.seed import load_cell_seed, seed_working_database
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class DatabaseInitializationError(RuntimeError):
@@ -87,7 +87,7 @@ WORKING_SCHEMA: tuple[str, ...] = (
         client_full_name TEXT NOT NULL CHECK(length(trim(client_full_name)) > 0),
         id_card_number TEXT NOT NULL CHECK(length(trim(id_card_number)) > 0),
         id_card_issuer TEXT NOT NULL CHECK(length(trim(id_card_issuer)) > 0),
-        id_card_expiry_date TEXT NOT NULL,
+        id_card_issue_date TEXT NOT NULL,
         account_number TEXT NOT NULL CHECK(length(trim(account_number)) > 0),
         extra_fields_json TEXT NOT NULL DEFAULT '{}',
         start_date TEXT NOT NULL,
@@ -141,7 +141,7 @@ ARCHIVE_SCHEMA: tuple[str, ...] = (
         client_full_name TEXT NOT NULL,
         id_card_number TEXT NOT NULL,
         id_card_issuer TEXT NOT NULL,
-        id_card_expiry_date TEXT NOT NULL,
+        id_card_issue_date TEXT NOT NULL,
         account_number TEXT NOT NULL,
         extra_fields_json TEXT NOT NULL,
         start_date TEXT NOT NULL,

@@ -35,7 +35,7 @@ def contract_payload(**overrides) -> dict:
         "client_full_name": "Тестовый Клиент",
         "id_card_number": "TEST-ID-001",
         "id_card_issuer": "Тестовый орган выдачи",
-        "id_card_expiry_date": "2030-01-10",
+        "id_card_issue_date": "2017-09-12",
         "account_number": "TEST-ACCOUNT-001",
         "start_date": "2026-07-12",
         "end_date": "2026-08-10",
@@ -196,7 +196,7 @@ def test_concurrent_requests_leave_one_active_contract(
         ("client_full_name", "", "ФИО клиента"),
         ("id_card_number", "", "ID-карты"),
         ("id_card_issuer", "", "Орган выдачи"),
-        ("id_card_expiry_date", "", "дату окончания ID-карты"),
+        ("id_card_issue_date", "", "дату выдачи ID-карты"),
         ("account_number", "", "Номер счёта"),
         ("operation_id", "not-a-uuid", "подготовить операцию"),
         ("rent_days", 0, "не меньше 1"),
@@ -213,6 +213,19 @@ def test_required_and_invalid_fields_are_rejected_before_write(
         create_contract(
             settings,
             payload=contract_payload(**{field: value}),
+            employee="test-user",
+            occurred_at=OCCURRED_AT,
+        )
+    assert _counts(settings) == (0, 0)
+
+
+def test_future_id_card_issue_date_is_rejected_before_write(
+    settings: Settings, initialized_databases
+) -> None:
+    with pytest.raises(ContractValidationError, match="не может быть в будущем"):
+        create_contract(
+            settings,
+            payload=contract_payload(id_card_issue_date="2026-07-13"),
             employee="test-user",
             occurred_at=OCCURRED_AT,
         )

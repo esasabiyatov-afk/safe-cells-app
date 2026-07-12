@@ -11,6 +11,8 @@
 | `version` | INTEGER | Положительное, одна текущая версия. |
 | `applied_at` | TEXT | ISO-время со смещением. |
 
+Текущая версия — 3. Переход 2→3 явно переименовывает ошибочное поле срока действия ID-карты в дату выдачи сразу в рабочей и архивной базах, после резервной копии и без фоновой миграции при запуске.
+
 Миграции не запускаются молча при обычном старте. Перед изменением схемы требуется проверенный бэкап и административная процедура.
 
 ### `vault_defaults`
@@ -63,7 +65,7 @@
 | Группа | Поля и основные правила |
 |---|---|
 | Идентификаторы | `contract_id TEXT PRIMARY KEY` (UUID), `cell_number TEXT NOT NULL UNIQUE REFERENCES cells(number)`. |
-| Клиент | `client_full_name`, `id_card_number`, `id_card_issuer`, `id_card_expiry_date`, `account_number` — обязательны; `extra_fields_json` зарезервирован для утверждённых дополнительных реквизитов шаблона. |
+| Клиент | `client_full_name`, `id_card_number`, `id_card_issuer`, `id_card_issue_date`, `account_number` — обязательны; `extra_fields_json` зарезервирован для утверждённых дополнительных реквизитов шаблона. |
 | Срок | `start_date`, `end_date` ISO-даты; `rent_days INTEGER >= 1`; backend проверяет включительную формулу. |
 | Деньги | `price_per_day_minor`, `rent_price_minor`, `deposit_amount_minor` — целые неотрицательные значения; сохраняются фактические значения на момент сделки. |
 | Аудит | `created_at`, `created_by`, `updated_at`, `updated_by`; обязательны. |

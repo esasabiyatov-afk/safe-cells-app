@@ -7,7 +7,12 @@ from pathlib import Path
 
 from app import create_app
 from app.config import ConfigError, load_settings
-from app.db.connections import DatabaseUnavailableError, validate_database_pair
+from app.db.connections import (
+    DatabaseUnavailableError,
+    check_database_pair,
+    validate_database_pair,
+)
+from app.db.schema import SCHEMA_VERSION
 
 
 def main() -> int:
@@ -24,6 +29,11 @@ def main() -> int:
     try:
         settings = load_settings(args.config)
         validate_database_pair(settings)
+        versions = check_database_pair(settings)
+        if set(versions.values()) != {SCHEMA_VERSION}:
+            raise ConfigError(
+                "Версия баз требует явного административного обновления."
+            )
     except (ConfigError, DatabaseUnavailableError) as exc:
         parser.error(str(exc))
 

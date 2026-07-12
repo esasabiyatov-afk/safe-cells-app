@@ -45,7 +45,7 @@ class PrivateContractDetails:
     client_full_name: str
     id_card_number: str
     id_card_issuer: str
-    id_card_expiry_date: str
+    id_card_issue_date: str
     account_number: str
     created_at: str
     renewals: tuple[RenewalDetails, ...]
@@ -119,7 +119,7 @@ def get_private_contract_details(
                 """
                 SELECT
                     contract_id, cell_number, client_full_name, id_card_number,
-                    id_card_issuer, id_card_expiry_date,
+                    id_card_issuer, id_card_issue_date,
                     account_number, created_at
                 FROM contracts
                 WHERE cell_number = ? AND contract_id = ?
@@ -168,7 +168,7 @@ def get_private_contract_details(
         client_full_name=str(contract["client_full_name"]),
         id_card_number=str(contract["id_card_number"]),
         id_card_issuer=str(contract["id_card_issuer"]),
-        id_card_expiry_date=str(contract["id_card_expiry_date"]),
+        id_card_issue_date=str(contract["id_card_issue_date"]),
         account_number=str(contract["account_number"]),
         created_at=str(contract["created_at"]),
         renewals=renewals,

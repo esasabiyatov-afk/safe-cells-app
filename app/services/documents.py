@@ -12,6 +12,13 @@ import sqlite3
 from app.config import Settings
 from app.db.connections import DatabaseUnavailableError, NETWORK_ERROR_MESSAGE, open_readonly, validate_database_pair
 from app.documents import DocumentPublishError, DocumentTemplateError, render_docx
+from app.documents.values import (
+    amount_in_words_ky,
+    amount_in_words_ru,
+    format_document_issue_date,
+    format_kyrgyz_date,
+    format_russian_date,
+)
 
 
 class DocumentValidationError(ValueError): pass
@@ -88,14 +95,39 @@ def generate_active_contract_document(
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise DocumentValidationError("Настройка обязательных полей шаблона повреждена.") from exc
 
+    start_date = date.fromisoformat(str(contract["start_date"]))
+    end_date = date.fromisoformat(str(contract["end_date"]))
+    issue_date = date.fromisoformat(str(contract["id_card_issue_date"]))
+    deposit = int(contract["deposit_amount_minor"])
+    safe_size = (
+        f'{contract["height_mm"]}×{contract["width_mm"]}×{contract["depth_mm"]} мм'
+    )
     values = {
         "CLIENT_FULL_NAME": contract["client_full_name"], "ID_CARD_NUMBER": contract["id_card_number"],
-        "ID_CARD_ISSUER": contract["id_card_issuer"], "ID_CARD_EXPIRY_DATE": contract["id_card_expiry_date"],
+        "ID_CARD_ISSUER": contract["id_card_issuer"], "ID_CARD_ISSUE_DATE": contract["id_card_issue_date"],
         "ACCOUNT_NUMBER": contract["account_number"], "SAFE_NUMBER": contract["cell_number"],
         "SAFE_HEIGHT": contract["height_mm"], "SAFE_WIDTH": contract["width_mm"], "SAFE_DEPTH": contract["depth_mm"],
         "START_DATE": contract["start_date"], "END_DATE": contract["end_date"],
         "RENT_DAYS": contract["rent_days"], "RENT_PRICE": contract["rent_price_minor"],
         "CREATION_DATE": creation_date.isoformat(), "EMPLOYEE": employee,
+        "Дата.Сегодня": format_russian_date(creation_date),
+        "Дата.СегодняК": format_kyrgyz_date(creation_date),
+        "Счет.Номер": contract["account_number"],
+        "Клиент.ФИО": contract["client_full_name"],
+        "Клиент.Документ.Номер": contract["id_card_number"],
+        "Клиент.Документ.Выдан": contract["id_card_issuer"],
+        "Клиент.Документ.ДатаВыдачи": format_document_issue_date(issue_date),
+        "Система.Пользователь": employee,
+        "Договор.Начало": format_russian_date(start_date),
+        "Договор.Конец": format_russian_date(end_date),
+        "Договор.НачалоК": format_kyrgyz_date(start_date),
+        "Договор.КонецК": format_kyrgyz_date(end_date),
+        "Сумма": contract["rent_price_minor"],
+        "Залог.Цифр": deposit,
+        "Залог.Пропись": amount_in_words_ru(deposit),
+        "Залог.ПрописьК": amount_in_words_ky(deposit),
+        "Сейф.Номер": contract["cell_number"],
+        "Сейф.Размер": safe_size,
     }
     display = _safe_filename_part(str(template["display_name"]), "Документ")
     cell = _safe_filename_part(str(contract["cell_number"]), "ячейка")

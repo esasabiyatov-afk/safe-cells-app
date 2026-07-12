@@ -21,6 +21,8 @@
   data-closure-url="{{ url_for('closures.confirm') }}"
   data-document-templates-url="{{ url_for('documents.templates') }}"
   data-document-generate-url="{{ url_for('documents.generate') }}"
+  data-employee-profile-url="{{ url_for('employee.profile') }}"
+  data-employee-profile-required="{{ 'true' if employee_profile_required else 'false' }}"
   data-private-token="{{ private_token }}"
 >
   <header class="page-header">
@@ -47,7 +49,8 @@
     <div class="header-side">
       <div class="employee" aria-label="Текущий сотрудник">
         <span class="employee-label">Сотрудник</span>
-        <strong>{{ employee }}</strong>
+        <strong id="employeeName">{{ employee }}</strong>
+        <small id="employeeUsername">{{ employee_username }}</small>
       </div>
       <div class="connection-state" id="connectionState" role="status">
         <span class="connection-dot" aria-hidden="true"></span>
@@ -172,7 +175,7 @@
       <dl class="private-details" id="privateDetails" hidden>
         <div><dt>Серия и номер ID-карты</dt><dd id="privateIdCardNumber"></dd></div>
         <div><dt>Орган выдачи</dt><dd id="privateIdCardIssuer"></dd></div>
-        <div><dt>Дата окончания ID-карты</dt><dd id="privateIdCardExpiryDate"></dd></div>
+        <div><dt>Дата выдачи ID-карты</dt><dd id="privateIdCardIssueDate"></dd></div>
         <div><dt>Номер счёта из АБС</dt><dd id="privateAccountNumber"></dd></div>
         <div><dt>Дата оформления договора</dt><dd id="privateCreatedAt"></dd></div>
       </dl>
@@ -197,11 +200,22 @@
     <button class="dialog-close" id="documentDialogClose" type="button" aria-label="Закрыть формирование документа">×</button>
     <p class="section-kicker">DOCX из шаблона</p>
     <h2 id="documentDialogTitle">Сформировать документ</h2>
-    <p class="dialog-note">До загрузки банковских шаблонов доступны только явно обозначенные тестовые шаблоны.</p>
+    <p class="dialog-note">Выберите утверждённый шаблон для активного договора.</p>
     <form id="documentForm">
       <div class="calculation-error" id="documentError" role="alert" hidden></div>
       <label class="contract-field contract-field--wide"><span>Шаблон *</span><select id="documentTemplate" required></select></label>
       <div class="dialog-actions"><button type="button" id="documentBack">Назад</button><button class="primary-button" id="documentSubmit" type="submit">Сформировать DOCX</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="contract-dialog" id="employeeDialog" aria-labelledby="employeeDialogTitle">
+    <p class="section-kicker">Первый запуск учётной записи</p>
+    <h2 id="employeeDialogTitle">Укажите сотрудника</h2>
+    <p class="dialog-note">Windows-учётка: <strong>{{ employee_username }}</strong>. Полное имя сохранится только на этом компьютере и будет подставляться в документы.</p>
+    <form id="employeeForm">
+      <div class="calculation-error" id="employeeError" role="alert" hidden></div>
+      <label class="contract-field contract-field--wide"><span>Фамилия и имя *</span><input id="employeeFullName" maxlength="128" autocomplete="name" required></label>
+      <div class="dialog-actions"><button class="primary-button" id="employeeSubmit" type="submit">Сохранить</button></div>
     </form>
   </dialog>
 
@@ -217,7 +231,7 @@
         <label class="contract-field"><span>Номер счёта из АБС *</span><input id="editAccountNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Серия и номер ID-карты *</span><input id="editIdCardNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Орган выдачи *</span><input id="editIdCardIssuer" maxlength="200" required autocomplete="off"></label>
-        <label class="contract-field"><span>Дата окончания ID-карты *</span><input id="editIdCardExpiryDate" type="date" required></label>
+        <label class="contract-field"><span>Дата выдачи ID-карты *</span><input id="editIdCardIssueDate" type="date" required></label>
       </div>
       <div class="rental-actions"><button class="secondary-button" id="editBack" type="button">Назад</button><button class="primary-button" id="editSubmit" type="submit">Сохранить изменения</button></div>
     </form>
@@ -390,8 +404,8 @@
           <input id="idCardIssuer" name="id_card_issuer" type="text" maxlength="200" required autocomplete="off">
         </label>
         <label class="contract-field">
-          <span>Дата окончания ID-карты *</span>
-          <input id="idCardExpiryDate" name="id_card_expiry_date" type="date" required>
+          <span>Дата выдачи ID-карты *</span>
+          <input id="idCardIssueDate" name="id_card_issue_date" type="date" required>
         </label>
       </div>
       <p class="required-note">* Обязательные поля. Данные ещё раз проверяются перед сохранением.</p>

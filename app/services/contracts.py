@@ -67,7 +67,7 @@ class ContractData:
     client_full_name: str
     id_card_number: str
     id_card_issuer: str
-    id_card_expiry_date: str
+    id_card_issue_date: str
     account_number: str
     start_date: str
     end_date: str
@@ -144,9 +144,9 @@ def validate_contract_payload(payload: object) -> ContractData:
         end_date = parse_iso_date(
             payload.get("end_date"), field_label="дату окончания"
         ).isoformat()
-        expiry_date = parse_iso_date(
-            payload.get("id_card_expiry_date"),
-            field_label="дату окончания ID-карты",
+        issue_date = parse_iso_date(
+            payload.get("id_card_issue_date"),
+            field_label="дату выдачи ID-карты",
         ).isoformat()
     except RentalValidationError as exc:
         raise ContractValidationError(str(exc)) from exc
@@ -168,7 +168,7 @@ def validate_contract_payload(payload: object) -> ContractData:
         id_card_issuer=_required_text(
             payload.get("id_card_issuer"), label="Орган выдачи", maximum=200
         ),
-        id_card_expiry_date=expiry_date,
+        id_card_issue_date=issue_date,
         account_number=_required_text(
             payload.get("account_number"), label="Номер счёта", maximum=100
         ),
@@ -289,6 +289,8 @@ def create_contract(
         raise ContractValidationError("Время операции должно содержать часовой пояс.")
     timestamp = occurred_at.isoformat(timespec="seconds")
     current_date = as_of_date or occurred_at.date()
+    if date.fromisoformat(data.id_card_issue_date) > current_date:
+        raise ContractValidationError("Дата выдачи ID-карты не может быть в будущем.")
     phase = "opening"
 
     try:
@@ -321,7 +323,7 @@ def create_contract(
                 INSERT INTO contracts(
                     contract_id, cell_number, client_full_name,
                     id_card_number, id_card_issuer,
-                    id_card_expiry_date, account_number, extra_fields_json,
+                    id_card_issue_date, account_number, extra_fields_json,
                     start_date, end_date, rent_days, price_per_day_minor,
                     rent_price_minor, deposit_amount_minor, created_at, created_by,
                     updated_at, updated_by
@@ -333,7 +335,7 @@ def create_contract(
                     data.client_full_name,
                     data.id_card_number,
                     data.id_card_issuer,
-                    data.id_card_expiry_date,
+                    data.id_card_issue_date,
                     data.account_number,
                     quote.start_date,
                     quote.end_date,

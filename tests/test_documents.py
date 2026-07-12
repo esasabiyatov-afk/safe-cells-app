@@ -11,6 +11,11 @@ from app import create_app
 from app.db.connections import open_write
 from app.documents import DocumentPublishError, DocumentTemplateError, render_docx
 from app.services.documents import generate_active_contract_document
+from app.services.employee import save_employee_full_name
+from app.documents.values import (
+    amount_in_words_ky, amount_in_words_ru,
+    format_document_issue_date, format_kyrgyz_date, format_russian_date,
+)
 
 
 def _template(path: Path, *, unknown: bool = False) -> None:
@@ -123,6 +128,10 @@ def test_active_contract_document_and_private_endpoint(
 
     app = create_app(settings)
     app.config.update(TODAY_PROVIDER=lambda: date(2026, 7, 13), DOWNLOADS_DIRECTORY_PROVIDER=lambda: downloads)
+    save_employee_full_name(
+        app.config["EMPLOYEE_PROFILE_PATH"], app.config["EMPLOYEE_PROVIDER"](),
+        "Тестовый Сотрудник",
+    )
     token = app.extensions["safe_cells_private_token"]
     templates_response = app.test_client().post(
         "/api/documents/templates", headers={"X-Safe-Cells-Token": token},
@@ -145,3 +154,35 @@ def test_document_endpoint_does_not_disclose_without_token(settings, initialized
     app = create_app(settings)
     response = app.test_client().post("/api/documents/generate", json={})
     assert response.status_code == 403
+
+
+def test_approved_date_and_deposit_formats():
+    value = date(2026, 5, 22)
+    assert format_russian_date(value) == "22 мая 2026 г."
+    assert format_kyrgyz_date(value) == "22-май 2026-ж."
+    assert format_document_issue_date(date(2017, 9, 12)) == "12.09.2017-ж/г."
+    assert amount_in_words_ru(1500) == "Одна тысяча пятьсот"
+    assert amount_in_words_ky(1500) == "Бир миң беш жүз"
+
+
+def test_renderer_supports_split_bank_square_codes(tmp_path: Path):
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    document = Document()
+    paragraph = document.add_paragraph("Клиент: ")
+    split_start = paragraph.add_run("[Клиент.")
+    split_start.bold = True
+    paragraph.add_run("ФИО]")
+    suffix = paragraph.add_run("; сумма [Сумма]")
+    suffix.italic = True
+    document.save(templates / "bank.docx")
+    result = render_docx(
+        template_directory=templates, template_file_name="bank.docx",
+        output_directory=tmp_path / "downloads", output_file_name="result.docx",
+        values={"Клиент.ФИО": "Вымышленный Клиент", "Сумма": 450},
+        required_placeholders=["Клиент.ФИО", "Сумма"],
+    )
+    rendered = Document(result).paragraphs[0]
+    assert rendered.text == "Клиент: Вымышленный Клиент; сумма 450"
+    assert rendered.runs[1].bold is True
+    assert rendered.runs[3].italic is True
