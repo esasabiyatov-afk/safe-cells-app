@@ -56,6 +56,35 @@ class PrivateContractDetails:
         return payload
 
 
+def get_contract_client_name(
+    settings: Settings, *, cell_number: object, contract_ref: object
+) -> str:
+    """Read only the full client name for the explicitly opened occupied card."""
+
+    normalized_number = _cell_number(cell_number)
+    normalized_contract_ref = _contract_ref(contract_ref)
+    try:
+        paths = validate_database_pair(settings)
+        with open_readonly(
+            paths.working, busy_timeout_ms=settings.busy_timeout_ms
+        ) as connection:
+            row = connection.execute(
+                """
+                SELECT client_full_name
+                FROM contracts
+                WHERE cell_number = ? AND contract_id = ?
+                """,
+                (normalized_number, normalized_contract_ref),
+            ).fetchone()
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise ContractDetailsReadError(NETWORK_ERROR_MESSAGE) from exc
+    if row is None:
+        raise ActiveContractNotFoundError(
+            "Ячейка свободна или договор уже закрыт. Обновите главный экран."
+        )
+    return str(row["client_full_name"])
+
+
 def _cell_number(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ContractDetailsValidationError("Не указан номер ячейки.")

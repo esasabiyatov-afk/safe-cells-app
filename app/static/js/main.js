@@ -21,6 +21,7 @@ const state = {
   contractSubmitting: false,
   quoteSequence: 0,
   activeOccupiedCell: null,
+  clientNameRequestSequence: 0,
   privateRequestSequence: 0,
   privateVisible: false,
   activeRenewalQuote: null,
@@ -49,6 +50,7 @@ const elements = {
   updatedAt: document.getElementById("updatedAt"),
   resultCount: document.getElementById("resultCount"),
   statFree: document.getElementById("statFree"),
+  statOccupied: document.getElementById("statOccupied"),
   statNormal: document.getElementById("statNormal"),
   statExpiring: document.getElementById("statExpiring"),
   statOverdue: document.getElementById("statOverdue"),
@@ -65,7 +67,6 @@ const elements = {
   privateToggle: document.getElementById("privateToggle"),
   privateError: document.getElementById("privateError"),
   privateDetails: document.getElementById("privateDetails"),
-  privateClientName: document.getElementById("privateClientName"),
   privateIdCardNumber: document.getElementById("privateIdCardNumber"),
   privateIdCardIssuer: document.getElementById("privateIdCardIssuer"),
   privateIdCardExpiryDate: document.getElementById("privateIdCardExpiryDate"),
@@ -208,6 +209,7 @@ function populateHeightFilter(cells) {
 
 function renderStats() {
   elements.statFree.textContent = state.counts.free;
+  elements.statOccupied.textContent = state.counts.normal + state.counts.expiring + state.counts.overdue;
   elements.statNormal.textContent = state.counts.normal;
   elements.statExpiring.textContent = state.counts.expiring;
   elements.statOverdue.textContent = state.counts.overdue;
@@ -228,6 +230,7 @@ function clearDisplayedData() {
   state.privateMatches = null;
   state.asOfDate = null;
   elements.statFree.textContent = "—";
+  elements.statOccupied.textContent = "—";
   elements.statNormal.textContent = "—";
   elements.statExpiring.textContent = "—";
   elements.statOverdue.textContent = "—";
@@ -287,11 +290,43 @@ function renderOccupiedOperationalDetails(cell) {
   elements.dialogStatus.textContent = STATUS_LABELS[cell.status];
   elements.dialogStatus.className = `status-badge ${cell.status}`;
   elements.dialogSize.textContent = `${cell.height_mm}×${cell.width_mm}×${cell.depth_mm}`;
-  elements.dialogClient.textContent = cell.client_display_name || "—";
+  elements.dialogClient.textContent = "Получение данных…";
   elements.dialogStartDate.textContent = formatDate(cell.start_date);
   elements.dialogEndDate.textContent = formatDate(cell.end_date);
-  elements.dialogRentDays.textContent = `${cell.total_days} дн. (первоначально ${cell.rent_days})`;
+  elements.dialogRentDays.textContent = `${cell.total_days} дн.`;
   elements.dialogDays.textContent = daysLabel(cell);
+}
+
+async function loadOpenedClientName(cell) {
+  const sequence = ++state.clientNameRequestSequence;
+  try {
+    const response = await fetch(elements.body.dataset.clientNameUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Safe-Cells-Token": elements.body.dataset.privateToken,
+      },
+      body: JSON.stringify({
+        cell_number: cell.number,
+        contract_ref: cell.contract_ref,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось получить ФИО клиента");
+    }
+    if (
+      sequence === state.clientNameRequestSequence
+      && elements.dialog.open
+      && state.activeOccupiedCell?.contract_ref === cell.contract_ref
+    ) {
+      elements.dialogClient.textContent = payload.client_full_name;
+    }
+  } catch (error) {
+    if (sequence === state.clientNameRequestSequence && elements.dialog.open) {
+      elements.dialogClient.textContent = cell.client_display_name || "Не удалось получить ФИО";
+    }
+  }
 }
 
 function openCellDialog(cell) {
@@ -303,6 +338,7 @@ function openCellDialog(cell) {
   hidePrivateDetails();
   renderOccupiedOperationalDetails(cell);
   elements.dialog.showModal();
+  loadOpenedClientName(cell);
 }
 
 function formatDateTime(value) {
@@ -323,7 +359,6 @@ function formatDateTime(value) {
 }
 
 function clearPrivateValues() {
-  elements.privateClientName.textContent = "";
   elements.privateIdCardNumber.textContent = "";
   elements.privateIdCardIssuer.textContent = "";
   elements.privateIdCardExpiryDate.textContent = "";
@@ -402,7 +437,6 @@ async function togglePrivateDetails() {
     ) {
       return;
     }
-    elements.privateClientName.textContent = payload.client_full_name;
     elements.privateIdCardNumber.textContent = payload.id_card_number;
     elements.privateIdCardIssuer.textContent = payload.id_card_issuer;
     elements.privateIdCardExpiryDate.textContent = formatDate(payload.id_card_expiry_date);
@@ -441,6 +475,7 @@ function toggleRenewalHistory() {
 }
 
 function closeCellDialog() {
+  state.clientNameRequestSequence += 1;
   hidePrivateDetails();
   state.activeOccupiedCell = null;
   elements.dialog.close();
@@ -1204,6 +1239,7 @@ async function refreshCells() {
       } else {
         state.activeOccupiedCell = updatedCell;
         renderOccupiedOperationalDetails(updatedCell);
+        loadOpenedClientName(updatedCell);
       }
     }
     populateHeightFilter(state.cells);

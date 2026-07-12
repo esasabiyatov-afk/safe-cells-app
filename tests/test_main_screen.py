@@ -34,6 +34,7 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-rental-url="/api/rental/calculate"' in html
     assert 'data-contract-url="/api/contracts"' in html
     assert 'data-private-url="/api/contracts/private"' in html
+    assert 'data-client-name-url="/api/contracts/client-name"' in html
     assert 'data-renewal-quote-url="/api/renewals/calculate"' in html
     assert 'data-renewal-url="/api/renewals"' in html
     assert 'data-closure-quote-url="/api/closures/calculate"' in html
@@ -64,6 +65,13 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="historyControls" hidden' in html
     assert 'id="renewalHistory" aria-label="История продлений" hidden' in html
     assert "Показать данные" in html
+    assert "ЗАО АКБ «Толубай»" in html
+    assert ">Депозитарий<" in html
+    assert "Локальная банковская система" not in html
+    assert "Оперативный контроль аренды" not in html
+    assert "Хранилище" not in html
+    assert "Все ячейки" not in html
+    assert '<dt>ФИО клиента</dt>' not in html
     assert "Повторно сформировать документ" in html
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["X-Content-Type-Options"] == "nosniff"

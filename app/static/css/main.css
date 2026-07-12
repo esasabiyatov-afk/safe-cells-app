@@ -72,7 +72,7 @@ select {
   align-items: flex-end;
   justify-content: space-between;
   gap: 32px;
-  padding: 30px clamp(22px, 4vw, 58px) 24px;
+  padding: 18px clamp(18px, 3vw, 44px) 15px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -96,13 +96,7 @@ select {
 }
 
 .brand-block h1 {
-  font-size: clamp(29px, 3.2vw, 42px);
-}
-
-.brand-subtitle {
-  margin: 5px 0 0;
-  color: var(--ink-soft);
-  font-size: 14px;
+  font-size: clamp(30px, 3vw, 40px);
 }
 
 .header-side {
@@ -159,22 +153,21 @@ select {
 }
 
 main {
-  padding: 24px clamp(22px, 4vw, 58px) 44px;
+  padding: 12px clamp(18px, 3vw, 44px) 28px;
 }
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(150px, 190px) minmax(420px, 560px);
+  gap: 10px;
   max-width: 760px;
-  margin-left: auto;
-  margin-bottom: 22px;
+  margin: 0 auto 12px;
 }
 
 .stat-card {
   position: relative;
-  min-height: 88px;
-  padding: 15px 18px;
+  min-height: 70px;
+  padding: 11px 16px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 5px;
@@ -189,19 +182,13 @@ main {
 }
 
 .stat-free::before { background: var(--free); }
-.stat-normal::before { background: var(--normal); }
-.stat-expiring::before { background: var(--expiring); }
-.stat-overdue::before { background: var(--overdue); }
+.stat-occupied::before { background: var(--normal); }
 
 .stat-free { border-color: var(--free-border); background: #edf5eb; }
-.stat-normal { border-color: var(--normal-border); background: #edf4f8; }
-.stat-expiring { border-color: var(--expiring-border); background: #faf0d8; }
-.stat-overdue { border-color: var(--overdue-border); background: #f8e6e2; }
+.stat-occupied { display: flex; align-items: center; gap: 24px; border-color: var(--normal-border); background: #edf4f8; }
 
 .stat-free strong { color: var(--free); }
-.stat-normal strong { color: var(--normal); }
-.stat-expiring strong { color: var(--expiring); }
-.stat-overdue strong { color: var(--overdue); }
+.stat-occupied strong { color: var(--normal); }
 
 .stat-label {
   display: block;
@@ -216,43 +203,47 @@ main {
   display: block;
   margin-top: 4px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1;
 }
 
+.occupied-total { min-width: 86px; }
+
+.occupied-breakdown {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.occupied-breakdown span { padding-left: 10px; border-left: 3px solid currentcolor; }
+.occupied-breakdown .normal { color: var(--normal); }
+.occupied-breakdown .expiring { color: var(--expiring); }
+.occupied-breakdown .overdue { color: var(--overdue); }
+.occupied-breakdown small { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.occupied-breakdown b { display: block; margin-top: 2px; font-size: 22px; }
+
 .workspace {
-  padding: clamp(20px, 3vw, 34px);
+  padding: clamp(14px, 2vw, 22px);
   border: 1px solid var(--line);
   border-radius: 7px;
   background: rgba(255, 253, 248, 0.72);
   box-shadow: var(--shadow);
 }
 
-.workspace-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.workspace-heading h2 {
-  font-size: 25px;
-}
-
 .result-count,
 .updated-at {
   margin: 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .toolbar {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(130px, 180px) minmax(130px, 180px) auto;
-  gap: 12px;
+  gap: 10px;
   align-items: end;
-  padding: 16px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 5px;
   background: var(--paper-deep);
@@ -281,6 +272,7 @@ main {
   outline: none;
   background: var(--surface);
   color: var(--ink);
+  font-size: 15px;
 }
 
 .search-field input {
@@ -320,15 +312,15 @@ main {
   gap: 8px;
   height: 42px;
   padding: 0 16px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--line-dark);
   border-radius: 4px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--surface);
+  color: var(--ink);
   font-weight: 650;
 }
 
 .refresh-button:hover {
-  background: #2b3d50;
+  background: #f2f4f5;
 }
 
 .refresh-button.loading span {
@@ -353,7 +345,8 @@ main {
   flex-wrap: wrap;
   gap: 14px;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .legend span {
@@ -363,16 +356,19 @@ main {
 }
 
 .legend-dot {
-  width: 12px;
-  height: 12px;
-  border: 1px solid currentcolor;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentcolor;
   border-radius: 2px;
 }
 
-.legend-dot.free { background: var(--free); }
-.legend-dot.normal { background: var(--normal); }
-.legend-dot.expiring { background: var(--expiring); }
-.legend-dot.overdue { background: var(--overdue); }
+.legend-dot.free { border-radius: 50%; background: var(--free); }
+.legend-dot.normal { border-radius: 1px; background: var(--normal); }
+.legend-dot.expiring { border-radius: 1px; background: var(--expiring); transform: rotate(45deg) scale(.78); }
+.legend-dot.overdue { border-radius: 4px; background: var(--overdue); box-shadow: inset 0 0 0 2px #f8e6e2; }
+
+.update-meta { display: flex; align-items: center; gap: 14px; }
+.result-count { padding-right: 14px; border-right: 1px solid var(--line); }
 
 .error-banner {
   display: flex;
@@ -412,15 +408,15 @@ main {
 
 .vault-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(98px, 1fr));
+  gap: 6px;
 }
 
 .cell {
   --cell-accent: var(--line-dark);
   position: relative;
-  min-height: 88px;
-  padding: 10px 8px 20px;
+  min-height: 78px;
+  padding: 8px 6px 21px;
   border: 2px solid var(--cell-accent);
   border-radius: 4px;
   color: var(--ink);
@@ -455,7 +451,7 @@ main {
 .cell-number {
   display: block;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
 }
 
@@ -464,17 +460,17 @@ main {
   right: 7px;
   bottom: 5px;
   color: #3f4b57;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 750;
   letter-spacing: 0.03em;
 }
 
 .cell-client {
   display: block;
-  min-height: 30px;
-  margin-top: 7px;
+  min-height: 26px;
+  margin-top: 4px;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -1236,7 +1232,7 @@ main {
   }
 
   .stats {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     max-width: none;
   }
 

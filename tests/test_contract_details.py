@@ -12,6 +12,7 @@ from app.services.contract_details import (
     ActiveContractNotFoundError,
     ContractDetailsReadError,
     ContractDetailsValidationError,
+    get_contract_client_name,
     get_private_contract_details,
 )
 
@@ -85,6 +86,21 @@ def test_private_details_are_read_only_and_include_hidden_history(
     paths.archive.rename(renamed_archive)
     renamed_working.rename(paths.working)
     renamed_archive.rename(paths.archive)
+
+
+def test_opened_card_reads_only_full_client_name(
+    settings: Settings,
+    insert_test_contract: Callable[..., None],
+) -> None:
+    insert_test_contract(
+        cell_number="1",
+        end_date="2026-07-09",
+        client_name="Иванов Арсен Саилович",
+    )
+
+    assert get_contract_client_name(
+        settings, cell_number="1", contract_ref="contract-test-1"
+    ) == "Иванов Арсен Саилович"
 
 
 @pytest.mark.parametrize("cell_number", [None, "", "x" * 51])
@@ -170,6 +186,18 @@ def test_private_api_requires_instance_token_and_post(
         headers={"X-Safe-Cells-Token": token},
     )
     assert missing_ref.status_code == 400
+
+    name_response = client.post(
+        "/api/contracts/client-name",
+        json={"cell_number": "1", "contract_ref": "contract-test-1"},
+        headers={"X-Safe-Cells-Token": token},
+    )
+    assert name_response.status_code == 200
+    assert name_response.get_json() == {"client_full_name": "Тестовый Клиент"}
+    assert client.post(
+        "/api/contracts/client-name",
+        json={"cell_number": "1", "contract_ref": "contract-test-1"},
+    ).status_code == 403
 
 
 def test_private_api_returns_xss_marker_only_after_explicit_authorized_request(

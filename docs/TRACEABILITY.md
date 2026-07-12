@@ -15,7 +15,7 @@
 | ТЗ 11–12 | Закрытие и атомарный архив | `app/services/closures.py`, `app/routes/closures.py` | 16 тестов этапа 7; rollback; браузер |
 | ТЗ 11–12 | Закрытие и перенос в архив | `services/closures.py` | Этап 7; межбазовый rollback |
 | ТЗ 12 | Рабочая и архивная модели | `app/db/schema` | Этап 1 и интеграционные тесты |
-| ТЗ 13–14, D-025 | Полные ПДн скрыты; на сетке разрешены только фамилия и инициалы | `services/cells.py`, `services/contract_details.py`, private POST route, templates, JS | Этапы 2, 5; whitelist общего API, токен/API/HTML/XSS/очистка |
+| ТЗ 13–14, D-025, D-028 | На сетке разрешены фамилия и инициалы; полное ФИО загружается при открытии одной карточки; остальные ПДн скрыты | `services/cells.py`, `services/contract_details.py`, private POST routes, templates, JS | Этапы 2, 5; whitelist общего API, токен/API/HTML/XSS/очистка |
 | ТЗ 15 | Разрешённое редактирование и аудит | `services/editing.py`, `log` | Этап 8; whitelist/audit |
 | ТЗ 16 | Сетка, поиск, фильтры, счётчики | templates/static/routes | Этап 2; UI и ручное одобрение |
 | ТЗ 17 | Невозможные переходы | service validators + DB constraints | Этапы 4, 6, 7; negative tests |

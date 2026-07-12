@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Сейфовые ячейки</title>
+  <title>Депозитарий</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
   <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
@@ -13,6 +13,7 @@
   data-rental-url="{{ url_for('rental.calculate') }}"
   data-contract-url="{{ url_for('contracts.create') }}"
   data-private-url="{{ url_for('contracts.private_details') }}"
+  data-client-name-url="{{ url_for('contracts.client_name') }}"
   data-renewal-quote-url="{{ url_for('renewals.calculate') }}"
   data-renewal-url="{{ url_for('renewals.confirm') }}"
   data-closure-quote-url="{{ url_for('closures.calculate') }}"
@@ -21,9 +22,8 @@
 >
   <header class="page-header">
     <div class="brand-block">
-      <p class="eyebrow">Локальная банковская система</p>
-      <h1>Сейфовые ячейки</h1>
-      <p class="brand-subtitle">Оперативный контроль аренды</p>
+      <p class="eyebrow">ЗАО АКБ «Толубай»</p>
+      <h1>Депозитарий</h1>
     </div>
 
     <div class="header-side">
@@ -44,28 +44,17 @@
         <span class="stat-label">Свободно</span>
         <strong id="statFree">—</strong>
       </article>
-      <article class="stat-card stat-normal">
-        <span class="stat-label">В норме</span>
-        <strong id="statNormal">—</strong>
-      </article>
-      <article class="stat-card stat-expiring">
-        <span class="stat-label">Истекает</span>
-        <strong id="statExpiring">—</strong>
-      </article>
-      <article class="stat-card stat-overdue">
-        <span class="stat-label">Просрочено</span>
-        <strong id="statOverdue">—</strong>
+      <article class="stat-card stat-occupied">
+        <div class="occupied-total"><span class="stat-label">Занято</span><strong id="statOccupied">—</strong></div>
+        <div class="occupied-breakdown">
+          <span class="normal"><small>В норме</small><b id="statNormal">—</b></span>
+          <span class="expiring"><small>Истекает</small><b id="statExpiring">—</b></span>
+          <span class="overdue"><small>Просрочено</small><b id="statOverdue">—</b></span>
+        </div>
       </article>
     </section>
 
-    <section class="workspace" aria-labelledby="vaultTitle">
-      <div class="workspace-heading">
-        <div>
-          <p class="section-kicker">Хранилище</p>
-          <h2 id="vaultTitle">Все ячейки</h2>
-        </div>
-        <p class="result-count" id="resultCount">Загрузка…</p>
-      </div>
+    <section class="workspace" aria-label="Ячейки депозитария">
 
       <div class="toolbar" aria-label="Поиск и фильтры">
         <label class="search-field">
@@ -98,7 +87,7 @@
           </select>
         </label>
 
-        <button class="refresh-button" id="refreshButton" type="button">
+        <button class="refresh-button" id="refreshButton" type="button" title="Немедленно перечитать данные из общей базы">
           <span aria-hidden="true">↻</span>
           Обновить
         </button>
@@ -111,7 +100,7 @@
           <span><i class="legend-dot expiring"></i>Истекает</span>
           <span><i class="legend-dot overdue"></i>Просрочена</span>
         </div>
-        <p class="updated-at" id="updatedAt">Данные ещё не получены</p>
+        <div class="update-meta"><p class="result-count" id="resultCount">Загрузка…</p><p class="updated-at" id="updatedAt">Данные ещё не получены</p></div>
       </div>
 
       <div class="error-banner" id="errorBanner" role="alert" hidden>
@@ -178,7 +167,6 @@
       </div>
       <div class="calculation-error" id="privateError" role="alert" hidden></div>
       <dl class="private-details" id="privateDetails" hidden>
-        <div><dt>ФИО клиента</dt><dd id="privateClientName"></dd></div>
         <div><dt>Серия и номер ID-карты</dt><dd id="privateIdCardNumber"></dd></div>
         <div><dt>Орган выдачи</dt><dd id="privateIdCardIssuer"></dd></div>
         <div><dt>Дата окончания ID-карты</dt><dd id="privateIdCardExpiryDate"></dd></div>
