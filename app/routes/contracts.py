@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from hmac import compare_digest
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -15,6 +16,12 @@ from app.services.contracts import (
     ContractWriteError,
     ContractWriteUncertainError,
     create_contract,
+)
+from app.services.contract_details import (
+    ActiveContractNotFoundError,
+    ContractDetailsReadError,
+    ContractDetailsValidationError,
+    get_private_contract_details,
 )
 
 
@@ -47,3 +54,28 @@ def create():
         return jsonify({"message": str(exc)}), 500
     status = 200 if result.repeated else 201
     return jsonify(result.to_dict()), status
+
+
+@contracts_blueprint.post("/private")
+def private_details():
+    expected_token = current_app.extensions["safe_cells_private_token"]
+    supplied_token = request.headers.get("X-Safe-Cells-Token", "")
+    if not supplied_token or not compare_digest(supplied_token, expected_token):
+        return jsonify({"message": "Доступ к данным не подтверждён."}), 403
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"message": "Переданы неверные данные запроса."}), 400
+    settings: Settings = current_app.extensions["safe_cells_settings"]
+    try:
+        details = get_private_contract_details(
+            settings,
+            cell_number=payload.get("cell_number"),
+            contract_ref=payload.get("contract_ref"),
+        )
+    except ContractDetailsValidationError as exc:
+        return jsonify({"message": str(exc)}), 400
+    except ActiveContractNotFoundError as exc:
+        return jsonify({"message": str(exc)}), 409
+    except ContractDetailsReadError as exc:
+        return jsonify({"message": str(exc)}), 503
+    return jsonify(details.to_dict())

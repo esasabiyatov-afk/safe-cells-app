@@ -20,6 +20,9 @@ const state = {
   activeOperationId: null,
   contractSubmitting: false,
   quoteSequence: 0,
+  activeOccupiedCell: null,
+  privateRequestSequence: 0,
+  privateVisible: false,
 };
 
 const elements = {
@@ -46,8 +49,29 @@ const elements = {
   dialogTitle: document.getElementById("dialogTitle"),
   dialogStatus: document.getElementById("dialogStatus"),
   dialogSize: document.getElementById("dialogSize"),
+  dialogStartDate: document.getElementById("dialogStartDate"),
   dialogEndDate: document.getElementById("dialogEndDate"),
+  dialogRentDays: document.getElementById("dialogRentDays"),
   dialogDays: document.getElementById("dialogDays"),
+  dialogPricePerDay: document.getElementById("dialogPricePerDay"),
+  dialogRentPrice: document.getElementById("dialogRentPrice"),
+  dialogDeposit: document.getElementById("dialogDeposit"),
+  privateToggle: document.getElementById("privateToggle"),
+  privateError: document.getElementById("privateError"),
+  privateDetails: document.getElementById("privateDetails"),
+  privateClientName: document.getElementById("privateClientName"),
+  privateContractNumber: document.getElementById("privateContractNumber"),
+  privateIdCardNumber: document.getElementById("privateIdCardNumber"),
+  privateIdCardIssuer: document.getElementById("privateIdCardIssuer"),
+  privateIdCardIssueDate: document.getElementById("privateIdCardIssueDate"),
+  privateIdCardExpiryDate: document.getElementById("privateIdCardExpiryDate"),
+  privateAccountNumber: document.getElementById("privateAccountNumber"),
+  privateCreatedAt: document.getElementById("privateCreatedAt"),
+  historyControls: document.getElementById("historyControls"),
+  historyToggle: document.getElementById("historyToggle"),
+  renewalHistory: document.getElementById("renewalHistory"),
+  renewalEmpty: document.getElementById("renewalEmpty"),
+  renewalList: document.getElementById("renewalList"),
   rentalDialog: document.getElementById("rentalDialog"),
   rentalDialogClose: document.getElementById("rentalDialogClose"),
   rentalDialogTitle: document.getElementById("rentalDialogTitle"),
@@ -149,6 +173,9 @@ function renderStats() {
 }
 
 function clearDisplayedData() {
+  if (elements.dialog.open) {
+    closeCellDialog();
+  }
   state.cells = [];
   state.counts = { free: 0, normal: 0, expiring: 0, overdue: 0 };
   state.privateMatches = null;
@@ -208,18 +235,174 @@ function daysLabel(cell) {
   return `Осталось: ${cell.days_remaining} дн.`;
 }
 
+function renderOccupiedOperationalDetails(cell) {
+  elements.dialogTitle.textContent = `Ячейка № ${cell.number}`;
+  elements.dialogStatus.textContent = STATUS_LABELS[cell.status];
+  elements.dialogStatus.className = `status-badge ${cell.status}`;
+  elements.dialogSize.textContent = `${cell.width_mm} × ${cell.depth_mm} × ${cell.height_mm} мм`;
+  elements.dialogStartDate.textContent = formatDate(cell.start_date);
+  elements.dialogEndDate.textContent = formatDate(cell.end_date);
+  elements.dialogRentDays.textContent = `${cell.rent_days} дн.`;
+  elements.dialogDays.textContent = daysLabel(cell);
+  elements.dialogPricePerDay.textContent = `${money(cell.price_per_day)} в день`;
+  elements.dialogRentPrice.textContent = money(cell.rent_price);
+  elements.dialogDeposit.textContent = money(cell.deposit_amount);
+}
+
 function openCellDialog(cell) {
   if (cell.status === "free") {
     openRentalCalculator(cell);
     return;
   }
-  elements.dialogTitle.textContent = `№ ${cell.number}`;
-  elements.dialogStatus.textContent = STATUS_LABELS[cell.status];
-  elements.dialogStatus.className = `status-badge ${cell.status}`;
-  elements.dialogSize.textContent = `${cell.width_mm} × ${cell.depth_mm} × ${cell.height_mm} мм`;
-  elements.dialogEndDate.textContent = formatDate(cell.end_date);
-  elements.dialogDays.textContent = daysLabel(cell);
+  state.activeOccupiedCell = cell;
+  hidePrivateDetails();
+  renderOccupiedOperationalDetails(cell);
   elements.dialog.showModal();
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "Не указана";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("ru-RU", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
+}
+
+function clearPrivateValues() {
+  elements.privateClientName.textContent = "";
+  elements.privateContractNumber.textContent = "";
+  elements.privateIdCardNumber.textContent = "";
+  elements.privateIdCardIssuer.textContent = "";
+  elements.privateIdCardIssueDate.textContent = "";
+  elements.privateIdCardExpiryDate.textContent = "";
+  elements.privateAccountNumber.textContent = "";
+  elements.privateCreatedAt.textContent = "";
+  elements.renewalList.replaceChildren();
+}
+
+function hidePrivateDetails() {
+  state.privateRequestSequence += 1;
+  state.privateVisible = false;
+  clearPrivateValues();
+  elements.privateDetails.hidden = true;
+  elements.historyControls.hidden = true;
+  elements.renewalHistory.hidden = true;
+  elements.renewalEmpty.hidden = false;
+  elements.privateError.hidden = true;
+  elements.privateError.textContent = "";
+  elements.privateToggle.disabled = false;
+  elements.privateToggle.textContent = "Показать данные";
+  elements.historyToggle.textContent = "Показать историю продлений";
+}
+
+function renderRenewals(renewals) {
+  const fragment = document.createDocumentFragment();
+  for (const renewal of renewals) {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatDate(renewal.new_start_date)} — ${formatDate(renewal.new_end_date)} · ${renewal.renewal_days} дн.`;
+    const details = document.createElement("span");
+    const penalty = renewal.penalty_days > 0
+      ? `, штраф ${renewal.penalty_days} дн. — ${money(renewal.penalty_amount)}`
+      : ", без штрафа";
+    details.textContent = `Продлено ${formatDate(renewal.renewal_date)}, сумма ${money(renewal.renewal_price)}${penalty}`;
+    item.append(title, details);
+    fragment.appendChild(item);
+  }
+  elements.renewalList.replaceChildren(fragment);
+  elements.renewalEmpty.hidden = renewals.length > 0;
+  elements.historyToggle.textContent = `Показать историю продлений (${renewals.length})`;
+}
+
+async function togglePrivateDetails() {
+  if (state.privateVisible) {
+    hidePrivateDetails();
+    return;
+  }
+  const cell = state.activeOccupiedCell;
+  if (!cell) {
+    return;
+  }
+  const sequence = ++state.privateRequestSequence;
+  elements.privateToggle.disabled = true;
+  elements.privateToggle.textContent = "Получение данных…";
+  elements.privateError.hidden = true;
+  try {
+    const response = await fetch(elements.body.dataset.privateUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Safe-Cells-Token": elements.body.dataset.privateToken,
+      },
+      body: JSON.stringify({
+        cell_number: cell.number,
+        contract_ref: cell.contract_ref,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось получить данные договора");
+    }
+    if (
+      sequence !== state.privateRequestSequence
+      || !elements.dialog.open
+      || state.activeOccupiedCell?.contract_ref !== cell.contract_ref
+    ) {
+      return;
+    }
+    elements.privateClientName.textContent = payload.client_full_name;
+    elements.privateContractNumber.textContent = payload.contract_number;
+    elements.privateIdCardNumber.textContent = payload.id_card_number;
+    elements.privateIdCardIssuer.textContent = payload.id_card_issuer;
+    elements.privateIdCardIssueDate.textContent = formatDate(payload.id_card_issue_date);
+    elements.privateIdCardExpiryDate.textContent = formatDate(payload.id_card_expiry_date);
+    elements.privateAccountNumber.textContent = payload.account_number;
+    elements.privateCreatedAt.textContent = formatDateTime(payload.created_at);
+    renderRenewals(payload.renewals);
+    state.privateVisible = true;
+    elements.privateDetails.hidden = false;
+    elements.historyControls.hidden = false;
+    elements.privateToggle.textContent = "Скрыть данные";
+  } catch (error) {
+    if (sequence !== state.privateRequestSequence) {
+      return;
+    }
+    clearPrivateValues();
+    elements.privateError.textContent = errorMessage(
+      error,
+      "Не удалось получить данные договора",
+    );
+    elements.privateError.hidden = false;
+    elements.privateToggle.textContent = "Повторить запрос";
+  } finally {
+    if (sequence === state.privateRequestSequence) {
+      elements.privateToggle.disabled = false;
+    }
+  }
+}
+
+function toggleRenewalHistory() {
+  const willShow = elements.renewalHistory.hidden;
+  elements.renewalHistory.hidden = !willShow;
+  const count = elements.renewalList.children.length;
+  elements.historyToggle.textContent = willShow
+    ? "Скрыть историю продлений"
+    : `Показать историю продлений (${count})`;
+}
+
+function closeCellDialog() {
+  hidePrivateDetails();
+  state.activeOccupiedCell = null;
+  elements.dialog.close();
 }
 
 function parseIsoDateUtc(value) {
@@ -595,6 +778,21 @@ async function refreshCells() {
     state.cells = payload.cells;
     state.counts = payload.counts;
     state.asOfDate = payload.as_of_date;
+    if (state.activeOccupiedCell && elements.dialog.open) {
+      const updatedCell = state.cells.find(
+        (cell) => String(cell.number) === String(state.activeOccupiedCell.number),
+      );
+      if (
+        !updatedCell
+        || updatedCell.status === "free"
+        || updatedCell.contract_ref !== state.activeOccupiedCell.contract_ref
+      ) {
+        closeCellDialog();
+      } else {
+        state.activeOccupiedCell = updatedCell;
+        renderOccupiedOperationalDetails(updatedCell);
+      }
+    }
     populateHeightFilter(state.cells);
     renderStats();
     clearError();
@@ -622,11 +820,17 @@ elements.search.addEventListener("input", scheduleSearch);
 elements.status.addEventListener("change", renderGrid);
 elements.height.addEventListener("change", renderGrid);
 elements.refresh.addEventListener("click", refreshCells);
-elements.dialogClose.addEventListener("click", () => elements.dialog.close());
+elements.dialogClose.addEventListener("click", closeCellDialog);
+elements.privateToggle.addEventListener("click", togglePrivateDetails);
+elements.historyToggle.addEventListener("click", toggleRenewalHistory);
 elements.dialog.addEventListener("click", (event) => {
   if (event.target === elements.dialog) {
-    elements.dialog.close();
+    closeCellDialog();
   }
+});
+elements.dialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeCellDialog();
 });
 elements.rentalStartDate.addEventListener("input", () => {
   if (elements.rentalDays.value) {

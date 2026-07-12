@@ -33,6 +33,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'href="/static/css/main.css"' in html
     assert 'data-rental-url="/api/rental/calculate"' in html
     assert 'data-contract-url="/api/contracts"' in html
+    assert 'data-private-url="/api/contracts/private"' in html
+    assert 'data-private-token="' in html
     assert 'id="rentalContinue"' in html
     assert (
         'class="primary-button" id="rentalContinue" type="button" disabled' in html
@@ -46,6 +48,11 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'name="client_full_name"' in html
     assert 'name="id_card_number"' in html
     assert 'name="account_number"' in html
+    assert 'id="privateDetails" hidden' in html
+    assert 'id="historyControls" hidden' in html
+    assert 'id="renewalHistory" aria-label="История продлений" hidden' in html
+    assert "Показать данные" in html
+    assert "Повторно сформировать документ" in html
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Cache-Control"] == "no-store"
@@ -164,6 +171,11 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "createOperationId" in script
         assert "submitContract" in script
         assert "activeOperationId" in script
+        assert "togglePrivateDetails" in script
+        assert '"X-Safe-Cells-Token"' in script
+        assert "hidePrivateDetails" in script
+        assert "clearPrivateValues" in script
+        assert "renderRenewals" in script
     finally:
         css.close()
         javascript.close()

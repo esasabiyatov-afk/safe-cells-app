@@ -65,7 +65,13 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                     cells.height_mm,
                     COALESCE(cells.width_mm, vault_defaults.width_mm) AS width_mm,
                     COALESCE(cells.depth_mm, vault_defaults.depth_mm) AS depth_mm,
-                    contracts.end_date
+                    contracts.contract_id,
+                    contracts.start_date,
+                    contracts.end_date,
+                    contracts.rent_days,
+                    contracts.price_per_day_minor,
+                    contracts.rent_price_minor,
+                    contracts.deposit_amount_minor
                 FROM cells
                 CROSS JOIN vault_defaults
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
@@ -81,7 +87,17 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
     cells: list[dict[str, Any]] = []
     counts = {"free": 0, "normal": 0, "expiring": 0, "overdue": 0}
     for row in rows:
+        start_date = _parse_date(row["start_date"])
         end_date = _parse_date(row["end_date"])
+        rent_days = int(row["rent_days"]) if row["rent_days"] is not None else None
+        if start_date is None and end_date is not None:
+            raise InvalidStoredDataError("Некорректный срок договора.")
+        if start_date is not None and end_date is None:
+            raise InvalidStoredDataError("Некорректный срок договора.")
+        if start_date is not None:
+            expected_days = (end_date - start_date).days + 1
+            if rent_days != expected_days:
+                raise InvalidStoredDataError("Некорректный срок договора.")
         status = calculate_status(
             end_date=end_date,
             as_of_date=as_of_date,
@@ -95,7 +111,25 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                 "width_mm": int(row["width_mm"]),
                 "depth_mm": int(row["depth_mm"]),
                 "status": status.status.value,
+                "contract_ref": row["contract_id"],
+                "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat() if end_date else None,
+                "rent_days": rent_days,
+                "price_per_day": (
+                    int(row["price_per_day_minor"])
+                    if row["price_per_day_minor"] is not None
+                    else None
+                ),
+                "rent_price": (
+                    int(row["rent_price_minor"])
+                    if row["rent_price_minor"] is not None
+                    else None
+                ),
+                "deposit_amount": (
+                    int(row["deposit_amount_minor"])
+                    if row["deposit_amount_minor"] is not None
+                    else None
+                ),
                 "days_remaining": status.days_remaining,
             }
         )

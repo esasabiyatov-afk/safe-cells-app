@@ -508,6 +508,23 @@ main {
   box-shadow: 0 24px 70px rgba(28, 41, 56, 0.32);
 }
 
+.occupied-card {
+  width: min(700px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.occupied-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.occupied-card-heading h2 {
+  margin: 0;
+}
+
 .rental-dialog {
   width: min(620px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
@@ -785,6 +802,12 @@ main {
   color: #f7f7f5;
 }
 
+.secondary-button:disabled {
+  cursor: not-allowed;
+  border-color: #b8bec3;
+  color: #8a9298;
+}
+
 .cell-dialog::backdrop {
   background: rgba(28, 41, 56, 0.46);
 }
@@ -847,6 +870,159 @@ main {
   font-size: 13px;
   font-weight: 650;
   text-align: right;
+}
+
+.operational-details .operational-total {
+  padding-right: 10px;
+  padding-left: 10px;
+  background: #e5edf2;
+}
+
+.operational-total dt,
+.operational-total dd {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.card-deposit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 14px;
+  border: 2px solid #8a6b23;
+  border-radius: 5px;
+  background: #fff4ce;
+  color: #4f3a0d;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.penalty-note {
+  margin: 10px 0 18px;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.private-card-section {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line-dark);
+  border-radius: 5px;
+  background: var(--surface);
+}
+
+.private-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.private-card-heading h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+}
+
+.private-card-heading p {
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.private-card-section .calculation-error {
+  margin: 14px 0 0;
+}
+
+.private-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 20px;
+  margin: 16px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.private-details div {
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.private-details dt {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.private-details dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.history-controls {
+  margin-top: 14px;
+}
+
+.renewal-history {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--normal-border);
+  background: #edf3f7;
+  font-size: 12px;
+}
+
+.renewal-history p {
+  margin: 0;
+}
+
+.renewal-history ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.renewal-history li {
+  padding-left: 4px;
+}
+
+.renewal-history strong,
+.renewal-history span {
+  display: block;
+}
+
+.renewal-history span {
+  margin-top: 2px;
+  color: var(--ink-soft);
+}
+
+.card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.card-actions button {
+  min-height: 40px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.card-actions button:disabled {
+  cursor: not-allowed;
+  border-color: #c4c8cb;
+  background: #e7e6e1;
+  color: #858b90;
 }
 
 .dialog-note {
@@ -933,8 +1109,20 @@ main {
   }
 
   .contract-fields,
-  .contract-summary {
+  .contract-summary,
+  .private-details,
+  .card-actions {
     grid-template-columns: 1fr;
+  }
+
+  .occupied-card-heading,
+  .private-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .private-card-heading .secondary-button {
+    width: 100%;
   }
 
   .contract-field--wide,

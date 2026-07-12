@@ -14,7 +14,7 @@
 | ТЗ 11 | Продление и две штрафные формулы | `services/renewals.py`, `penalties.py` | Этап 6; граничные даты |
 | ТЗ 11–12 | Закрытие и перенос в архив | `services/closures.py` | Этап 7; межбазовый rollback |
 | ТЗ 12 | Рабочая и архивная модели | `app/db/schema` | Этап 1 и интеграционные тесты |
-| ТЗ 13–14 | ПДн полностью скрыты | private routes, templates, JS | Этапы 2, 5; API/HTML/XSS-тесты |
+| ТЗ 13–14 | ПДн полностью скрыты | `services/contract_details.py`, private POST route, templates, JS | Этапы 2, 5; токен/API/HTML/XSS/очистка |
 | ТЗ 15 | Разрешённое редактирование и аудит | `services/editing.py`, `log` | Этап 8; whitelist/audit |
 | ТЗ 16 | Сетка, поиск, фильтры, счётчики | templates/static/routes | Этап 2; UI и ручное одобрение |
 | ТЗ 17 | Невозможные переходы | service validators + DB constraints | Этапы 4, 6, 7; negative tests |

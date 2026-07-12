@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from secrets import token_urlsafe
 
 from flask import Flask, request
 
@@ -31,6 +32,7 @@ def create_app(settings: Settings) -> Flask:
         EMPLOYEE_PROVIDER=get_employee_username,
     )
     app.extensions["safe_cells_settings"] = settings
+    app.extensions["safe_cells_private_token"] = token_urlsafe(32)
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
     app.register_blueprint(contracts_blueprint)
