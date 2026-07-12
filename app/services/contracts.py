@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime
 import json
 import sqlite3
 from typing import Any
@@ -286,6 +286,7 @@ def create_contract(
     payload: object,
     employee: str,
     occurred_at: datetime,
+    as_of_date: date | None = None,
     after_contract_insert: Callable[[], None] | None = None,
 ) -> ContractCreationResult:
     """Create an active contract and audit row in one short transaction."""
@@ -297,6 +298,7 @@ def create_contract(
     if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
         raise ContractValidationError("Время операции должно содержать часовой пояс.")
     timestamp = occurred_at.isoformat(timespec="seconds")
+    current_date = as_of_date or occurred_at.date()
     phase = "opening"
 
     try:
@@ -316,6 +318,7 @@ def create_contract(
                     start_date_value=data.start_date,
                     end_date_value=data.end_date,
                     rent_days_value=data.rent_days,
+                    as_of_date=current_date,
                 )
             except CellUnavailableError as exc:
                 raise ContractConflictError(str(exc)) from exc

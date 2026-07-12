@@ -135,6 +135,7 @@ def calculate_rental_quote_in_connection(
     start_date_value: object,
     end_date_value: object | None = None,
     rent_days_value: object | None = None,
+    as_of_date: date | None = None,
 ) -> RentalQuote:
     """Calculate a quote using the caller's current SQLite transaction."""
 
@@ -149,6 +150,11 @@ def calculate_rental_quote_in_connection(
         end_date_value=end_date_value,
         rent_days_value=rent_days_value,
     )
+    current_date = as_of_date or date.today()
+    if start_date > current_date:
+        raise RentalValidationError(
+            "Дата начала аренды не может быть позже сегодняшней даты."
+        )
     cell = connection.execute(
         """
         SELECT cells.number, cells.height_mm, contracts.contract_id
@@ -213,6 +219,7 @@ def calculate_rental_quote(
     start_date_value: object,
     end_date_value: object | None = None,
     rent_days_value: object | None = None,
+    as_of_date: date | None = None,
 ) -> RentalQuote:
     """Recalculate dates, rental price and separate deposit using a short RO connection."""
 
@@ -227,6 +234,7 @@ def calculate_rental_quote(
                 start_date_value=start_date_value,
                 end_date_value=end_date_value,
                 rent_days_value=rent_days_value,
+                as_of_date=as_of_date,
             )
     except (RentalValidationError, CellUnavailableError, RentalDataError):
         raise

@@ -97,6 +97,10 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
         if start_date is not None:
             if end_date < start_date or rent_days is None or rent_days < 1:
                 raise InvalidStoredDataError("Некорректный срок договора.")
+            if start_date > as_of_date:
+                raise InvalidStoredDataError(
+                    "Дата начала активного договора находится в будущем."
+                )
             total_days = (end_date - start_date).days + 1
         else:
             total_days = None

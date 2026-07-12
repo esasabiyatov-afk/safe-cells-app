@@ -41,6 +41,7 @@ def create():
             payload=request.get_json(silent=True),
             employee=employee,
             occurred_at=timestamp_provider(),
+            as_of_date=current_app.config["TODAY_PROVIDER"](),
         )
     except ContractValidationError as exc:
         return jsonify({"message": str(exc)}), 400

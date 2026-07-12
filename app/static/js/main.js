@@ -780,6 +780,7 @@ function openRentalCalculator(cell) {
   elements.rentalDialogTitle.textContent = `Ячейка № ${cell.number}`;
   elements.rentalCellSummary.textContent = `Высота ${cell.height_mm} мм · ${cell.width_mm} × ${cell.depth_mm} мм`;
   const startDate = state.asOfDate || isoFromUtcDate(new Date());
+  elements.rentalStartDate.max = startDate;
   elements.rentalStartDate.value = startDate;
   elements.rentalDays.value = "1";
   syncEndFromDays();

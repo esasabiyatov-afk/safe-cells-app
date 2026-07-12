@@ -109,6 +109,19 @@ def test_quote_accepts_days_and_recomputes_end_date(
     assert quote.deposit_amount == 1500
 
 
+def test_quote_rejects_start_date_after_today(
+    settings: Settings, initialized_databases
+) -> None:
+    with pytest.raises(RentalValidationError, match="сегодняшней"):
+        calculate_rental_quote(
+            settings,
+            cell_number="1",
+            start_date_value="2026-07-13",
+            rent_days_value=1,
+            as_of_date=date(2026, 7, 12),
+        )
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
@@ -254,6 +267,19 @@ def test_rental_api_rejects_tampered_days(
     )
     assert response.status_code == 400
     assert "не соответствует" in response.get_json()["message"]
+
+
+def test_rental_api_uses_server_date_to_reject_future_start(
+    settings: Settings, initialized_databases
+) -> None:
+    app = create_app(settings)
+    app.config["TODAY_PROVIDER"] = lambda: date(2026, 7, 12)
+    response = app.test_client().post(
+        "/api/rental/calculate",
+        json={"cell_number": "1", "start_date": "2026-07-13", "rent_days": 1},
+    )
+    assert response.status_code == 400
+    assert "сегодняшней" in response.get_json()["message"]
 
 
 def test_rental_api_rejects_occupied_cell(

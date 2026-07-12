@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -232,6 +232,22 @@ def test_backend_rejects_tampered_days_and_does_not_write(
             payload=contract_payload(rent_days=1),
             employee="test-user",
             occurred_at=OCCURRED_AT,
+        )
+    assert _counts(settings) == (0, 0)
+
+
+def test_backend_rejects_contract_starting_after_today(
+    settings: Settings, initialized_databases
+) -> None:
+    with pytest.raises(ContractValidationError, match="сегодняшней"):
+        create_contract(
+            settings,
+            payload=contract_payload(
+                start_date="2026-07-13", end_date="2026-07-13", rent_days=1
+            ),
+            employee="test-user",
+            occurred_at=OCCURRED_AT,
+            as_of_date=date(2026, 7, 12),
         )
     assert _counts(settings) == (0, 0)
 

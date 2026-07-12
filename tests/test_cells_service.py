@@ -26,6 +26,7 @@ def test_list_cells_returns_only_non_personal_fields(
     insert_test_contract(
         cell_number="1",
         end_date="2026-07-09",
+        start_date="2026-07-01",
         client_name="Секретный Тестовый Клиент",
         account_number="PRIVATE-TEST-ACCOUNT",
     )
@@ -49,10 +50,10 @@ def test_list_cells_returns_only_non_personal_fields(
         "deposit_amount",
         "days_remaining",
     }
-    assert cell["start_date"] == "2026-07-09"
+    assert cell["start_date"] == "2026-07-01"
     assert cell["contract_ref"] == "contract-test-1"
     assert cell["rent_days"] == 1
-    assert cell["total_days"] == 1
+    assert cell["total_days"] == 9
     assert cell["price_per_day"] == 15
     assert cell["rent_price"] == 15
     assert cell["deposit_amount"] == 0
@@ -66,9 +67,15 @@ def test_list_cells_calculates_counts_at_boundaries(
     insert_test_contract: Callable[..., None],
 ) -> None:
     insert_test_contract(cell_number="1", end_date="2026-06-30")
-    insert_test_contract(cell_number="2", end_date="2026-07-01")
-    insert_test_contract(cell_number="3", end_date="2026-07-08")
-    insert_test_contract(cell_number="4", end_date="2026-07-09")
+    insert_test_contract(
+        cell_number="2", start_date="2026-07-01", end_date="2026-07-01"
+    )
+    insert_test_contract(
+        cell_number="3", start_date="2026-07-01", end_date="2026-07-08"
+    )
+    insert_test_contract(
+        cell_number="4", start_date="2026-07-01", end_date="2026-07-09"
+    )
 
     payload = list_cells(settings, as_of_date=AS_OF)
 
@@ -128,6 +135,17 @@ def test_invalid_stored_date_is_safe_integrity_error(
         connection.close()
 
     with pytest.raises(InvalidStoredDataError, match="дата"):
+        list_cells(settings, as_of_date=AS_OF)
+
+
+def test_future_start_date_is_safe_integrity_error(
+    settings: Settings,
+    insert_test_contract: Callable[..., None],
+) -> None:
+    insert_test_contract(
+        cell_number="1", start_date="2026-07-02", end_date="2026-07-02"
+    )
+    with pytest.raises(InvalidStoredDataError, match="будущем"):
         list_cells(settings, as_of_date=AS_OF)
 
 

@@ -30,6 +30,7 @@ def calculate():
             start_date_value=payload.get("start_date"),
             end_date_value=payload.get("end_date"),
             rent_days_value=payload.get("rent_days"),
+            as_of_date=current_app.config["TODAY_PROVIDER"](),
         )
     except RentalValidationError as exc:
         return jsonify({"message": str(exc)}), 400

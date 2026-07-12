@@ -40,10 +40,12 @@ def insert_test_contract(
         *,
         cell_number: str,
         end_date: str,
+        start_date: str | None = None,
         client_name: str = "Тестовый Клиент",
         account_number: str = "TEST-ACCOUNT",
     ) -> None:
         identifier = f"contract-test-{cell_number}"
+        effective_start_date = start_date or end_date
         values = (
             identifier,
             f"TEST-{cell_number}",
@@ -53,7 +55,7 @@ def insert_test_contract(
             "Тестовый орган",
             "2030-12-31",
             account_number,
-            end_date,
+            effective_start_date,
             end_date,
             1,
             15,

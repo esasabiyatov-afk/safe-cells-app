@@ -104,6 +104,7 @@ def test_private_search_api_uses_post_and_returns_no_personal_fields(
     app.config["TODAY_PROVIDER"] = lambda: date(2026, 7, 1)
     insert_test_contract(
         cell_number="1",
+        start_date="2026-07-01",
         end_date="2026-07-09",
         client_name="Секретный Тестовый Клиент",
         account_number="PRIVATE-TEST-ACCOUNT",
