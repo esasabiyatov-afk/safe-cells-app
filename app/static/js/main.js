@@ -34,6 +34,7 @@ const state = {
   closureSubmitting: false,
   editOperationId: null,
   editSubmitting: false,
+  documentSubmitting: false,
 };
 
 const elements = {
@@ -114,6 +115,14 @@ const elements = {
   editIdCardExpiryDate: document.getElementById("editIdCardExpiryDate"),
   editBack: document.getElementById("editBack"),
   editSubmit: document.getElementById("editSubmit"),
+  documentAction: document.getElementById("documentAction"),
+  documentDialog: document.getElementById("documentDialog"),
+  documentDialogClose: document.getElementById("documentDialogClose"),
+  documentForm: document.getElementById("documentForm"),
+  documentTemplate: document.getElementById("documentTemplate"),
+  documentError: document.getElementById("documentError"),
+  documentBack: document.getElementById("documentBack"),
+  documentSubmit: document.getElementById("documentSubmit"),
   closureDialog: document.getElementById("closureDialog"),
   closureDialogClose: document.getElementById("closureDialogClose"),
   closureDialogTitle: document.getElementById("closureDialogTitle"),
@@ -487,6 +496,65 @@ function toggleRenewalHistory() {
   elements.historyToggle.textContent = willShow
     ? "Скрыть историю продлений"
     : `Показать историю продлений (${count})`;
+}
+
+function closeDocumentDialog() {
+  elements.documentDialog.close();
+  elements.documentError.hidden = true;
+  elements.documentError.textContent = "";
+}
+
+async function openDocumentDialog() {
+  const cell = state.activeOccupiedCell;
+  if (!cell) return;
+  elements.documentAction.disabled = true;
+  elements.documentTemplate.replaceChildren();
+  elements.documentError.hidden = true;
+  try {
+    const response = await fetch(elements.body.dataset.documentTemplatesUrl, {
+      method: "POST", headers: {"Content-Type": "application/json", "X-Safe-Cells-Token": elements.body.dataset.privateToken},
+      body: JSON.stringify({cell_number: cell.number, contract_ref: cell.contract_ref}),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Не удалось получить шаблоны");
+    if (!payload.templates.length) throw new Error("Активные DOCX-шаблоны пока не настроены.");
+    for (const template of payload.templates) {
+      const option = document.createElement("option");
+      option.value = template.template_id;
+      option.textContent = template.display_name;
+      elements.documentTemplate.appendChild(option);
+    }
+    elements.documentDialog.showModal();
+  } catch (error) {
+    showError(errorMessage(error, "Не удалось получить шаблоны документов"));
+  } finally {
+    elements.documentAction.disabled = false;
+  }
+}
+
+async function submitDocument(event) {
+  event.preventDefault();
+  const cell = state.activeOccupiedCell;
+  if (!cell || state.documentSubmitting) return;
+  state.documentSubmitting = true;
+  elements.documentSubmit.disabled = true;
+  elements.documentError.hidden = true;
+  try {
+    const response = await fetch(elements.body.dataset.documentGenerateUrl, {
+      method: "POST", headers: {"Content-Type": "application/json", "X-Safe-Cells-Token": elements.body.dataset.privateToken},
+      body: JSON.stringify({cell_number: cell.number, contract_ref: cell.contract_ref, template_id: elements.documentTemplate.value}),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Не удалось сформировать документ");
+    closeDocumentDialog();
+    showSuccess(`${payload.message} Файл: ${payload.file_name}`);
+  } catch (error) {
+    elements.documentError.textContent = errorMessage(error, "Не удалось сформировать документ");
+    elements.documentError.hidden = false;
+  } finally {
+    state.documentSubmitting = false;
+    elements.documentSubmit.disabled = false;
+  }
 }
 
 function closeEditDialog() {
@@ -1350,6 +1418,10 @@ elements.historyToggle.addEventListener("click", toggleRenewalHistory);
 elements.renewAction.addEventListener("click", openRenewalDialog);
 elements.closeAction.addEventListener("click", openClosureDialog);
 elements.editAction.addEventListener("click", openEditDialog);
+elements.documentAction.addEventListener("click", openDocumentDialog);
+elements.documentForm.addEventListener("submit", submitDocument);
+elements.documentDialogClose.addEventListener("click", closeDocumentDialog);
+elements.documentBack.addEventListener("click", closeDocumentDialog);
 elements.editDialogClose.addEventListener("click", closeEditDialog);
 elements.editBack.addEventListener("click", closeEditDialog);
 elements.editForm.addEventListener("submit", submitEdit);

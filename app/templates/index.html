@@ -19,6 +19,8 @@
   data-renewal-url="{{ url_for('renewals.confirm') }}"
   data-closure-quote-url="{{ url_for('closures.calculate') }}"
   data-closure-url="{{ url_for('closures.confirm') }}"
+  data-document-templates-url="{{ url_for('documents.templates') }}"
+  data-document-generate-url="{{ url_for('documents.generate') }}"
   data-private-token="{{ private_token }}"
 >
   <header class="page-header">
@@ -187,9 +189,20 @@
       <button class="primary-button" id="renewAction" type="button">Продлить</button>
       <button id="closeAction" type="button">Закрыть договор</button>
       <button id="editAction" type="button">Редактировать данные</button>
-      <button type="button" disabled title="Будет подключено после настройки документов">Повторно сформировать документ</button>
+      <button id="documentAction" type="button">Повторно сформировать документ</button>
     </div>
-    <p class="dialog-note">Остальные неактивные действия будут подключены на следующих этапах.</p>
+  </dialog>
+
+  <dialog class="contract-dialog" id="documentDialog" aria-labelledby="documentDialogTitle">
+    <button class="dialog-close" id="documentDialogClose" type="button" aria-label="Закрыть формирование документа">×</button>
+    <p class="section-kicker">DOCX из шаблона</p>
+    <h2 id="documentDialogTitle">Сформировать документ</h2>
+    <p class="dialog-note">До загрузки банковских шаблонов доступны только явно обозначенные тестовые шаблоны.</p>
+    <form id="documentForm">
+      <div class="calculation-error" id="documentError" role="alert" hidden></div>
+      <label class="contract-field contract-field--wide"><span>Шаблон *</span><select id="documentTemplate" required></select></label>
+      <div class="dialog-actions"><button type="button" id="documentBack">Назад</button><button class="primary-button" id="documentSubmit" type="submit">Сформировать DOCX</button></div>
+    </form>
   </dialog>
 
   <dialog class="contract-dialog" id="editDialog" aria-labelledby="editDialogTitle">

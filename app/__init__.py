@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 from secrets import token_urlsafe
 
 from flask import Flask, request
@@ -13,6 +14,7 @@ from app.routes import (
     closures_blueprint,
     contracts_blueprint,
     editing_blueprint,
+    documents_blueprint,
     main_blueprint,
     rental_blueprint,
     renewals_blueprint,
@@ -33,6 +35,7 @@ def create_app(settings: Settings) -> Flask:
         TESTING=settings.testing,
         TODAY_PROVIDER=date.today,
         EMPLOYEE_PROVIDER=get_employee_username,
+        DOWNLOADS_DIRECTORY_PROVIDER=lambda: Path.home() / "Downloads",
     )
     app.extensions["safe_cells_settings"] = settings
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
@@ -41,6 +44,7 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(closures_blueprint)
     app.register_blueprint(contracts_blueprint)
     app.register_blueprint(editing_blueprint)
+    app.register_blueprint(documents_blueprint)
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(renewals_blueprint)
     app.register_blueprint(system_blueprint)
