@@ -26,19 +26,6 @@
       <h1>Депозитарий</h1>
     </div>
 
-    <div class="header-side">
-      <div class="employee" aria-label="Текущий сотрудник">
-        <span class="employee-label">Сотрудник</span>
-        <strong>{{ employee }}</strong>
-      </div>
-      <div class="connection-state" id="connectionState" role="status">
-        <span class="connection-dot" aria-hidden="true"></span>
-        <span>Проверка данных…</span>
-      </div>
-    </div>
-  </header>
-
-  <main>
     <section class="stats" aria-label="Сводка по ячейкам">
       <article class="stat-card stat-free">
         <span class="stat-label">Свободно</span>
@@ -54,6 +41,19 @@
       </article>
     </section>
 
+    <div class="header-side">
+      <div class="employee" aria-label="Текущий сотрудник">
+        <span class="employee-label">Сотрудник</span>
+        <strong>{{ employee }}</strong>
+      </div>
+      <div class="connection-state" id="connectionState" role="status">
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span>Проверка данных…</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
     <section class="workspace" aria-label="Ячейки депозитария">
 
       <div class="toolbar" aria-label="Поиск и фильтры">

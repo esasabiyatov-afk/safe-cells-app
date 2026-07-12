@@ -182,6 +182,11 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "--overdue-border:" in stylesheet
         assert "border: 2px solid var(--cell-accent)" in stylesheet
         assert "inset 0 5px 0 var(--cell-accent)" in stylesheet
+        assert "font-size: 11.5px" in stylesheet
+        assert ".legend-dot.free { background: #26833a; }" in stylesheet
+        assert ".legend-dot.normal { background: #2476a8; }" in stylesheet
+        assert ".legend-dot.expiring { background: #e5a900; }" in stylesheet
+        assert ".legend-dot.overdue { background: #c83b2d; }" in stylesheet
         assert "15_000" in script
         assert "setInterval" in script
         assert "innerHTML" not in script
