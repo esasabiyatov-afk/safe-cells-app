@@ -11,7 +11,7 @@
 | ТЗ 6–7 | Тарифы и включительный расчёт | `services/rental_calculator.py` | Этап 3; 1/30/31/90/91/180/181 |
 | ТЗ 8–9 | Калькулятор и занятие ячейки | routes, `services/contracts.py` | Этапы 3–4; валидация/гонка |
 | ТЗ 10 | DOCX и плейсхолдеры | `app/documents` | Этап 9; шаблонные тесты |
-| ТЗ 11 | Продление и две штрафные формулы | `services/renewals.py`, `penalties.py` | Этап 6; граничные даты |
+| ТЗ 11 | Продление и штрафная формула | `app/services/renewals.py`, `app/routes/renewals.py` | 20 тестов этапа 6; граничные даты; браузер |
 | ТЗ 11–12 | Закрытие и перенос в архив | `services/closures.py` | Этап 7; межбазовый rollback |
 | ТЗ 12 | Рабочая и архивная модели | `app/db/schema` | Этап 1 и интеграционные тесты |
 | ТЗ 13–14 | ПДн полностью скрыты | `services/contract_details.py`, private POST route, templates, JS | Этапы 2, 5; токен/API/HTML/XSS/очистка |

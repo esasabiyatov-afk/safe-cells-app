@@ -43,6 +43,7 @@ def test_list_cells_returns_only_non_personal_fields(
         "start_date",
         "end_date",
         "rent_days",
+        "total_days",
         "price_per_day",
         "rent_price",
         "deposit_amount",
@@ -51,6 +52,7 @@ def test_list_cells_returns_only_non_personal_fields(
     assert cell["start_date"] == "2026-07-09"
     assert cell["contract_ref"] == "contract-test-1"
     assert cell["rent_days"] == 1
+    assert cell["total_days"] == 1
     assert cell["price_per_day"] == 15
     assert cell["rent_price"] == 15
     assert cell["deposit_amount"] == 0

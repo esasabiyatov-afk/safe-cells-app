@@ -13,6 +13,8 @@
   data-rental-url="{{ url_for('rental.calculate') }}"
   data-contract-url="{{ url_for('contracts.create') }}"
   data-private-url="{{ url_for('contracts.private_details') }}"
+  data-renewal-quote-url="{{ url_for('renewals.calculate') }}"
+  data-renewal-url="{{ url_for('renewals.confirm') }}"
   data-private-token="{{ private_token }}"
 >
   <header class="page-header">
@@ -116,7 +118,7 @@
       </div>
 
       <div class="success-banner" id="successBanner" role="status" hidden>
-        <strong>Договор сохранён</strong>
+        <strong>Операция выполнена</strong>
         <span id="successMessage"></span>
       </div>
 
@@ -155,7 +157,7 @@
         <dd id="dialogEndDate">—</dd>
       </div>
       <div>
-        <dt>Срок договора</dt>
+        <dt>Общий срок</dt>
         <dd id="dialogRentDays">—</dd>
       </div>
       <div>
@@ -163,11 +165,11 @@
         <dd id="dialogDays">—</dd>
       </div>
       <div>
-        <dt>Тариф</dt>
+        <dt>Первоначальный тариф</dt>
         <dd id="dialogPricePerDay">—</dd>
       </div>
       <div class="operational-total">
-        <dt>Сумма аренды</dt>
+        <dt>Первоначальная аренда</dt>
         <dd id="dialogRentPrice">—</dd>
       </div>
     </dl>
@@ -206,12 +208,59 @@
     </section>
 
     <div class="card-actions" aria-label="Действия с договором">
-      <button type="button" disabled title="Будет подключено на этапе продления">Продлить</button>
+      <button class="primary-button" id="renewAction" type="button">Продлить</button>
       <button type="button" disabled title="Будет подключено на этапе закрытия">Закрыть договор</button>
       <button type="button" disabled title="Будет подключено на этапе редактирования">Редактировать данные</button>
       <button type="button" disabled title="Будет подключено после настройки документов">Повторно сформировать документ</button>
     </div>
-    <p class="dialog-note">Неактивные действия будут подключены на следующих этапах.</p>
+    <p class="dialog-note">Остальные неактивные действия будут подключены на следующих этапах.</p>
+  </dialog>
+
+  <dialog class="renewal-dialog" id="renewalDialog" aria-labelledby="renewalDialogTitle">
+    <button class="dialog-close" id="renewalDialogClose" type="button" aria-label="Закрыть продление">×</button>
+    <p class="section-kicker">Продление аренды</p>
+    <h2 id="renewalDialogTitle">Ячейка № —</h2>
+    <p class="rental-cell-summary" id="renewalCellSummary">—</p>
+
+    <form id="renewalForm" novalidate>
+      <div class="renewal-date-summary">
+        <div><span>Текущее окончание</span><strong id="renewalOldEnd">—</strong></div>
+        <div><span>Дата продления</span><strong id="renewalDate">—</strong></div>
+        <div><span>Начало нового периода</span><strong id="renewalNewStart">—</strong></div>
+      </div>
+      <div class="rental-fields renewal-fields">
+        <label class="rental-field">
+          <span>Новая дата окончания</span>
+          <input id="renewalEndDate" type="date">
+        </label>
+        <label class="rental-field">
+          <span>Количество дней продления</span>
+          <input id="renewalDays" type="number" min="1" step="1" inputmode="numeric">
+        </label>
+      </div>
+      <p class="rental-hint">Начало периода определяется автоматически по текущему окончанию и дате оформления.</p>
+      <div class="calculation-error" id="renewalError" role="alert" hidden></div>
+
+      <section class="quote-panel" aria-live="polite">
+        <div class="quote-row"><span>Срок продления</span><strong id="renewalPeriod">—</strong></div>
+        <div class="quote-row"><span>Тариф продления</span><strong id="renewalTariff">—</strong></div>
+        <div class="quote-row"><span>Сумма продления</span><strong id="renewalPrice">—</strong></div>
+      </section>
+      <section class="penalty-panel" id="renewalPenaltyPanel" aria-label="Расчёт штрафа">
+        <div><span>Штрафные дни</span><strong id="renewalPenaltyDays">—</strong></div>
+        <div><span>Штрафной тариф</span><strong id="renewalPenaltyRate">—</strong></div>
+        <div><span>Сумма штрафа</span><strong id="renewalPenaltyAmount">—</strong></div>
+      </section>
+      <section class="renewal-total" aria-label="Итого за продление и штраф">
+        <span>Итого к оплате</span>
+        <strong id="renewalTotal">—</strong>
+      </section>
+      <div class="rental-actions">
+        <button class="secondary-button" id="renewalBack" type="button">Назад</button>
+        <button class="primary-button" id="renewalSubmit" type="submit" disabled>Подтвердить продление</button>
+      </div>
+      <p class="dialog-note">Запись выполняется только после подтверждения. Документ будет подключён на этапе шаблонов.</p>
+    </form>
   </dialog>
 
   <dialog class="rental-dialog" id="rentalDialog" aria-labelledby="rentalDialogTitle">

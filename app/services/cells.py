@@ -95,9 +95,11 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
         if start_date is not None and end_date is None:
             raise InvalidStoredDataError("Некорректный срок договора.")
         if start_date is not None:
-            expected_days = (end_date - start_date).days + 1
-            if rent_days != expected_days:
+            if end_date < start_date or rent_days is None or rent_days < 1:
                 raise InvalidStoredDataError("Некорректный срок договора.")
+            total_days = (end_date - start_date).days + 1
+        else:
+            total_days = None
         status = calculate_status(
             end_date=end_date,
             as_of_date=as_of_date,
@@ -115,6 +117,7 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                 "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat() if end_date else None,
                 "rent_days": rent_days,
+                "total_days": total_days,
                 "price_per_day": (
                     int(row["price_per_day_minor"])
                     if row["price_per_day_minor"] is not None

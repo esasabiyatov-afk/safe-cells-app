@@ -23,6 +23,10 @@ const state = {
   activeOccupiedCell: null,
   privateRequestSequence: 0,
   privateVisible: false,
+  activeRenewalQuote: null,
+  renewalOperationId: null,
+  renewalQuoteSequence: 0,
+  renewalSubmitting: false,
 };
 
 const elements = {
@@ -72,6 +76,27 @@ const elements = {
   renewalHistory: document.getElementById("renewalHistory"),
   renewalEmpty: document.getElementById("renewalEmpty"),
   renewalList: document.getElementById("renewalList"),
+  renewAction: document.getElementById("renewAction"),
+  renewalDialog: document.getElementById("renewalDialog"),
+  renewalDialogClose: document.getElementById("renewalDialogClose"),
+  renewalDialogTitle: document.getElementById("renewalDialogTitle"),
+  renewalCellSummary: document.getElementById("renewalCellSummary"),
+  renewalForm: document.getElementById("renewalForm"),
+  renewalOldEnd: document.getElementById("renewalOldEnd"),
+  renewalDate: document.getElementById("renewalDate"),
+  renewalNewStart: document.getElementById("renewalNewStart"),
+  renewalEndDate: document.getElementById("renewalEndDate"),
+  renewalDays: document.getElementById("renewalDays"),
+  renewalError: document.getElementById("renewalError"),
+  renewalPeriod: document.getElementById("renewalPeriod"),
+  renewalTariff: document.getElementById("renewalTariff"),
+  renewalPrice: document.getElementById("renewalPrice"),
+  renewalPenaltyDays: document.getElementById("renewalPenaltyDays"),
+  renewalPenaltyRate: document.getElementById("renewalPenaltyRate"),
+  renewalPenaltyAmount: document.getElementById("renewalPenaltyAmount"),
+  renewalTotal: document.getElementById("renewalTotal"),
+  renewalBack: document.getElementById("renewalBack"),
+  renewalSubmit: document.getElementById("renewalSubmit"),
   rentalDialog: document.getElementById("rentalDialog"),
   rentalDialogClose: document.getElementById("rentalDialogClose"),
   rentalDialogTitle: document.getElementById("rentalDialogTitle"),
@@ -173,6 +198,9 @@ function renderStats() {
 }
 
 function clearDisplayedData() {
+  if (elements.renewalDialog.open) {
+    closeRenewalDialog(false);
+  }
   if (elements.dialog.open) {
     closeCellDialog();
   }
@@ -242,7 +270,7 @@ function renderOccupiedOperationalDetails(cell) {
   elements.dialogSize.textContent = `${cell.width_mm} × ${cell.depth_mm} × ${cell.height_mm} мм`;
   elements.dialogStartDate.textContent = formatDate(cell.start_date);
   elements.dialogEndDate.textContent = formatDate(cell.end_date);
-  elements.dialogRentDays.textContent = `${cell.rent_days} дн.`;
+  elements.dialogRentDays.textContent = `${cell.total_days} дн. (первоначально ${cell.rent_days})`;
   elements.dialogDays.textContent = daysLabel(cell);
   elements.dialogPricePerDay.textContent = `${money(cell.price_per_day)} в день`;
   elements.dialogRentPrice.textContent = money(cell.rent_price);
@@ -403,6 +431,210 @@ function closeCellDialog() {
   hidePrivateDetails();
   state.activeOccupiedCell = null;
   elements.dialog.close();
+}
+
+function resetRenewalQuote() {
+  state.activeRenewalQuote = null;
+  elements.renewalSubmit.disabled = true;
+  elements.renewalNewStart.textContent = "—";
+  elements.renewalPeriod.textContent = "—";
+  elements.renewalTariff.textContent = "—";
+  elements.renewalPrice.textContent = "—";
+  elements.renewalPenaltyDays.textContent = "—";
+  elements.renewalPenaltyRate.textContent = "—";
+  elements.renewalPenaltyAmount.textContent = "—";
+  elements.renewalTotal.textContent = "—";
+}
+
+function showRenewalError(message) {
+  elements.renewalError.textContent = message;
+  elements.renewalError.hidden = false;
+}
+
+function clearRenewalError() {
+  elements.renewalError.textContent = "";
+  elements.renewalError.hidden = true;
+}
+
+function setRenewalSubmitting(submitting) {
+  state.renewalSubmitting = submitting;
+  elements.renewalSubmit.disabled = submitting || !state.activeRenewalQuote;
+  elements.renewalBack.disabled = submitting;
+  elements.renewalDialogClose.disabled = submitting;
+  elements.renewalSubmit.textContent = submitting ? "Сохранение…" : "Подтвердить продление";
+}
+
+async function requestRenewalQuote() {
+  const cell = state.activeOccupiedCell;
+  const days = Number(elements.renewalDays.value);
+  const endDate = elements.renewalEndDate.value || null;
+  const sequence = ++state.renewalQuoteSequence;
+  if (!cell || !Number.isInteger(days) || days < 1) {
+    resetRenewalQuote();
+    showRenewalError("Укажите корректный срок продления.");
+    return;
+  }
+  clearRenewalError();
+  elements.renewalPeriod.textContent = "Расчёт…";
+  try {
+    const response = await fetch(elements.body.dataset.renewalQuoteUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cell_number: cell.number,
+        contract_ref: cell.contract_ref,
+        new_end_date: endDate,
+        renewal_days: days,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось рассчитать продление");
+    }
+    if (sequence !== state.renewalQuoteSequence || !elements.renewalDialog.open) {
+      return;
+    }
+    state.activeRenewalQuote = payload;
+    elements.renewalDate.textContent = formatDate(payload.renewal_date);
+    elements.renewalNewStart.textContent = formatDate(payload.new_start_date);
+    elements.renewalEndDate.value = payload.new_end_date;
+    elements.renewalDays.value = String(payload.renewal_days);
+    elements.renewalPeriod.textContent = `${formatDate(payload.new_start_date)} — ${formatDate(payload.new_end_date)} · ${payload.renewal_days} дн.`;
+    elements.renewalTariff.textContent = `${money(payload.price_per_day)} в день`;
+    elements.renewalPrice.textContent = money(payload.renewal_price);
+    elements.renewalPenaltyDays.textContent = `${payload.penalty_days} дн.`;
+    elements.renewalPenaltyRate.textContent = `${money(payload.penalty_rate)} в день`;
+    elements.renewalPenaltyAmount.textContent = money(payload.penalty_amount);
+    elements.renewalTotal.textContent = money(payload.total_amount);
+    elements.renewalSubmit.disabled = false;
+    clearRenewalError();
+  } catch (error) {
+    if (sequence !== state.renewalQuoteSequence) {
+      return;
+    }
+    resetRenewalQuote();
+    showRenewalError(errorMessage(error, "Не удалось рассчитать продление"));
+  }
+}
+
+let renewalQuoteTimer = null;
+function scheduleRenewalQuote() {
+  window.clearTimeout(renewalQuoteTimer);
+  state.renewalQuoteSequence += 1;
+  resetRenewalQuote();
+  renewalQuoteTimer = window.setTimeout(requestRenewalQuote, 180);
+}
+
+function syncRenewalDaysFromEnd() {
+  const startValue = state.activeRenewalQuote?.new_start_date;
+  const start = parseIsoDateUtc(startValue || "");
+  const end = parseIsoDateUtc(elements.renewalEndDate.value);
+  if (!start || !end || end < start) {
+    elements.renewalDays.value = "";
+    return;
+  }
+  elements.renewalDays.value = String(Math.round((end - start) / 86_400_000) + 1);
+}
+
+function syncRenewalEndFromDays() {
+  const startValue = state.activeRenewalQuote?.new_start_date;
+  const start = parseIsoDateUtc(startValue || "");
+  const days = Number(elements.renewalDays.value);
+  if (!start || !Number.isInteger(days) || days < 1) {
+    elements.renewalEndDate.value = "";
+    return;
+  }
+  const end = new Date(start.getTime());
+  end.setUTCDate(end.getUTCDate() + days - 1);
+  elements.renewalEndDate.value = isoFromUtcDate(end);
+}
+
+function openRenewalDialog() {
+  const cell = state.activeOccupiedCell;
+  if (!cell) {
+    return;
+  }
+  hidePrivateDetails();
+  elements.dialog.close();
+  clearSuccess();
+  state.activeRenewalQuote = null;
+  state.renewalOperationId = createOperationId();
+  elements.renewalDialogTitle.textContent = `Ячейка № ${cell.number}`;
+  elements.renewalCellSummary.textContent = `Высота ${cell.height_mm} мм · договор действует до ${formatDate(cell.end_date)}`;
+  elements.renewalOldEnd.textContent = formatDate(cell.end_date);
+  elements.renewalDate.textContent = formatDate(state.asOfDate);
+  elements.renewalEndDate.value = "";
+  elements.renewalDays.value = "1";
+  clearRenewalError();
+  resetRenewalQuote();
+  setRenewalSubmitting(false);
+  elements.renewalDialog.showModal();
+  scheduleRenewalQuote();
+}
+
+function closeRenewalDialog(returnToCard = true) {
+  if (state.renewalSubmitting) {
+    return;
+  }
+  window.clearTimeout(renewalQuoteTimer);
+  state.renewalQuoteSequence += 1;
+  state.activeRenewalQuote = null;
+  state.renewalOperationId = null;
+  elements.renewalDialog.close();
+  if (returnToCard && state.activeOccupiedCell) {
+    hidePrivateDetails();
+    renderOccupiedOperationalDetails(state.activeOccupiedCell);
+    elements.dialog.showModal();
+  } else if (!returnToCard) {
+    state.activeOccupiedCell = null;
+  }
+}
+
+async function submitRenewal(event) {
+  event.preventDefault();
+  const cell = state.activeOccupiedCell;
+  const quote = state.activeRenewalQuote;
+  if (!cell || !quote || !state.renewalOperationId) {
+    showRenewalError("Расчёт устарел. Выполните его ещё раз.");
+    return;
+  }
+  clearRenewalError();
+  setRenewalSubmitting(true);
+  try {
+    const response = await fetch(elements.body.dataset.renewalUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation_id: state.renewalOperationId,
+        cell_number: cell.number,
+        contract_ref: cell.contract_ref,
+        expected_end_date: cell.end_date,
+        new_end_date: quote.new_end_date,
+        renewal_days: quote.renewal_days,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось сохранить продление");
+    }
+    const cellNumber = payload.cell_number;
+    const warning = payload.warning ? ` ${payload.warning}` : "";
+    state.renewalSubmitting = false;
+    elements.renewalDialog.close();
+    state.activeRenewalQuote = null;
+    state.renewalOperationId = null;
+    state.activeOccupiedCell = null;
+    await refreshCells();
+    const updated = state.cells.find((item) => String(item.number) === String(cellNumber));
+    if (updated && updated.status !== "free") {
+      openCellDialog(updated);
+    }
+    showSuccess(`Аренда ячейки № ${cellNumber} продлена до ${formatDate(payload.new_end_date)}.${warning}`);
+  } catch (error) {
+    showRenewalError(errorMessage(error, "Не удалось сохранить продление"));
+  } finally {
+    setRenewalSubmitting(false);
+  }
 }
 
 function parseIsoDateUtc(value) {
@@ -823,6 +1055,7 @@ elements.refresh.addEventListener("click", refreshCells);
 elements.dialogClose.addEventListener("click", closeCellDialog);
 elements.privateToggle.addEventListener("click", togglePrivateDetails);
 elements.historyToggle.addEventListener("click", toggleRenewalHistory);
+elements.renewAction.addEventListener("click", openRenewalDialog);
 elements.dialog.addEventListener("click", (event) => {
   if (event.target === elements.dialog) {
     closeCellDialog();
@@ -831,6 +1064,26 @@ elements.dialog.addEventListener("click", (event) => {
 elements.dialog.addEventListener("cancel", (event) => {
   event.preventDefault();
   closeCellDialog();
+});
+elements.renewalEndDate.addEventListener("input", () => {
+  syncRenewalDaysFromEnd();
+  scheduleRenewalQuote();
+});
+elements.renewalDays.addEventListener("input", () => {
+  syncRenewalEndFromDays();
+  scheduleRenewalQuote();
+});
+elements.renewalForm.addEventListener("submit", submitRenewal);
+elements.renewalBack.addEventListener("click", () => closeRenewalDialog(true));
+elements.renewalDialogClose.addEventListener("click", () => closeRenewalDialog(true));
+elements.renewalDialog.addEventListener("click", (event) => {
+  if (event.target === elements.renewalDialog) {
+    closeRenewalDialog(true);
+  }
+});
+elements.renewalDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeRenewalDialog(true);
 });
 elements.rentalStartDate.addEventListener("input", () => {
   if (elements.rentalDays.value) {

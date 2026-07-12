@@ -13,6 +13,7 @@ from app.routes import (
     contracts_blueprint,
     main_blueprint,
     rental_blueprint,
+    renewals_blueprint,
     system_blueprint,
 )
 from app.services.employee import get_employee_username
@@ -37,6 +38,7 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(cells_blueprint)
     app.register_blueprint(contracts_blueprint)
     app.register_blueprint(rental_blueprint)
+    app.register_blueprint(renewals_blueprint)
     app.register_blueprint(system_blueprint)
 
     @app.after_request

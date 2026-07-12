@@ -34,6 +34,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-rental-url="/api/rental/calculate"' in html
     assert 'data-contract-url="/api/contracts"' in html
     assert 'data-private-url="/api/contracts/private"' in html
+    assert 'data-renewal-quote-url="/api/renewals/calculate"' in html
+    assert 'data-renewal-url="/api/renewals"' in html
     assert 'data-private-token="' in html
     assert 'id="rentalContinue"' in html
     assert (
@@ -43,7 +45,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Сумма аренды" in html
     assert "Залог отдельно" in html
     assert "Не входит в сумму аренды" in html
-    assert "Итого к оплате" not in html
+    assert 'id="renewAction" type="button">Продлить' in html
+    assert 'id="renewalDialog"' in html
+    assert 'id="renewalSubmit" type="submit" disabled' in html
+    assert "Штрафные дни" in html
     assert 'id="contractForm"' in html
     assert 'name="client_full_name"' in html
     assert 'name="id_card_number"' in html
