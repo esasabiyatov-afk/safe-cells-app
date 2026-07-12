@@ -142,13 +142,13 @@
     <button class="dialog-close" id="dialogClose" type="button" aria-label="Закрыть карточку">×</button>
     <p class="section-kicker">Карточка занятой ячейки</p>
     <div class="occupied-card-heading">
-      <h2 id="dialogTitle">—</h2>
+      <div><h2 id="dialogTitle">—</h2><p class="dialog-dimensions" id="dialogSize">—</p></div>
       <span class="status-badge" id="dialogStatus">—</span>
     </div>
     <dl class="cell-details operational-details">
       <div>
-        <dt>Размер</dt>
-        <dd id="dialogSize">—</dd>
+        <dt>Клиент</dt>
+        <dd id="dialogClient">—</dd>
       </div>
       <div>
         <dt>Начало аренды</dt>
@@ -166,20 +166,7 @@
         <dt>До окончания / просрочка</dt>
         <dd id="dialogDays">—</dd>
       </div>
-      <div>
-        <dt>Первоначальный тариф</dt>
-        <dd id="dialogPricePerDay">—</dd>
-      </div>
-      <div class="operational-total">
-        <dt>Первоначальная аренда</dt>
-        <dd id="dialogRentPrice">—</dd>
-      </div>
     </dl>
-    <div class="card-deposit">
-      <span>Залог отдельно</span>
-      <strong id="dialogDeposit">—</strong>
-    </div>
-    <p class="penalty-note"><strong>Штраф:</strong> рассчитывается при продлении или закрытии договора.</p>
 
     <section class="private-card-section" aria-labelledby="privateSectionTitle">
       <div class="private-card-heading">
@@ -192,10 +179,8 @@
       <div class="calculation-error" id="privateError" role="alert" hidden></div>
       <dl class="private-details" id="privateDetails" hidden>
         <div><dt>ФИО клиента</dt><dd id="privateClientName"></dd></div>
-        <div><dt>Номер договора</dt><dd id="privateContractNumber"></dd></div>
         <div><dt>Серия и номер ID-карты</dt><dd id="privateIdCardNumber"></dd></div>
         <div><dt>Орган выдачи</dt><dd id="privateIdCardIssuer"></dd></div>
-        <div><dt>Дата выдачи ID-карты</dt><dd id="privateIdCardIssueDate"></dd></div>
         <div><dt>Дата окончания ID-карты</dt><dd id="privateIdCardExpiryDate"></dd></div>
         <div><dt>Номер счёта из АБС</dt><dd id="privateAccountNumber"></dd></div>
         <div><dt>Дата оформления договора</dt><dd id="privateCreatedAt"></dd></div>
@@ -236,9 +221,8 @@
         <div><span>Дата закрытия</span><strong id="closureDate">—</strong></div>
         <div><span>Вид закрытия</span><strong id="closureKind">—</strong></div>
         <div><span>Неиспользованные дни</span><strong id="closureUnusedDays">—</strong></div>
-        <div><span>Штрафные дни</span><strong id="closurePenaltyDays">—</strong></div>
-        <div><span>Штрафной тариф</span><strong id="closurePenaltyRate">—</strong></div>
-        <div class="closure-emphasis"><span>Сумма штрафа</span><strong id="closurePenaltyAmount">—</strong></div>
+        <div class="closure-penalty-row"><span>Штрафные дни</span><strong id="closurePenaltyDays">—</strong></div>
+        <div class="closure-emphasis closure-penalty-row"><span>Сумма штрафа</span><strong id="closurePenaltyAmount">—</strong></div>
       </section>
       <section class="deposit-panel closure-deposit" aria-label="Возврат залога">
         <div><span id="closureDepositLabel">Залог к возврату</span><small id="closureDepositNote">При обычном закрытии</small></div>
@@ -286,7 +270,6 @@
       </section>
       <section class="penalty-panel" id="renewalPenaltyPanel" aria-label="Расчёт штрафа">
         <div><span>Штрафные дни</span><strong id="renewalPenaltyDays">—</strong></div>
-        <div><span>Штрафной тариф</span><strong id="renewalPenaltyRate">—</strong></div>
         <div><span>Сумма штрафа</span><strong id="renewalPenaltyAmount">—</strong></div>
       </section>
       <section class="renewal-total" aria-label="Итого за продление и штраф">
@@ -375,10 +358,6 @@
           <input id="clientFullName" name="client_full_name" type="text" maxlength="200" required autocomplete="off">
         </label>
         <label class="contract-field">
-          <span>Номер договора *</span>
-          <input id="contractNumber" name="contract_number" type="text" maxlength="100" required autocomplete="off">
-        </label>
-        <label class="contract-field">
           <span>Номер счёта из АБС *</span>
           <input id="accountNumber" name="account_number" type="text" maxlength="100" required autocomplete="off">
         </label>
@@ -389,10 +368,6 @@
         <label class="contract-field contract-field--wide">
           <span>Орган выдачи *</span>
           <input id="idCardIssuer" name="id_card_issuer" type="text" maxlength="200" required autocomplete="off">
-        </label>
-        <label class="contract-field">
-          <span>Дата выдачи ID-карты</span>
-          <input id="idCardIssueDate" name="id_card_issue_date" type="date">
         </label>
         <label class="contract-field">
           <span>Дата окончания ID-карты *</span>

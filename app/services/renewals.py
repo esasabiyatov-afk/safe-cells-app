@@ -60,7 +60,6 @@ class RenewalWriteUncertainError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class RenewalQuote:
     contract_ref: str
-    contract_number: str
     cell_number: str
     height_mm: int
     old_end_date: str
@@ -85,7 +84,6 @@ class RenewalQuote:
 class RenewalResult:
     renewal_id: str
     contract_ref: str
-    contract_number: str
     cell_number: str
     old_end_date: str
     renewal_date: str
@@ -230,7 +228,7 @@ def calculate_renewal_quote_in_connection(
     )
     row = connection.execute(
         """
-        SELECT contracts.contract_id, contracts.contract_number,
+        SELECT contracts.contract_id,
                contracts.cell_number, contracts.end_date, cells.height_mm
         FROM contracts
         JOIN cells ON cells.number = contracts.cell_number
@@ -263,7 +261,6 @@ def calculate_renewal_quote_in_connection(
     penalty_amount = penalty_days * penalty_rate
     return RenewalQuote(
         contract_ref=str(row["contract_id"]),
-        contract_number=str(row["contract_number"]),
         cell_number=str(row["cell_number"]),
         height_mm=height_mm,
         old_end_date=old_end.isoformat(),
@@ -320,7 +317,6 @@ def _result_from_row(
     return RenewalResult(
         renewal_id=str(row["renewal_id"]),
         contract_ref=str(row["contract_id"]),
-        contract_number=str(row["contract_number"]),
         cell_number=str(row["cell_number"]),
         old_end_date=str(row["old_end_date"]),
         renewal_date=str(row["renewal_date"]),
@@ -463,16 +459,16 @@ def renew_contract(
             connection.execute(
                 """
                 INSERT INTO archive.renewals(
-                    renewal_id, contract_id, contract_number, cell_number,
+                    renewal_id, contract_id, cell_number,
                     old_end_date, renewal_date, new_start_date, new_end_date,
                     renewal_days, price_per_day_minor, renewal_price_minor,
                     penalty_days, penalty_rate_minor, penalty_amount_minor,
                     created_at, created_by, operation_id
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    renewal_id, quote.contract_ref, quote.contract_number,
-                    quote.cell_number, quote.old_end_date, quote.renewal_date,
+                    renewal_id, quote.contract_ref, quote.cell_number,
+                    quote.old_end_date, quote.renewal_date,
                     quote.new_start_date, quote.new_end_date, quote.renewal_days,
                     quote.price_per_day, quote.renewal_price, quote.penalty_days,
                     quote.penalty_rate, quote.penalty_amount, timestamp,

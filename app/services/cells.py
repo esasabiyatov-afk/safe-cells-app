@@ -49,8 +49,18 @@ def _expiring_threshold(connection: sqlite3.Connection) -> int:
     return value
 
 
+def client_display_name(full_name: str | None) -> str | None:
+    if not full_name:
+        return None
+    parts = full_name.split()
+    if not parts:
+        return None
+    initials = " ".join(f"{part[0].upper()}." for part in parts[1:3] if part)
+    return f"{parts[0]} {initials}".strip()
+
+
 def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
-    """Return only operational, non-personal fields for every cell."""
+    """Return operational fields plus the explicitly approved abbreviated name."""
 
     try:
         paths = validate_database_pair(settings)
@@ -69,9 +79,7 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                     contracts.start_date,
                     contracts.end_date,
                     contracts.rent_days,
-                    contracts.price_per_day_minor,
-                    contracts.rent_price_minor,
-                    contracts.deposit_amount_minor
+                    contracts.client_full_name
                 FROM cells
                 CROSS JOIN vault_defaults
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
@@ -122,21 +130,7 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                 "end_date": end_date.isoformat() if end_date else None,
                 "rent_days": rent_days,
                 "total_days": total_days,
-                "price_per_day": (
-                    int(row["price_per_day_minor"])
-                    if row["price_per_day_minor"] is not None
-                    else None
-                ),
-                "rent_price": (
-                    int(row["rent_price_minor"])
-                    if row["rent_price_minor"] is not None
-                    else None
-                ),
-                "deposit_amount": (
-                    int(row["deposit_amount_minor"])
-                    if row["deposit_amount_minor"] is not None
-                    else None
-                ),
+                "client_display_name": client_display_name(row["client_full_name"]),
                 "days_remaining": status.days_remaining,
             }
         )

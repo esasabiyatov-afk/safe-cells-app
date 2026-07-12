@@ -412,15 +412,15 @@ main {
 
 .vault-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
 }
 
 .cell {
   --cell-accent: var(--line-dark);
   position: relative;
-  min-height: 78px;
-  padding: 9px 6px;
+  min-height: 88px;
+  padding: 10px 8px 20px;
   border: 2px solid var(--cell-accent);
   border-radius: 4px;
   color: var(--ink);
@@ -460,12 +460,30 @@ main {
 }
 
 .cell-height {
-  display: block;
-  margin-top: 5px;
+  position: absolute;
+  right: 7px;
+  bottom: 5px;
   color: #3f4b57;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.03em;
+}
+
+.cell-client {
+  display: block;
+  min-height: 30px;
+  margin-top: 7px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.dialog-dimensions {
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .empty-state {
@@ -1261,7 +1279,7 @@ main {
   }
 
   .vault-grid {
-    grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   }
 
   .page-footer {

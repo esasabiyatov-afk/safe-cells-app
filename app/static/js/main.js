@@ -57,21 +57,17 @@ const elements = {
   dialogTitle: document.getElementById("dialogTitle"),
   dialogStatus: document.getElementById("dialogStatus"),
   dialogSize: document.getElementById("dialogSize"),
+  dialogClient: document.getElementById("dialogClient"),
   dialogStartDate: document.getElementById("dialogStartDate"),
   dialogEndDate: document.getElementById("dialogEndDate"),
   dialogRentDays: document.getElementById("dialogRentDays"),
   dialogDays: document.getElementById("dialogDays"),
-  dialogPricePerDay: document.getElementById("dialogPricePerDay"),
-  dialogRentPrice: document.getElementById("dialogRentPrice"),
-  dialogDeposit: document.getElementById("dialogDeposit"),
   privateToggle: document.getElementById("privateToggle"),
   privateError: document.getElementById("privateError"),
   privateDetails: document.getElementById("privateDetails"),
   privateClientName: document.getElementById("privateClientName"),
-  privateContractNumber: document.getElementById("privateContractNumber"),
   privateIdCardNumber: document.getElementById("privateIdCardNumber"),
   privateIdCardIssuer: document.getElementById("privateIdCardIssuer"),
-  privateIdCardIssueDate: document.getElementById("privateIdCardIssueDate"),
   privateIdCardExpiryDate: document.getElementById("privateIdCardExpiryDate"),
   privateAccountNumber: document.getElementById("privateAccountNumber"),
   privateCreatedAt: document.getElementById("privateCreatedAt"),
@@ -96,7 +92,7 @@ const elements = {
   renewalTariff: document.getElementById("renewalTariff"),
   renewalPrice: document.getElementById("renewalPrice"),
   renewalPenaltyDays: document.getElementById("renewalPenaltyDays"),
-  renewalPenaltyRate: document.getElementById("renewalPenaltyRate"),
+  renewalPenaltyPanel: document.getElementById("renewalPenaltyPanel"),
   renewalPenaltyAmount: document.getElementById("renewalPenaltyAmount"),
   renewalTotal: document.getElementById("renewalTotal"),
   renewalBack: document.getElementById("renewalBack"),
@@ -113,7 +109,6 @@ const elements = {
   closureKind: document.getElementById("closureKind"),
   closureUnusedDays: document.getElementById("closureUnusedDays"),
   closurePenaltyDays: document.getElementById("closurePenaltyDays"),
-  closurePenaltyRate: document.getElementById("closurePenaltyRate"),
   closurePenaltyAmount: document.getElementById("closurePenaltyAmount"),
   closureDepositLabel: document.getElementById("closureDepositLabel"),
   closureDepositNote: document.getElementById("closureDepositNote"),
@@ -144,11 +139,9 @@ const elements = {
   contractForm: document.getElementById("contractForm"),
   contractError: document.getElementById("contractError"),
   clientFullName: document.getElementById("clientFullName"),
-  contractNumber: document.getElementById("contractNumber"),
   accountNumber: document.getElementById("accountNumber"),
   idCardNumber: document.getElementById("idCardNumber"),
   idCardIssuer: document.getElementById("idCardIssuer"),
-  idCardIssueDate: document.getElementById("idCardIssueDate"),
   idCardExpiryDate: document.getElementById("idCardExpiryDate"),
   contractBack: document.getElementById("contractBack"),
   contractSubmit: document.getElementById("contractSubmit"),
@@ -293,14 +286,12 @@ function renderOccupiedOperationalDetails(cell) {
   elements.dialogTitle.textContent = `Ячейка № ${cell.number}`;
   elements.dialogStatus.textContent = STATUS_LABELS[cell.status];
   elements.dialogStatus.className = `status-badge ${cell.status}`;
-  elements.dialogSize.textContent = `${cell.width_mm} × ${cell.depth_mm} × ${cell.height_mm} мм`;
+  elements.dialogSize.textContent = `${cell.height_mm}×${cell.width_mm}×${cell.depth_mm}`;
+  elements.dialogClient.textContent = cell.client_display_name || "—";
   elements.dialogStartDate.textContent = formatDate(cell.start_date);
   elements.dialogEndDate.textContent = formatDate(cell.end_date);
   elements.dialogRentDays.textContent = `${cell.total_days} дн. (первоначально ${cell.rent_days})`;
   elements.dialogDays.textContent = daysLabel(cell);
-  elements.dialogPricePerDay.textContent = `${money(cell.price_per_day)} в день`;
-  elements.dialogRentPrice.textContent = money(cell.rent_price);
-  elements.dialogDeposit.textContent = money(cell.deposit_amount);
 }
 
 function openCellDialog(cell) {
@@ -333,10 +324,8 @@ function formatDateTime(value) {
 
 function clearPrivateValues() {
   elements.privateClientName.textContent = "";
-  elements.privateContractNumber.textContent = "";
   elements.privateIdCardNumber.textContent = "";
   elements.privateIdCardIssuer.textContent = "";
-  elements.privateIdCardIssueDate.textContent = "";
   elements.privateIdCardExpiryDate.textContent = "";
   elements.privateAccountNumber.textContent = "";
   elements.privateCreatedAt.textContent = "";
@@ -414,10 +403,8 @@ async function togglePrivateDetails() {
       return;
     }
     elements.privateClientName.textContent = payload.client_full_name;
-    elements.privateContractNumber.textContent = payload.contract_number;
     elements.privateIdCardNumber.textContent = payload.id_card_number;
     elements.privateIdCardIssuer.textContent = payload.id_card_issuer;
-    elements.privateIdCardIssueDate.textContent = formatDate(payload.id_card_issue_date);
     elements.privateIdCardExpiryDate.textContent = formatDate(payload.id_card_expiry_date);
     elements.privateAccountNumber.textContent = payload.account_number;
     elements.privateCreatedAt.textContent = formatDateTime(payload.created_at);
@@ -472,7 +459,6 @@ function resetClosureQuote() {
   elements.closureKind.textContent = "—";
   elements.closureUnusedDays.textContent = "—";
   elements.closurePenaltyDays.textContent = "—";
-  elements.closurePenaltyRate.textContent = "—";
   elements.closurePenaltyAmount.textContent = "—";
   elements.closureDepositRefund.textContent = "—";
 }
@@ -527,8 +513,10 @@ async function requestClosureQuote() {
     elements.closureKind.textContent = CLOSURE_KIND_LABELS[payload.close_kind];
     elements.closureUnusedDays.textContent = `${payload.unused_days} дн.`;
     elements.closurePenaltyDays.textContent = `${payload.penalty_days} дн.`;
-    elements.closurePenaltyRate.textContent = `${money(payload.penalty_rate)} в день`;
     elements.closurePenaltyAmount.textContent = money(payload.penalty_amount);
+    for (const row of document.querySelectorAll(".closure-penalty-row")) {
+      row.hidden = payload.penalty_days === 0;
+    }
     elements.closureDepositRefund.textContent = money(payload.deposit_refund);
     if (elements.closureReason.value === "lost_key") {
       elements.closureDepositLabel.textContent = "Залог не возвращается";
@@ -632,7 +620,6 @@ function resetRenewalQuote() {
   elements.renewalTariff.textContent = "—";
   elements.renewalPrice.textContent = "—";
   elements.renewalPenaltyDays.textContent = "—";
-  elements.renewalPenaltyRate.textContent = "—";
   elements.renewalPenaltyAmount.textContent = "—";
   elements.renewalTotal.textContent = "—";
 }
@@ -694,8 +681,8 @@ async function requestRenewalQuote() {
     elements.renewalTariff.textContent = `${money(payload.price_per_day)} в день`;
     elements.renewalPrice.textContent = money(payload.renewal_price);
     elements.renewalPenaltyDays.textContent = `${payload.penalty_days} дн.`;
-    elements.renewalPenaltyRate.textContent = `${money(payload.penalty_rate)} в день`;
     elements.renewalPenaltyAmount.textContent = money(payload.penalty_amount);
+    elements.renewalPenaltyPanel.hidden = payload.penalty_days === 0;
     elements.renewalTotal.textContent = money(payload.total_amount);
     elements.renewalSubmit.disabled = false;
     clearRenewalError();
@@ -1079,11 +1066,9 @@ async function submitContract(event) {
       body: JSON.stringify({
         operation_id: state.activeOperationId,
         cell_number: cell.number,
-        contract_number: elements.contractNumber.value,
         client_full_name: elements.clientFullName.value,
         id_card_number: elements.idCardNumber.value,
         id_card_issuer: elements.idCardIssuer.value,
-        id_card_issue_date: elements.idCardIssueDate.value || null,
         id_card_expiry_date: elements.idCardExpiryDate.value,
         account_number: elements.accountNumber.value,
         start_date: quote.start_date,
@@ -1126,9 +1111,13 @@ function createCellButton(cell) {
 
   const height = document.createElement("span");
   height.className = "cell-height";
-  height.textContent = `${cell.height_mm} мм`;
+  height.textContent = String(cell.height_mm);
 
-  button.append(number, height);
+  const client = document.createElement("span");
+  client.className = "cell-client";
+  client.textContent = cell.client_display_name || "";
+
+  button.append(number, client, height);
   button.addEventListener("click", () => openCellDialog(cell));
   return button;
 }

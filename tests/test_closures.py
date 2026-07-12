@@ -102,11 +102,11 @@ def test_close_atomically_archives_audits_deletes_active_and_preserves_renewals(
         con.execute("BEGIN IMMEDIATE")
         con.execute(
             """INSERT INTO archive.renewals(
-                renewal_id,contract_id,contract_number,cell_number,old_end_date,
+                renewal_id,contract_id,cell_number,old_end_date,
                 renewal_date,new_start_date,new_end_date,renewal_days,
                 price_per_day_minor,renewal_price_minor,penalty_days,
                 penalty_rate_minor,penalty_amount_minor,created_at,created_by,operation_id
-            ) VALUES('r1','contract-test-1','TEST-1','1','2026-07-01','2026-07-02',
+            ) VALUES('r1','contract-test-1','1','2026-07-01','2026-07-02',
                      '2026-07-02','2026-07-12',11,15,165,0,15,0,
                      '2026-07-02T09:00:00+06:00','test','renew-op')"""
         )

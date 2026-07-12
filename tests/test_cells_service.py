@@ -19,7 +19,7 @@ from app.services.cells import (
 AS_OF = date(2026, 7, 1)
 
 
-def test_list_cells_returns_only_non_personal_fields(
+def test_list_cells_returns_only_approved_client_display_name(
     settings: Settings,
     insert_test_contract: Callable[..., None],
 ) -> None:
@@ -45,20 +45,16 @@ def test_list_cells_returns_only_non_personal_fields(
         "end_date",
         "rent_days",
         "total_days",
-        "price_per_day",
-        "rent_price",
-        "deposit_amount",
+        "client_display_name",
         "days_remaining",
     }
     assert cell["start_date"] == "2026-07-01"
     assert cell["contract_ref"] == "contract-test-1"
     assert cell["rent_days"] == 1
     assert cell["total_days"] == 9
-    assert cell["price_per_day"] == 15
-    assert cell["rent_price"] == 15
-    assert cell["deposit_amount"] == 0
+    assert cell["client_display_name"] == "Секретный Т. К."
     serialized = repr(payload)
-    assert "Секретный" not in serialized
+    assert "Секретный Тестовый" not in serialized
     assert "PRIVATE-TEST-ACCOUNT" not in serialized
 
 

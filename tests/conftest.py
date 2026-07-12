@@ -48,7 +48,6 @@ def insert_test_contract(
         effective_start_date = start_date or end_date
         values = (
             identifier,
-            f"TEST-{cell_number}",
             cell_number,
             client_name,
             f"TEST-ID-{cell_number}",
@@ -71,12 +70,12 @@ def insert_test_contract(
             connection.execute(
                 """
                 INSERT INTO contracts(
-                    contract_id, contract_number, cell_number, client_full_name,
+                    contract_id, cell_number, client_full_name,
                     id_card_number, id_card_issuer, id_card_expiry_date,
                     account_number, start_date, end_date, rent_days,
                     price_per_day_minor, rent_price_minor, deposit_amount_minor,
                     created_at, created_by, updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )

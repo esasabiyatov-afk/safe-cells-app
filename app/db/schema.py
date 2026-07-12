@@ -19,7 +19,7 @@ from app.db.connections import (
 from app.db.seed import load_cell_seed, seed_working_database
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class DatabaseInitializationError(RuntimeError):
@@ -83,12 +83,10 @@ WORKING_SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS main.contracts(
         contract_id TEXT PRIMARY KEY,
-        contract_number TEXT NOT NULL CHECK(length(trim(contract_number)) > 0),
         cell_number TEXT NOT NULL UNIQUE REFERENCES cells(number),
         client_full_name TEXT NOT NULL CHECK(length(trim(client_full_name)) > 0),
         id_card_number TEXT NOT NULL CHECK(length(trim(id_card_number)) > 0),
         id_card_issuer TEXT NOT NULL CHECK(length(trim(id_card_issuer)) > 0),
-        id_card_issue_date TEXT,
         id_card_expiry_date TEXT NOT NULL,
         account_number TEXT NOT NULL CHECK(length(trim(account_number)) > 0),
         extra_fields_json TEXT NOT NULL DEFAULT '{}',
@@ -106,7 +104,6 @@ WORKING_SCHEMA: tuple[str, ...] = (
         updated_by TEXT NOT NULL
     )
     """,
-    "CREATE INDEX IF NOT EXISTS main.idx_contracts_number ON contracts(contract_number)",
     """
     CREATE TABLE IF NOT EXISTS main.admin_credentials(
         id INTEGER PRIMARY KEY CHECK(id = 1),
@@ -140,12 +137,10 @@ ARCHIVE_SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS archive.contracts_archive(
         contract_id TEXT PRIMARY KEY,
-        contract_number TEXT NOT NULL,
         cell_number TEXT NOT NULL,
         client_full_name TEXT NOT NULL,
         id_card_number TEXT NOT NULL,
         id_card_issuer TEXT NOT NULL,
-        id_card_issue_date TEXT,
         id_card_expiry_date TEXT NOT NULL,
         account_number TEXT NOT NULL,
         extra_fields_json TEXT NOT NULL,
@@ -176,7 +171,6 @@ ARCHIVE_SCHEMA: tuple[str, ...] = (
     CREATE TABLE IF NOT EXISTS archive.renewals(
         renewal_id TEXT PRIMARY KEY,
         contract_id TEXT NOT NULL,
-        contract_number TEXT NOT NULL,
         cell_number TEXT NOT NULL,
         old_end_date TEXT NOT NULL,
         renewal_date TEXT NOT NULL,

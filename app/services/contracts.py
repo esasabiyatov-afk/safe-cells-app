@@ -64,11 +64,9 @@ class ContractWriteUncertainError(RuntimeError):
 class ContractData:
     operation_id: str
     cell_number: str
-    contract_number: str
     client_full_name: str
     id_card_number: str
     id_card_issuer: str
-    id_card_issue_date: str | None
     id_card_expiry_date: str
     account_number: str
     start_date: str
@@ -79,7 +77,6 @@ class ContractData:
 @dataclass(frozen=True, slots=True)
 class ContractCreationResult:
     contract_id: str
-    contract_number: str
     cell_number: str
     start_date: str
     end_date: str
@@ -159,9 +156,6 @@ def validate_contract_payload(payload: object) -> ContractData:
         cell_number=_required_text(
             payload.get("cell_number"), label="Номер ячейки", maximum=50
         ),
-        contract_number=_required_text(
-            payload.get("contract_number"), label="Номер договора", maximum=100
-        ),
         client_full_name=_required_text(
             payload.get("client_full_name"),
             label="ФИО клиента",
@@ -173,9 +167,6 @@ def validate_contract_payload(payload: object) -> ContractData:
         ),
         id_card_issuer=_required_text(
             payload.get("id_card_issuer"), label="Орган выдачи", maximum=200
-        ),
-        id_card_issue_date=_optional_date(
-            payload.get("id_card_issue_date"), label="дату выдачи ID-карты"
         ),
         id_card_expiry_date=expiry_date,
         account_number=_required_text(
@@ -196,7 +187,6 @@ def _result_from_row(
 ) -> ContractCreationResult:
     return ContractCreationResult(
         contract_id=str(row["contract_id"]),
-        contract_number=str(row["contract_number"]),
         cell_number=str(row["cell_number"]),
         start_date=str(row["start_date"]),
         end_date=str(row["end_date"]),
@@ -329,22 +319,20 @@ def create_contract(
             connection.execute(
                 """
                 INSERT INTO contracts(
-                    contract_id, contract_number, cell_number, client_full_name,
-                    id_card_number, id_card_issuer, id_card_issue_date,
+                    contract_id, cell_number, client_full_name,
+                    id_card_number, id_card_issuer,
                     id_card_expiry_date, account_number, extra_fields_json,
                     start_date, end_date, rent_days, price_per_day_minor,
                     rent_price_minor, deposit_amount_minor, created_at, created_by,
                     updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     contract_id,
-                    data.contract_number,
                     quote.cell_number,
                     data.client_full_name,
                     data.id_card_number,
                     data.id_card_issuer,
-                    data.id_card_issue_date,
                     data.id_card_expiry_date,
                     data.account_number,
                     quote.start_date,

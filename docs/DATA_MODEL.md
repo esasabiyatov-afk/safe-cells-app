@@ -62,13 +62,13 @@
 
 | Группа | Поля и основные правила |
 |---|---|
-| Идентификаторы | `contract_id TEXT PRIMARY KEY` (UUID), `contract_number TEXT NOT NULL`, `cell_number TEXT NOT NULL UNIQUE REFERENCES cells(number)`. |
-| Клиент | `client_full_name`, `id_card_number`, `id_card_issuer`, `id_card_expiry_date`, `account_number` — обязательны; `id_card_issue_date` и `extra_fields_json` — только если нужны утверждённому шаблону. |
+| Идентификаторы | `contract_id TEXT PRIMARY KEY` (UUID), `cell_number TEXT NOT NULL UNIQUE REFERENCES cells(number)`. |
+| Клиент | `client_full_name`, `id_card_number`, `id_card_issuer`, `id_card_expiry_date`, `account_number` — обязательны; `extra_fields_json` зарезервирован для утверждённых дополнительных реквизитов шаблона. |
 | Срок | `start_date`, `end_date` ISO-даты; `rent_days INTEGER >= 1`; backend проверяет включительную формулу. |
 | Деньги | `price_per_day_minor`, `rent_price_minor`, `deposit_amount_minor` — целые неотрицательные значения; сохраняются фактические значения на момент сделки. |
 | Аудит | `created_at`, `created_by`, `updated_at`, `updated_by`; обязательны. |
 
-`contract_number` индексируется для поиска. Глобальная уникальность банковского номера между активом и архивом не предполагается без отдельного требования; внутренний UUID всегда уникален.
+Номер договора и дата выдачи ID-карты не хранятся: владелец требований признал их излишними. Внутренний UUID договора всегда уникален.
 
 ### `admin_credentials`
 
@@ -122,7 +122,7 @@
 | Поле | Правило |
 |---|---|
 | `renewal_id` | UUID, `PRIMARY KEY`. |
-| `contract_id`, `contract_number`, `cell_number` | Снимок идентификаторов договора. |
+| `contract_id`, `cell_number` | Снимок идентификаторов договора. |
 | `old_end_date`, `renewal_date`, `new_start_date`, `new_end_date` | ISO-даты. |
 | `renewal_days` | Включительная длительность, не меньше 1. |
 | `price_per_day_minor`, `renewal_price_minor` | Фактическая стоимость. |

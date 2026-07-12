@@ -22,17 +22,16 @@ def _insert_renewal(settings: Settings, *, contract_id: str = "contract-test-1")
         connection.execute(
             """
             INSERT INTO archive.renewals(
-                renewal_id, contract_id, contract_number, cell_number,
+                renewal_id, contract_id, cell_number,
                 old_end_date, renewal_date, new_start_date, new_end_date,
                 renewal_days, price_per_day_minor, renewal_price_minor,
                 penalty_days, penalty_rate_minor, penalty_amount_minor,
                 created_at, created_by, operation_id
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "renewal-test-1",
                 contract_id,
-                "TEST-1",
                 "1",
                 "2026-07-09",
                 "2026-07-08",
@@ -72,10 +71,8 @@ def test_private_details_are_read_only_and_include_hidden_history(
     assert details.client_full_name == "Секретный Тестовый Клиент"
     assert details.id_card_number == "TEST-ID-1"
     assert details.id_card_issuer == "Тестовый орган"
-    assert details.id_card_issue_date is None
     assert details.id_card_expiry_date == "2030-12-31"
     assert details.account_number == "PRIVATE-TEST-ACCOUNT"
-    assert details.contract_number == "TEST-1"
     assert details.created_at == "2026-07-01T09:00:00+06:00"
     assert len(details.renewals) == 1
     assert details.renewals[0].renewal_price == 450

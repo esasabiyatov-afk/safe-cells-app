@@ -64,7 +64,6 @@ class ClosureWriteUncertainError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class ClosureQuote:
     contract_ref: str
-    contract_number: str
     cell_number: str
     height_mm: int
     end_date: str
@@ -86,7 +85,6 @@ class ClosureQuote:
 @dataclass(frozen=True, slots=True)
 class ClosureResult:
     contract_ref: str
-    contract_number: str
     cell_number: str
     close_date: str
     close_kind: str
@@ -208,7 +206,6 @@ def calculate_closure_quote_in_connection(
         deposit_refund = deposit
     quote = ClosureQuote(
         contract_ref=str(row["contract_id"]),
-        contract_number=str(row["contract_number"]),
         cell_number=str(row["cell_number"]),
         height_mm=int(row["height_mm"]),
         end_date=end.isoformat(),
@@ -259,7 +256,6 @@ def _result_from_row(
 ) -> ClosureResult:
     return ClosureResult(
         contract_ref=str(row["contract_id"]),
-        contract_number=str(row["contract_number"]),
         cell_number=str(row["cell_number"]),
         close_date=str(row["close_date"]),
         close_kind=str(row["close_kind"]),
@@ -384,20 +380,20 @@ def close_contract(
             connection.execute(
                 """
                 INSERT INTO archive.contracts_archive(
-                    contract_id, contract_number, cell_number, client_full_name,
-                    id_card_number, id_card_issuer, id_card_issue_date,
+                    contract_id, cell_number, client_full_name,
+                    id_card_number, id_card_issuer,
                     id_card_expiry_date, account_number, extra_fields_json,
                     start_date, end_date, rent_days, price_per_day_minor,
                     rent_price_minor, deposit_amount_minor, created_at, created_by,
                     updated_at, updated_by, closed_at, close_date, close_reason,
                     close_kind, unused_days, penalty_days, penalty_rate_minor,
                     penalty_amount_minor, deposit_refund_minor, closed_by, operation_id
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 tuple(contract[key] for key in (
-                    "contract_id", "contract_number", "cell_number", "client_full_name",
-                    "id_card_number", "id_card_issuer", "id_card_issue_date",
+                    "contract_id", "cell_number", "client_full_name",
+                    "id_card_number", "id_card_issuer",
                     "id_card_expiry_date", "account_number", "extra_fields_json",
                     "start_date", "end_date", "rent_days", "price_per_day_minor",
                     "rent_price_minor", "deposit_amount_minor", "created_at", "created_by",

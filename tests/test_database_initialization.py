@@ -204,16 +204,15 @@ def test_database_unique_constraint_blocks_two_active_contracts(
 ) -> None:
     insert_sql = """
         INSERT INTO contracts(
-            contract_id, contract_number, cell_number, client_full_name,
+            contract_id, cell_number, client_full_name,
             id_card_number, id_card_issuer, id_card_expiry_date,
             account_number, start_date, end_date, rent_days,
             price_per_day_minor, rent_price_minor, deposit_amount_minor,
             created_at, created_by, updated_at, updated_by
-        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     first = (
         "contract-test-1",
-        "TEST-001",
         "1",
         "Тестовый Клиент Один",
         "TEST-ID-001",
@@ -233,7 +232,6 @@ def test_database_unique_constraint_blocks_two_active_contracts(
     )
     second = list(first)
     second[0] = "contract-test-2"
-    second[1] = "TEST-002"
 
     with open_write(settings) as connection:
         connection.execute("BEGIN IMMEDIATE")
@@ -350,7 +348,7 @@ def test_incompatible_schema_version_is_rejected_without_change(
 ) -> None:
     paths = DatabasePaths.from_settings(settings)
     with _connect_writable(paths.working) as connection:
-        connection.execute("UPDATE schema_version SET version = 2 WHERE singleton = 1")
+        connection.execute("UPDATE schema_version SET version = 99 WHERE singleton = 1")
 
     with pytest.raises(DatabaseInitializationError, match="несовместима"):
         initialize_databases(settings, cells_csv_path=cells_csv_path)
@@ -358,4 +356,4 @@ def test_incompatible_schema_version_is_rejected_without_change(
     with _connect_readonly(paths.working) as connection:
         assert connection.execute(
             "SELECT version FROM schema_version WHERE singleton = 1"
-        ).fetchone()[0] == 2
+        ).fetchone()[0] == 99

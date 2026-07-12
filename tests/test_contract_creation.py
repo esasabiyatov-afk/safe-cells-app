@@ -32,11 +32,9 @@ def contract_payload(**overrides) -> dict:
     payload = {
         "operation_id": str(uuid4()),
         "cell_number": "1",
-        "contract_number": "TEST-CONTRACT-001",
         "client_full_name": "Тестовый Клиент",
         "id_card_number": "TEST-ID-001",
         "id_card_issuer": "Тестовый орган выдачи",
-        "id_card_issue_date": "2025-01-10",
         "id_card_expiry_date": "2030-01-10",
         "account_number": "TEST-ACCOUNT-001",
         "start_date": "2026-07-12",
@@ -68,7 +66,6 @@ def test_create_contract_saves_active_row_audit_and_verified_backups(
     )
 
     assert result.cell_number == "1"
-    assert result.contract_number == "TEST-CONTRACT-001"
     assert result.rent_days == 30
     assert result.price_per_day == 15
     assert result.rent_price == 450
@@ -170,7 +167,7 @@ def test_concurrent_requests_leave_one_active_contract(
     settings: Settings, initialized_databases
 ) -> None:
     payloads = [
-        contract_payload(operation_id=str(uuid4()), contract_number=f"TEST-{index}")
+        contract_payload(operation_id=str(uuid4()), account_number=f"TEST-{index}")
         for index in range(2)
     ]
 
@@ -201,7 +198,6 @@ def test_concurrent_requests_leave_one_active_contract(
         ("id_card_issuer", "", "Орган выдачи"),
         ("id_card_expiry_date", "", "дату окончания ID-карты"),
         ("account_number", "", "Номер счёта"),
-        ("contract_number", "", "Номер договора"),
         ("operation_id", "not-a-uuid", "подготовить операцию"),
         ("rent_days", 0, "не меньше 1"),
     ],
