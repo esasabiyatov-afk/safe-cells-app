@@ -36,6 +36,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-private-url="/api/contracts/private"' in html
     assert 'data-renewal-quote-url="/api/renewals/calculate"' in html
     assert 'data-renewal-url="/api/renewals"' in html
+    assert 'data-closure-quote-url="/api/closures/calculate"' in html
+    assert 'data-closure-url="/api/closures"' in html
     assert 'data-private-token="' in html
     assert 'id="rentalContinue"' in html
     assert (
@@ -48,6 +50,11 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="renewAction" type="button">Продлить' in html
     assert 'id="renewalDialog"' in html
     assert 'id="renewalSubmit" type="submit" disabled' in html
+    assert 'id="closeAction" type="button">Закрыть договор' in html
+    assert 'id="closureDialog"' in html
+    assert 'id="closureSubmit" type="submit" disabled' in html
+    assert "Оплаченная аренда за неиспользованные дни не возвращается" in html
+    assert "Потеря ключа" in html
     assert "Штрафные дни" in html
     assert 'id="contractForm"' in html
     assert 'name="client_full_name"' in html

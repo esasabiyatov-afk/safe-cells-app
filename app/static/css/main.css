@@ -526,7 +526,8 @@ main {
 }
 
 .rental-dialog,
-.renewal-dialog {
+.renewal-dialog,
+.closure-dialog {
   width: min(620px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   padding: 28px;
@@ -630,12 +631,14 @@ main {
 }
 
 .rental-dialog::backdrop,
-.renewal-dialog::backdrop {
+.renewal-dialog::backdrop,
+.closure-dialog::backdrop {
   background: rgba(28, 41, 56, 0.52);
 }
 
 .rental-dialog h2,
-.renewal-dialog h2 {
+.renewal-dialog h2,
+.closure-dialog h2 {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 28px;
@@ -681,6 +684,86 @@ main {
 .rental-field input:focus {
   border-color: var(--ink);
   box-shadow: 0 0 0 3px rgba(28, 41, 56, 0.14);
+}
+
+.closure-reason-field {
+  margin-bottom: 16px;
+}
+
+.closure-reason-field select {
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.closure-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  border: 1px solid var(--line-dark);
+  border-radius: 5px;
+  background: var(--surface);
+}
+
+.closure-summary div {
+  display: grid;
+  gap: 4px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.closure-summary div:nth-child(odd) {
+  border-right: 1px solid var(--line);
+}
+
+.closure-summary span {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.closure-summary strong {
+  font-size: 13px;
+}
+
+.closure-summary .closure-emphasis {
+  background: #fff0df;
+  color: #5f3010;
+}
+
+.closure-policy,
+.closure-reminder {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--line-dark);
+  background: #edf1f3;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.closure-reminder {
+  border-left-color: #8a6b23;
+  background: #fff4ce;
+}
+
+.danger-button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #8b2f23;
+  border-radius: 4px;
+  background: #a43b2d;
+  color: #fff;
+  font-weight: 700;
+}
+
+.danger-button:disabled {
+  cursor: not-allowed;
+  border-color: #aaa;
+  background: #c4c4c0;
 }
 
 .rental-hint {
@@ -1191,8 +1274,13 @@ main {
   }
 
   .renewal-date-summary,
-  .penalty-panel {
+  .penalty-panel,
+  .closure-summary {
     grid-template-columns: 1fr;
+  }
+
+  .closure-summary div:nth-child(odd) {
+    border-right: 0;
   }
 
   .contract-fields,

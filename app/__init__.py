@@ -10,6 +10,7 @@ from flask import Flask, request
 from app.config import Settings
 from app.routes import (
     cells_blueprint,
+    closures_blueprint,
     contracts_blueprint,
     main_blueprint,
     rental_blueprint,
@@ -36,6 +37,7 @@ def create_app(settings: Settings) -> Flask:
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
+    app.register_blueprint(closures_blueprint)
     app.register_blueprint(contracts_blueprint)
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(renewals_blueprint)

@@ -27,6 +27,10 @@ const state = {
   renewalOperationId: null,
   renewalQuoteSequence: 0,
   renewalSubmitting: false,
+  activeClosureQuote: null,
+  closureOperationId: null,
+  closureQuoteSequence: 0,
+  closureSubmitting: false,
 };
 
 const elements = {
@@ -97,6 +101,25 @@ const elements = {
   renewalTotal: document.getElementById("renewalTotal"),
   renewalBack: document.getElementById("renewalBack"),
   renewalSubmit: document.getElementById("renewalSubmit"),
+  closeAction: document.getElementById("closeAction"),
+  closureDialog: document.getElementById("closureDialog"),
+  closureDialogClose: document.getElementById("closureDialogClose"),
+  closureDialogTitle: document.getElementById("closureDialogTitle"),
+  closureCellSummary: document.getElementById("closureCellSummary"),
+  closureForm: document.getElementById("closureForm"),
+  closureReason: document.getElementById("closureReason"),
+  closureError: document.getElementById("closureError"),
+  closureDate: document.getElementById("closureDate"),
+  closureKind: document.getElementById("closureKind"),
+  closureUnusedDays: document.getElementById("closureUnusedDays"),
+  closurePenaltyDays: document.getElementById("closurePenaltyDays"),
+  closurePenaltyRate: document.getElementById("closurePenaltyRate"),
+  closurePenaltyAmount: document.getElementById("closurePenaltyAmount"),
+  closureDepositLabel: document.getElementById("closureDepositLabel"),
+  closureDepositNote: document.getElementById("closureDepositNote"),
+  closureDepositRefund: document.getElementById("closureDepositRefund"),
+  closureBack: document.getElementById("closureBack"),
+  closureSubmit: document.getElementById("closureSubmit"),
   rentalDialog: document.getElementById("rentalDialog"),
   rentalDialogClose: document.getElementById("rentalDialogClose"),
   rentalDialogTitle: document.getElementById("rentalDialogTitle"),
@@ -198,6 +221,9 @@ function renderStats() {
 }
 
 function clearDisplayedData() {
+  if (elements.closureDialog.open) {
+    closeClosureDialog(false);
+  }
   if (elements.renewalDialog.open) {
     closeRenewalDialog(false);
   }
@@ -431,6 +457,171 @@ function closeCellDialog() {
   hidePrivateDetails();
   state.activeOccupiedCell = null;
   elements.dialog.close();
+}
+
+const CLOSURE_KIND_LABELS = {
+  early: "Досрочное",
+  on_time: "В дату окончания",
+  overdue: "После окончания срока",
+};
+
+function resetClosureQuote() {
+  state.activeClosureQuote = null;
+  elements.closureSubmit.disabled = true;
+  elements.closureDate.textContent = "—";
+  elements.closureKind.textContent = "—";
+  elements.closureUnusedDays.textContent = "—";
+  elements.closurePenaltyDays.textContent = "—";
+  elements.closurePenaltyRate.textContent = "—";
+  elements.closurePenaltyAmount.textContent = "—";
+  elements.closureDepositRefund.textContent = "—";
+}
+
+function showClosureError(message) {
+  elements.closureError.textContent = message;
+  elements.closureError.hidden = false;
+}
+
+function clearClosureError() {
+  elements.closureError.textContent = "";
+  elements.closureError.hidden = true;
+}
+
+function setClosureSubmitting(submitting) {
+  state.closureSubmitting = submitting;
+  elements.closureSubmit.disabled = submitting || !state.activeClosureQuote;
+  elements.closureBack.disabled = submitting;
+  elements.closureDialogClose.disabled = submitting;
+  elements.closureReason.disabled = submitting;
+  elements.closureSubmit.textContent = submitting ? "Закрытие…" : "Подтвердить закрытие";
+}
+
+async function requestClosureQuote() {
+  const cell = state.activeOccupiedCell;
+  const sequence = ++state.closureQuoteSequence;
+  if (!cell) {
+    return;
+  }
+  resetClosureQuote();
+  clearClosureError();
+  elements.closureKind.textContent = "Расчёт…";
+  try {
+    const response = await fetch(elements.body.dataset.closureQuoteUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cell_number: cell.number,
+        contract_ref: cell.contract_ref,
+        reason_code: elements.closureReason.value,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось рассчитать закрытие");
+    }
+    if (sequence !== state.closureQuoteSequence || !elements.closureDialog.open) {
+      return;
+    }
+    state.activeClosureQuote = payload;
+    elements.closureDate.textContent = formatDate(payload.close_date);
+    elements.closureKind.textContent = CLOSURE_KIND_LABELS[payload.close_kind];
+    elements.closureUnusedDays.textContent = `${payload.unused_days} дн.`;
+    elements.closurePenaltyDays.textContent = `${payload.penalty_days} дн.`;
+    elements.closurePenaltyRate.textContent = `${money(payload.penalty_rate)} в день`;
+    elements.closurePenaltyAmount.textContent = money(payload.penalty_amount);
+    elements.closureDepositRefund.textContent = money(payload.deposit_refund);
+    if (elements.closureReason.value === "lost_key") {
+      elements.closureDepositLabel.textContent = "Залог не возвращается";
+      elements.closureDepositNote.textContent = "Причина: потеря ключа";
+    } else {
+      elements.closureDepositLabel.textContent = "Залог к возврату";
+      elements.closureDepositNote.textContent = "При обычном закрытии";
+    }
+    elements.closureSubmit.disabled = false;
+  } catch (error) {
+    if (sequence !== state.closureQuoteSequence) {
+      return;
+    }
+    resetClosureQuote();
+    showClosureError(errorMessage(error, "Не удалось рассчитать закрытие"));
+  }
+}
+
+function openClosureDialog() {
+  const cell = state.activeOccupiedCell;
+  if (!cell) {
+    return;
+  }
+  hidePrivateDetails();
+  elements.dialog.close();
+  clearSuccess();
+  state.closureOperationId = createOperationId();
+  elements.closureDialogTitle.textContent = `Ячейка № ${cell.number}`;
+  elements.closureCellSummary.textContent = `Текущий договор действует до ${formatDate(cell.end_date)}`;
+  elements.closureReason.value = "standard";
+  resetClosureQuote();
+  clearClosureError();
+  setClosureSubmitting(false);
+  elements.closureDialog.showModal();
+  requestClosureQuote();
+}
+
+function closeClosureDialog(returnToCard = true) {
+  if (state.closureSubmitting) {
+    return;
+  }
+  state.closureQuoteSequence += 1;
+  state.activeClosureQuote = null;
+  state.closureOperationId = null;
+  elements.closureDialog.close();
+  if (returnToCard && state.activeOccupiedCell) {
+    hidePrivateDetails();
+    renderOccupiedOperationalDetails(state.activeOccupiedCell);
+    elements.dialog.showModal();
+  } else if (!returnToCard) {
+    state.activeOccupiedCell = null;
+  }
+}
+
+async function submitClosure(event) {
+  event.preventDefault();
+  const cell = state.activeOccupiedCell;
+  const quote = state.activeClosureQuote;
+  if (!cell || !quote || !state.closureOperationId) {
+    showClosureError("Расчёт устарел. Выполните его ещё раз.");
+    return;
+  }
+  clearClosureError();
+  setClosureSubmitting(true);
+  try {
+    const response = await fetch(elements.body.dataset.closureUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation_id: state.closureOperationId,
+        cell_number: cell.number,
+        contract_ref: cell.contract_ref,
+        expected_end_date: cell.end_date,
+        reason_code: elements.closureReason.value,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось закрыть договор");
+    }
+    const warning = payload.warning ? ` ${payload.warning}` : "";
+    state.closureSubmitting = false;
+    elements.closureDialog.close();
+    state.activeClosureQuote = null;
+    state.closureOperationId = null;
+    state.activeOccupiedCell = null;
+    await refreshCells();
+    showSuccess(`Договор по ячейке № ${payload.cell_number} закрыт. Ячейка свободна.${warning}`);
+  } catch (error) {
+    showClosureError(errorMessage(error, "Не удалось закрыть договор"));
+  } finally {
+    setClosureSubmitting(false);
+  }
 }
 
 function resetRenewalQuote() {
@@ -1057,6 +1248,7 @@ elements.dialogClose.addEventListener("click", closeCellDialog);
 elements.privateToggle.addEventListener("click", togglePrivateDetails);
 elements.historyToggle.addEventListener("click", toggleRenewalHistory);
 elements.renewAction.addEventListener("click", openRenewalDialog);
+elements.closeAction.addEventListener("click", openClosureDialog);
 elements.dialog.addEventListener("click", (event) => {
   if (event.target === elements.dialog) {
     closeCellDialog();
@@ -1065,6 +1257,19 @@ elements.dialog.addEventListener("click", (event) => {
 elements.dialog.addEventListener("cancel", (event) => {
   event.preventDefault();
   closeCellDialog();
+});
+elements.closureReason.addEventListener("change", requestClosureQuote);
+elements.closureForm.addEventListener("submit", submitClosure);
+elements.closureBack.addEventListener("click", () => closeClosureDialog(true));
+elements.closureDialogClose.addEventListener("click", () => closeClosureDialog(true));
+elements.closureDialog.addEventListener("click", (event) => {
+  if (event.target === elements.closureDialog) {
+    closeClosureDialog(true);
+  }
+});
+elements.closureDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeClosureDialog(true);
 });
 elements.renewalEndDate.addEventListener("input", () => {
   syncRenewalDaysFromEnd();
