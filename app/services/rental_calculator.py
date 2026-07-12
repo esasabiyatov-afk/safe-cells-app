@@ -128,15 +128,15 @@ def _money_config(connection: sqlite3.Connection) -> tuple[int, str, int]:
     return deposit, currency_code, currency_scale
 
 
-def calculate_rental_quote(
-    settings: Settings,
+def calculate_rental_quote_in_connection(
+    connection: sqlite3.Connection,
     *,
     cell_number: object,
     start_date_value: object,
     end_date_value: object | None = None,
     rent_days_value: object | None = None,
 ) -> RentalQuote:
-    """Recalculate dates, rental price and separate deposit using a short RO connection."""
+    """Calculate a quote using the caller's current SQLite transaction."""
 
     if not isinstance(cell_number, str) or not cell_number.strip():
         raise RentalValidationError("Не указан номер ячейки.")
@@ -149,49 +149,39 @@ def calculate_rental_quote(
         end_date_value=end_date_value,
         rent_days_value=rent_days_value,
     )
+    cell = connection.execute(
+        """
+        SELECT cells.number, cells.height_mm, contracts.contract_id
+        FROM cells
+        LEFT JOIN contracts ON contracts.cell_number = cells.number
+        WHERE cells.number = ?
+        """,
+        (normalized_number,),
+    ).fetchone()
+    if cell is None:
+        raise CellUnavailableError("Ячейка не найдена.")
+    if cell["contract_id"] is not None:
+        raise CellUnavailableError(
+            "Ячейка уже занята. Обновите главный экран и выберите свободную ячейку."
+        )
 
-    try:
-        paths = validate_database_pair(settings)
-        with open_readonly(
-            paths.working, busy_timeout_ms=settings.busy_timeout_ms
-        ) as connection:
-            cell = connection.execute(
-                """
-                SELECT cells.number, cells.height_mm, contracts.contract_id
-                FROM cells
-                LEFT JOIN contracts ON contracts.cell_number = cells.number
-                WHERE cells.number = ?
-                """,
-                (normalized_number,),
-            ).fetchone()
-            if cell is None:
-                raise CellUnavailableError("Ячейка не найдена.")
-            if cell["contract_id"] is not None:
-                raise CellUnavailableError(
-                    "Ячейка уже занята. Обновите главный экран и выберите свободную ячейку."
-                )
-
-            tariff_rows = connection.execute(
-                """
-                SELECT period_from_days, period_to_days, price_per_day_minor
-                FROM tariffs
-                WHERE height_mm = ?
-                  AND period_from_days <= ?
-                  AND (period_to_days IS NULL OR period_to_days >= ?)
-                ORDER BY period_from_days
-                """,
-                (cell["height_mm"], rent_days, rent_days),
-            ).fetchall()
-            if len(tariff_rows) != 1:
-                raise RentalDataError(
-                    "Для выбранной высоты и срока не найден единственный тариф."
-                )
-            tariff = tariff_rows[0]
-            deposit, currency_code, _currency_scale = _money_config(connection)
-    except (RentalValidationError, CellUnavailableError, RentalDataError):
-        raise
-    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
-        raise RentalReadError(NETWORK_ERROR_MESSAGE) from exc
+    tariff_rows = connection.execute(
+        """
+        SELECT period_from_days, period_to_days, price_per_day_minor
+        FROM tariffs
+        WHERE height_mm = ?
+          AND period_from_days <= ?
+          AND (period_to_days IS NULL OR period_to_days >= ?)
+        ORDER BY period_from_days
+        """,
+        (cell["height_mm"], rent_days, rent_days),
+    ).fetchall()
+    if len(tariff_rows) != 1:
+        raise RentalDataError(
+            "Для выбранной высоты и срока не найден единственный тариф."
+        )
+    tariff = tariff_rows[0]
+    deposit, currency_code, _currency_scale = _money_config(connection)
 
     price_per_day = int(tariff["price_per_day_minor"])
     if price_per_day < 0:
@@ -214,3 +204,31 @@ def calculate_rental_quote(
         deposit_amount=deposit,
         currency_code=currency_code,
     )
+
+
+def calculate_rental_quote(
+    settings: Settings,
+    *,
+    cell_number: object,
+    start_date_value: object,
+    end_date_value: object | None = None,
+    rent_days_value: object | None = None,
+) -> RentalQuote:
+    """Recalculate dates, rental price and separate deposit using a short RO connection."""
+
+    try:
+        paths = validate_database_pair(settings)
+        with open_readonly(
+            paths.working, busy_timeout_ms=settings.busy_timeout_ms
+        ) as connection:
+            return calculate_rental_quote_in_connection(
+                connection,
+                cell_number=cell_number,
+                start_date_value=start_date_value,
+                end_date_value=end_date_value,
+                rent_days_value=rent_days_value,
+            )
+    except (RentalValidationError, CellUnavailableError, RentalDataError):
+        raise
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise RentalReadError(NETWORK_ERROR_MESSAGE) from exc

@@ -17,6 +17,8 @@ const state = {
   asOfDate: null,
   activeRentalCell: null,
   activeQuote: null,
+  activeOperationId: null,
+  contractSubmitting: false,
   quoteSequence: 0,
 };
 
@@ -30,6 +32,8 @@ const elements = {
   refresh: document.getElementById("refreshButton"),
   errorBanner: document.getElementById("errorBanner"),
   errorMessage: document.getElementById("errorMessage"),
+  successBanner: document.getElementById("successBanner"),
+  successMessage: document.getElementById("successMessage"),
   connection: document.getElementById("connectionState"),
   updatedAt: document.getElementById("updatedAt"),
   resultCount: document.getElementById("resultCount"),
@@ -59,6 +63,23 @@ const elements = {
   quoteDeposit: document.getElementById("quoteDeposit"),
   rentalBack: document.getElementById("rentalBack"),
   rentalContinue: document.getElementById("rentalContinue"),
+  contractDialog: document.getElementById("contractDialog"),
+  contractDialogClose: document.getElementById("contractDialogClose"),
+  contractDialogTitle: document.getElementById("contractDialogTitle"),
+  contractPeriodSummary: document.getElementById("contractPeriodSummary"),
+  contractRentSummary: document.getElementById("contractRentSummary"),
+  contractDepositSummary: document.getElementById("contractDepositSummary"),
+  contractForm: document.getElementById("contractForm"),
+  contractError: document.getElementById("contractError"),
+  clientFullName: document.getElementById("clientFullName"),
+  contractNumber: document.getElementById("contractNumber"),
+  accountNumber: document.getElementById("accountNumber"),
+  idCardNumber: document.getElementById("idCardNumber"),
+  idCardIssuer: document.getElementById("idCardIssuer"),
+  idCardIssueDate: document.getElementById("idCardIssueDate"),
+  idCardExpiryDate: document.getElementById("idCardExpiryDate"),
+  contractBack: document.getElementById("contractBack"),
+  contractSubmit: document.getElementById("contractSubmit"),
 };
 
 function setConnection(mode, text) {
@@ -73,6 +94,16 @@ function showError(message) {
   elements.errorMessage.textContent = message;
   elements.errorBanner.hidden = false;
   setConnection("offline", "Нет связи с базой");
+}
+
+function showSuccess(message) {
+  elements.successMessage.textContent = message;
+  elements.successBanner.hidden = false;
+}
+
+function clearSuccess() {
+  elements.successMessage.textContent = "";
+  elements.successBanner.hidden = true;
 }
 
 function errorMessage(error, fallback) {
@@ -244,6 +275,7 @@ function money(value) {
 
 function resetQuote() {
   state.activeQuote = null;
+  elements.rentalContinue.disabled = true;
   elements.quoteDays.textContent = "—";
   elements.quoteTariff.textContent = "—";
   elements.quoteRentPrice.textContent = "—";
@@ -306,6 +338,7 @@ async function requestRentalQuote() {
     elements.quoteTariff.textContent = `${payload.price_per_day} сом/день · ${period}`;
     elements.quoteRentPrice.textContent = money(payload.rent_price);
     elements.quoteDeposit.textContent = money(payload.deposit_amount);
+    elements.rentalContinue.disabled = false;
     clearRentalError();
   } catch (error) {
     if (sequence !== state.quoteSequence) {
@@ -320,12 +353,15 @@ let quoteTimer = null;
 function scheduleRentalQuote() {
   window.clearTimeout(quoteTimer);
   state.quoteSequence += 1;
+  resetQuote();
   quoteTimer = window.setTimeout(requestRentalQuote, 180);
 }
 
 function openRentalCalculator(cell) {
   state.activeRentalCell = cell;
   state.activeQuote = null;
+  state.activeOperationId = null;
+  clearSuccess();
   elements.rentalDialogTitle.textContent = `Ячейка № ${cell.number}`;
   elements.rentalCellSummary.textContent = `Высота ${cell.height_mm} мм · ${cell.width_mm} × ${cell.depth_mm} мм`;
   const startDate = state.asOfDate || isoFromUtcDate(new Date());
@@ -343,7 +379,129 @@ function closeRentalCalculator() {
   state.quoteSequence += 1;
   state.activeRentalCell = null;
   state.activeQuote = null;
+  state.activeOperationId = null;
   elements.rentalDialog.close();
+}
+
+function createOperationId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function clearContractError() {
+  elements.contractError.textContent = "";
+  elements.contractError.hidden = true;
+}
+
+function showContractError(message) {
+  elements.contractError.textContent = message;
+  elements.contractError.hidden = false;
+}
+
+function setContractSubmitting(submitting) {
+  state.contractSubmitting = submitting;
+  elements.contractSubmit.disabled = submitting;
+  elements.contractBack.disabled = submitting;
+  elements.contractSubmit.textContent = submitting ? "Сохранение…" : "Подтвердить и занять";
+}
+
+function openContractForm() {
+  const cell = state.activeRentalCell;
+  const quote = state.activeQuote;
+  if (!cell || !quote) {
+    showRentalError("Сначала дождитесь актуального расчёта.");
+    return;
+  }
+  state.activeOperationId = createOperationId();
+  elements.contractForm.reset();
+  elements.contractDialogTitle.textContent = `Занять ячейку № ${cell.number}`;
+  elements.contractPeriodSummary.textContent = `${formatDate(quote.start_date)} — ${formatDate(quote.end_date)} · ${quote.rent_days} дн.`;
+  elements.contractRentSummary.textContent = `Аренда: ${money(quote.rent_price)}`;
+  elements.contractDepositSummary.textContent = `Залог отдельно: ${money(quote.deposit_amount)}`;
+  clearContractError();
+  setContractSubmitting(false);
+  elements.rentalDialog.close();
+  elements.contractDialog.showModal();
+}
+
+function backToRentalCalculator() {
+  elements.contractDialog.close();
+  clearContractError();
+  elements.rentalDialog.showModal();
+}
+
+function cancelContractWorkflow() {
+  if (state.contractSubmitting) {
+    return;
+  }
+  elements.contractDialog.close();
+  elements.contractForm.reset();
+  clearContractError();
+  state.activeRentalCell = null;
+  state.activeQuote = null;
+  state.activeOperationId = null;
+}
+
+async function submitContract(event) {
+  event.preventDefault();
+  if (!elements.contractForm.checkValidity()) {
+    elements.contractForm.reportValidity();
+    showContractError("Заполните все обязательные поля.");
+    return;
+  }
+  const cell = state.activeRentalCell;
+  const quote = state.activeQuote;
+  if (!cell || !quote || !state.activeOperationId) {
+    showContractError("Расчёт устарел. Вернитесь назад и выполните его снова.");
+    return;
+  }
+
+  clearContractError();
+  setContractSubmitting(true);
+  try {
+    const response = await fetch(elements.body.dataset.contractUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation_id: state.activeOperationId,
+        cell_number: cell.number,
+        contract_number: elements.contractNumber.value,
+        client_full_name: elements.clientFullName.value,
+        id_card_number: elements.idCardNumber.value,
+        id_card_issuer: elements.idCardIssuer.value,
+        id_card_issue_date: elements.idCardIssueDate.value || null,
+        id_card_expiry_date: elements.idCardExpiryDate.value,
+        account_number: elements.accountNumber.value,
+        start_date: quote.start_date,
+        end_date: quote.end_date,
+        rent_days: quote.rent_days,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось сохранить договор");
+    }
+    const savedCellNumber = payload.cell_number;
+    const warning = payload.warning ? ` ${payload.warning}` : "";
+    elements.contractDialog.close();
+    elements.contractForm.reset();
+    state.activeRentalCell = null;
+    state.activeQuote = null;
+    state.activeOperationId = null;
+    await refreshCells();
+    showSuccess(`Ячейка № ${savedCellNumber} занята.${warning} Документы будут доступны после подключения шаблонов.`);
+  } catch (error) {
+    showContractError(errorMessage(error, "Не удалось сохранить договор"));
+  } finally {
+    setContractSubmitting(false);
+  }
 }
 
 function createCellButton(cell) {
@@ -489,10 +647,23 @@ elements.rentalDays.addEventListener("input", () => {
 elements.rentalForm.addEventListener("submit", (event) => event.preventDefault());
 elements.rentalDialogClose.addEventListener("click", closeRentalCalculator);
 elements.rentalBack.addEventListener("click", closeRentalCalculator);
+elements.rentalContinue.addEventListener("click", openContractForm);
 elements.rentalDialog.addEventListener("click", (event) => {
   if (event.target === elements.rentalDialog) {
     closeRentalCalculator();
   }
+});
+elements.contractForm.addEventListener("submit", submitContract);
+elements.contractBack.addEventListener("click", backToRentalCalculator);
+elements.contractDialogClose.addEventListener("click", cancelContractWorkflow);
+elements.contractDialog.addEventListener("click", (event) => {
+  if (event.target === elements.contractDialog) {
+    cancelContractWorkflow();
+  }
+});
+elements.contractDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  cancelContractWorkflow();
 });
 
 refreshCells();

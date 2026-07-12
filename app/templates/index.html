@@ -11,6 +11,7 @@
   data-cells-url="{{ url_for('cells.cells_list') }}"
   data-search-url="{{ url_for('cells.cells_search') }}"
   data-rental-url="{{ url_for('rental.calculate') }}"
+  data-contract-url="{{ url_for('contracts.create') }}"
 >
   <header class="page-header">
     <div class="brand-block">
@@ -112,6 +113,11 @@
         <span id="errorMessage"></span>
       </div>
 
+      <div class="success-banner" id="successBanner" role="status" hidden>
+        <strong>Договор сохранён</strong>
+        <span id="successMessage"></span>
+      </div>
+
       <div class="vault-grid" id="vaultGrid" aria-live="polite" aria-busy="true"></div>
 
       <div class="empty-state" id="emptyState" hidden>
@@ -122,7 +128,7 @@
   </main>
 
   <footer class="page-footer">
-    <span>Режим просмотра</span>
+    <span>Рабочий режим</span>
     <span>Данные автоматически обновляются каждые 15 секунд</span>
   </footer>
 
@@ -198,9 +204,60 @@
 
       <div class="rental-actions">
         <button class="secondary-button" id="rentalBack" type="button">Назад</button>
-        <button class="primary-button" id="rentalContinue" type="button" disabled>Занять ячейку</button>
+        <button class="primary-button" id="rentalContinue" type="button" disabled>Продолжить оформление</button>
       </div>
-      <p class="dialog-note">Калькулятор работает только на чтение. Оформление договора будет подключено на следующем этапе.</p>
+      <p class="dialog-note">До окончательного подтверждения данные в базу не записываются.</p>
+    </form>
+  </dialog>
+
+  <dialog class="contract-dialog" id="contractDialog" aria-labelledby="contractDialogTitle">
+    <button class="dialog-close" id="contractDialogClose" type="button" aria-label="Закрыть оформление">×</button>
+    <p class="section-kicker">Оформление аренды</p>
+    <h2 id="contractDialogTitle">Занять ячейку № —</h2>
+    <div class="contract-summary" aria-label="Условия аренды">
+      <span id="contractPeriodSummary">—</span>
+      <strong id="contractRentSummary">—</strong>
+      <span id="contractDepositSummary">—</span>
+    </div>
+
+    <form id="contractForm" autocomplete="off" novalidate>
+      <div class="calculation-error" id="contractError" role="alert" hidden></div>
+      <div class="contract-fields">
+        <label class="contract-field contract-field--wide">
+          <span>ФИО клиента *</span>
+          <input id="clientFullName" name="client_full_name" type="text" maxlength="200" required autocomplete="off">
+        </label>
+        <label class="contract-field">
+          <span>Номер договора *</span>
+          <input id="contractNumber" name="contract_number" type="text" maxlength="100" required autocomplete="off">
+        </label>
+        <label class="contract-field">
+          <span>Номер счёта из АБС *</span>
+          <input id="accountNumber" name="account_number" type="text" maxlength="100" required autocomplete="off">
+        </label>
+        <label class="contract-field">
+          <span>Серия и номер ID-карты *</span>
+          <input id="idCardNumber" name="id_card_number" type="text" maxlength="100" required autocomplete="off">
+        </label>
+        <label class="contract-field contract-field--wide">
+          <span>Орган выдачи *</span>
+          <input id="idCardIssuer" name="id_card_issuer" type="text" maxlength="200" required autocomplete="off">
+        </label>
+        <label class="contract-field">
+          <span>Дата выдачи ID-карты</span>
+          <input id="idCardIssueDate" name="id_card_issue_date" type="date">
+        </label>
+        <label class="contract-field">
+          <span>Дата окончания ID-карты *</span>
+          <input id="idCardExpiryDate" name="id_card_expiry_date" type="date" required>
+        </label>
+      </div>
+      <p class="required-note">* Обязательные поля. Данные ещё раз проверяются перед сохранением.</p>
+      <div class="rental-actions">
+        <button class="secondary-button" id="contractBack" type="button">Назад к расчёту</button>
+        <button class="primary-button" id="contractSubmit" type="submit">Подтвердить и занять</button>
+      </div>
+      <p class="dialog-note">Документы будут формироваться после подключения утверждённых банковских шаблонов.</p>
     </form>
   </dialog>
 </body>

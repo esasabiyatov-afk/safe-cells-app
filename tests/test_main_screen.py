@@ -32,6 +32,7 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'src="/static/js/main.js"' in html
     assert 'href="/static/css/main.css"' in html
     assert 'data-rental-url="/api/rental/calculate"' in html
+    assert 'data-contract-url="/api/contracts"' in html
     assert 'id="rentalContinue"' in html
     assert (
         'class="primary-button" id="rentalContinue" type="button" disabled' in html
@@ -41,6 +42,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Залог отдельно" in html
     assert "Не входит в сумму аренды" in html
     assert "Итого к оплате" not in html
+    assert 'id="contractForm"' in html
+    assert 'name="client_full_name"' in html
+    assert 'name="id_card_number"' in html
+    assert 'name="account_number"' in html
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Cache-Control"] == "no-store"
@@ -156,6 +161,9 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "requestRentalQuote" in script
         assert "syncDaysFromDates" in script
         assert "syncEndFromDays" in script
+        assert "createOperationId" in script
+        assert "submitContract" in script
+        assert "activeOperationId" in script
     finally:
         css.close()
         javascript.close()

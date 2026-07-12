@@ -387,6 +387,25 @@ main {
   font-size: 13px;
 }
 
+.success-banner {
+  margin-bottom: 18px;
+  padding: 13px 15px;
+  border: 2px solid var(--free-border);
+  border-radius: 5px;
+  background: var(--free-bg);
+  color: var(--free);
+}
+
+.success-banner strong,
+.success-banner span {
+  display: block;
+}
+
+.success-banner span {
+  margin-top: 3px;
+  font-size: 12px;
+}
+
 .error-banner span {
   color: #743b33;
 }
@@ -499,6 +518,97 @@ main {
   background: var(--paper);
   color: var(--ink);
   box-shadow: 0 24px 70px rgba(28, 41, 56, 0.32);
+}
+
+.contract-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 28px;
+  overflow: auto;
+  border: 1px solid var(--line-dark);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(28, 41, 56, 0.32);
+}
+
+.contract-dialog::backdrop {
+  background: rgba(28, 41, 56, 0.58);
+}
+
+.contract-dialog h2 {
+  margin: 0 0 14px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.contract-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 20px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-dark);
+  border-radius: 5px;
+  background: #e5edf2;
+  font-size: 13px;
+}
+
+.contract-summary strong {
+  text-align: right;
+}
+
+.contract-summary span:last-child {
+  grid-column: 1 / -1;
+  color: #6b5015;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.contract-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.contract-field {
+  display: grid;
+  gap: 6px;
+}
+
+.contract-field--wide {
+  grid-column: 1 / -1;
+}
+
+.contract-field span {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.contract-field input {
+  width: 100%;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  outline: none;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.contract-field input:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(28, 41, 56, 0.14);
+}
+
+.required-note {
+  margin: 10px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
 }
 
 .rental-dialog::backdrop {
@@ -820,6 +930,20 @@ main {
 
   .rental-fields {
     grid-template-columns: 1fr;
+  }
+
+  .contract-fields,
+  .contract-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .contract-field--wide,
+  .contract-summary span:last-child {
+    grid-column: auto;
+  }
+
+  .contract-summary strong {
+    text-align: left;
   }
 
   .quote-row {

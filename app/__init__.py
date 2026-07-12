@@ -9,6 +9,7 @@ from flask import Flask, request
 from app.config import Settings
 from app.routes import (
     cells_blueprint,
+    contracts_blueprint,
     main_blueprint,
     rental_blueprint,
     system_blueprint,
@@ -32,6 +33,7 @@ def create_app(settings: Settings) -> Flask:
     app.extensions["safe_cells_settings"] = settings
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
+    app.register_blueprint(contracts_blueprint)
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(system_blueprint)
 
