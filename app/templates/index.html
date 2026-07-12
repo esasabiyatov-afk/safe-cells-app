@@ -14,6 +14,7 @@
   data-contract-url="{{ url_for('contracts.create') }}"
   data-private-url="{{ url_for('contracts.private_details') }}"
   data-client-name-url="{{ url_for('contracts.client_name') }}"
+  data-edit-url="{{ url_for('editing.edit') }}"
   data-renewal-quote-url="{{ url_for('renewals.calculate') }}"
   data-renewal-url="{{ url_for('renewals.confirm') }}"
   data-closure-quote-url="{{ url_for('closures.calculate') }}"
@@ -185,10 +186,28 @@
     <div class="card-actions" aria-label="Действия с договором">
       <button class="primary-button" id="renewAction" type="button">Продлить</button>
       <button id="closeAction" type="button">Закрыть договор</button>
-      <button type="button" disabled title="Будет подключено на этапе редактирования">Редактировать данные</button>
+      <button id="editAction" type="button">Редактировать данные</button>
       <button type="button" disabled title="Будет подключено после настройки документов">Повторно сформировать документ</button>
     </div>
     <p class="dialog-note">Остальные неактивные действия будут подключены на следующих этапах.</p>
+  </dialog>
+
+  <dialog class="contract-dialog" id="editDialog" aria-labelledby="editDialogTitle">
+    <button class="dialog-close" id="editDialogClose" type="button" aria-label="Закрыть редактирование">×</button>
+    <p class="section-kicker">Исправление данных</p>
+    <h2 id="editDialogTitle">Ячейка № —</h2>
+    <p class="dialog-note">Срок аренды и денежные условия здесь не изменяются.</p>
+    <form id="editForm" novalidate>
+      <div class="calculation-error" id="editError" role="alert" hidden></div>
+      <div class="contract-fields">
+        <label class="contract-field contract-field--wide"><span>ФИО клиента *</span><input id="editClientFullName" maxlength="200" required autocomplete="off"></label>
+        <label class="contract-field"><span>Номер счёта из АБС *</span><input id="editAccountNumber" maxlength="100" required autocomplete="off"></label>
+        <label class="contract-field"><span>Серия и номер ID-карты *</span><input id="editIdCardNumber" maxlength="100" required autocomplete="off"></label>
+        <label class="contract-field"><span>Орган выдачи *</span><input id="editIdCardIssuer" maxlength="200" required autocomplete="off"></label>
+        <label class="contract-field"><span>Дата окончания ID-карты *</span><input id="editIdCardExpiryDate" type="date" required></label>
+      </div>
+      <div class="rental-actions"><button class="secondary-button" id="editBack" type="button">Назад</button><button class="primary-button" id="editSubmit" type="submit">Сохранить изменения</button></div>
+    </form>
   </dialog>
 
   <dialog class="closure-dialog" id="closureDialog" aria-labelledby="closureDialogTitle">

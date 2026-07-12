@@ -32,6 +32,8 @@ const state = {
   closureOperationId: null,
   closureQuoteSequence: 0,
   closureSubmitting: false,
+  editOperationId: null,
+  editSubmitting: false,
 };
 
 const elements = {
@@ -99,6 +101,19 @@ const elements = {
   renewalBack: document.getElementById("renewalBack"),
   renewalSubmit: document.getElementById("renewalSubmit"),
   closeAction: document.getElementById("closeAction"),
+  editAction: document.getElementById("editAction"),
+  editDialog: document.getElementById("editDialog"),
+  editDialogClose: document.getElementById("editDialogClose"),
+  editDialogTitle: document.getElementById("editDialogTitle"),
+  editForm: document.getElementById("editForm"),
+  editError: document.getElementById("editError"),
+  editClientFullName: document.getElementById("editClientFullName"),
+  editAccountNumber: document.getElementById("editAccountNumber"),
+  editIdCardNumber: document.getElementById("editIdCardNumber"),
+  editIdCardIssuer: document.getElementById("editIdCardIssuer"),
+  editIdCardExpiryDate: document.getElementById("editIdCardExpiryDate"),
+  editBack: document.getElementById("editBack"),
+  editSubmit: document.getElementById("editSubmit"),
   closureDialog: document.getElementById("closureDialog"),
   closureDialogClose: document.getElementById("closureDialogClose"),
   closureDialogTitle: document.getElementById("closureDialogTitle"),
@@ -474,7 +489,67 @@ function toggleRenewalHistory() {
     : `Показать историю продлений (${count})`;
 }
 
+function closeEditDialog() {
+  if (elements.editDialog.open) elements.editDialog.close();
+  elements.editForm.reset();
+  elements.editError.hidden = true;
+  elements.editError.textContent = "";
+  state.editOperationId = null;
+}
+
+async function openEditDialog() {
+  const cell = state.activeOccupiedCell;
+  if (!cell) return;
+  elements.editAction.disabled = true;
+  try {
+    const response = await fetch(elements.body.dataset.privateUrl, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Safe-Cells-Token": elements.body.dataset.privateToken},
+      body: JSON.stringify({cell_number: cell.number, contract_ref: cell.contract_ref}),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Не удалось получить данные договора");
+    if (state.activeOccupiedCell?.contract_ref !== cell.contract_ref) return;
+    elements.editDialogTitle.textContent = `Ячейка № ${cell.number}`;
+    elements.editClientFullName.value = payload.client_full_name;
+    elements.editAccountNumber.value = payload.account_number;
+    elements.editIdCardNumber.value = payload.id_card_number;
+    elements.editIdCardIssuer.value = payload.id_card_issuer;
+    elements.editIdCardExpiryDate.value = payload.id_card_expiry_date;
+    state.editOperationId = createOperationId();
+    elements.editDialog.showModal();
+  } catch (error) {
+    elements.privateError.textContent = errorMessage(error, "Не удалось получить данные договора");
+    elements.privateError.hidden = false;
+  } finally { elements.editAction.disabled = false; }
+}
+
+async function submitEdit(event) {
+  event.preventDefault();
+  const cell = state.activeOccupiedCell;
+  if (!cell || !state.editOperationId || state.editSubmitting) return;
+  if (!elements.editForm.reportValidity()) return;
+  state.editSubmitting = true; elements.editSubmit.disabled = true; elements.editError.hidden = true;
+  try {
+    const response = await fetch(elements.body.dataset.editUrl, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({operation_id: state.editOperationId, contract_ref: cell.contract_ref,
+        cell_number: cell.number, client_full_name: elements.editClientFullName.value,
+        account_number: elements.editAccountNumber.value, id_card_number: elements.editIdCardNumber.value,
+        id_card_issuer: elements.editIdCardIssuer.value, id_card_expiry_date: elements.editIdCardExpiryDate.value}),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Не удалось сохранить изменения");
+    closeEditDialog(); hidePrivateDetails(); await refreshCells();
+    showSuccess(payload.warning || "Данные договора изменены.");
+  } catch (error) {
+    elements.editError.textContent = errorMessage(error, "Не удалось сохранить изменения");
+    elements.editError.hidden = false;
+  } finally { state.editSubmitting = false; elements.editSubmit.disabled = false; }
+}
+
 function closeCellDialog() {
+  closeEditDialog();
   state.clientNameRequestSequence += 1;
   hidePrivateDetails();
   state.activeOccupiedCell = null;
@@ -1274,6 +1349,10 @@ elements.privateToggle.addEventListener("click", togglePrivateDetails);
 elements.historyToggle.addEventListener("click", toggleRenewalHistory);
 elements.renewAction.addEventListener("click", openRenewalDialog);
 elements.closeAction.addEventListener("click", openClosureDialog);
+elements.editAction.addEventListener("click", openEditDialog);
+elements.editDialogClose.addEventListener("click", closeEditDialog);
+elements.editBack.addEventListener("click", closeEditDialog);
+elements.editForm.addEventListener("submit", submitEdit);
 elements.dialog.addEventListener("click", (event) => {
   if (event.target === elements.dialog) {
     closeCellDialog();
