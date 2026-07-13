@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
+import tempfile
 from typing import Mapping
 
 from app.config import Settings
@@ -30,11 +32,28 @@ class DocumentConflictError(RuntimeError): pass
 class DocumentReadError(RuntimeError): pass
 
 
+DOCUMENT_EVENT_TYPES = frozenset({"opening", "renewal", "closing"})
+
+
 @dataclass(frozen=True, slots=True)
 class GeneratedDocument:
     file_name: str
     def to_dict(self) -> dict[str, str]:
         return {"file_name": self.file_name, "message": "Документ сохранён в папку «Загрузки»."}
+
+
+def _required_placeholders(value: object) -> list[str]:
+    try:
+        required = json.loads(value)
+        if not isinstance(required, list) or not all(
+            isinstance(item, str) for item in required
+        ):
+            raise ValueError
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise DocumentValidationError(
+            "Настройка обязательных полей шаблона повреждена."
+        ) from exc
+    return required
 
 
 def list_active_templates(settings: Settings, *, cell_number: object, contract_ref: object) -> list[dict[str, str]]:
@@ -48,7 +67,10 @@ def list_active_templates(settings: Settings, *, cell_number: object, contract_r
                 (cell_number.strip(), contract_ref.strip()),
             ).fetchone()
             rows = connection.execute(
-                "SELECT template_id, display_name FROM document_templates WHERE is_active = 1 ORDER BY display_name, template_id"
+                """SELECT template_id, display_name FROM document_templates
+                   WHERE is_active = 1
+                     AND document_type NOT IN ('renewal', 'closing')
+                   ORDER BY display_name, template_id"""
             ).fetchall()
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise DocumentReadError(NETWORK_ERROR_MESSAGE) from exc
@@ -162,12 +184,7 @@ def generate_active_contract_document(
         raise DocumentValidationError("Активный шаблон документа не найден.")
     if contract is None:
         raise DocumentConflictError("Договор изменён или закрыт. Обновите главный экран.")
-    try:
-        required = json.loads(template["required_placeholders_json"])
-        if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
-            raise ValueError
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise DocumentValidationError("Настройка обязательных полей шаблона повреждена.") from exc
+    required = _required_placeholders(template["required_placeholders_json"])
 
     values = build_document_values(
         contract, creation_date=creation_date, employee=employee
@@ -186,3 +203,158 @@ def generate_active_contract_document(
     except (DocumentTemplateError, DocumentPublishError):
         raise
     return GeneratedDocument(output_name)
+
+
+def generate_event_documents(
+    settings: Settings,
+    *,
+    event_type: str,
+    contract_ref: str,
+    event_ref: str | None,
+    output_directory: Path,
+    employee: str,
+) -> list[GeneratedDocument]:
+    """Generate the configured post-commit bundle for one saved business event."""
+
+    if event_type not in DOCUMENT_EVENT_TYPES:
+        raise DocumentValidationError("Неизвестный комплект документов.")
+    try:
+        paths = validate_database_pair(settings)
+        with open_readonly(
+            paths.working, busy_timeout_ms=settings.busy_timeout_ms
+        ) as connection:
+            templates = connection.execute(
+                """SELECT display_name, relative_file_name,
+                          required_placeholders_json
+                   FROM document_templates
+                   WHERE document_type = ? AND is_active = 1
+                   ORDER BY display_name, template_id""",
+                (event_type,),
+            ).fetchall()
+            if not templates:
+                return []
+            if event_type in {"opening", "renewal"}:
+                contract_row = connection.execute(
+                    """SELECT c.*, cells.height_mm,
+                              COALESCE(cells.width_mm, defaults.width_mm) AS width_mm,
+                              COALESCE(cells.depth_mm, defaults.depth_mm) AS depth_mm
+                       FROM contracts c JOIN cells ON cells.number = c.cell_number
+                       CROSS JOIN vault_defaults defaults
+                       WHERE c.contract_id = ?""",
+                    (contract_ref,),
+                ).fetchone()
+                contract = dict(contract_row) if contract_row is not None else None
+            else:
+                contract = None
+        renewal = None
+        if event_type == "renewal":
+            if not event_ref:
+                raise DocumentValidationError("Не выбрано сохранённое продление.")
+            with open_readonly(
+                paths.archive, busy_timeout_ms=settings.busy_timeout_ms
+            ) as connection:
+                renewal_row = connection.execute(
+                    "SELECT * FROM renewals WHERE renewal_id = ? AND contract_id = ?",
+                    (event_ref, contract_ref),
+                ).fetchone()
+                renewal = dict(renewal_row) if renewal_row is not None else None
+        elif event_type == "closing":
+            if not event_ref:
+                raise DocumentValidationError("Не выбрано сохранённое закрытие.")
+            with open_readonly(
+                paths.archive, busy_timeout_ms=settings.busy_timeout_ms
+            ) as connection:
+                archived = connection.execute(
+                    """SELECT * FROM contracts_archive
+                       WHERE operation_id = ? AND contract_id = ?""",
+                    (event_ref, contract_ref),
+                ).fetchone()
+                contract = dict(archived) if archived is not None else None
+            if contract is not None:
+                with open_readonly(
+                    paths.working, busy_timeout_ms=settings.busy_timeout_ms
+                ) as connection:
+                    dimension_row = connection.execute(
+                        """SELECT cells.height_mm,
+                                  COALESCE(cells.width_mm, defaults.width_mm) AS width_mm,
+                                  COALESCE(cells.depth_mm, defaults.depth_mm) AS depth_mm
+                           FROM cells CROSS JOIN vault_defaults defaults
+                           WHERE cells.number = ?""",
+                        (contract["cell_number"],),
+                    ).fetchone()
+                if dimension_row is None:
+                    contract = None
+                else:
+                    contract.update(dict(dimension_row))
+    except (DocumentValidationError, DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        if isinstance(exc, DocumentValidationError):
+            raise
+        raise DocumentReadError(NETWORK_ERROR_MESSAGE) from exc
+
+    if contract is None:
+        raise DocumentConflictError(
+            "Сохранённый договор для формирования документов не найден."
+        )
+    if event_type == "renewal" and renewal is None:
+        raise DocumentConflictError(
+            "Сохранённое продление для формирования документа не найдено."
+        )
+    try:
+        event_date = date.fromisoformat(
+            str(
+                renewal["renewal_date"]
+                if renewal is not None
+                else contract["close_date"]
+                if event_type == "closing"
+                else contract["created_at"]
+            )[:10]
+        )
+        values = build_document_values(
+            contract,
+            creation_date=event_date,
+            employee=employee,
+            renewal=renewal,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise DocumentValidationError(
+            "Сохранённые данные договора нельзя подставить в документ."
+        ) from exc
+    cell = _safe_filename_part(str(contract["cell_number"]), "ячейка")
+    client = _safe_filename_part(str(contract["client_full_name"]), "клиент")
+    generated: list[GeneratedDocument] = []
+    try:
+        output_directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".safe-cells-bundle-", dir=output_directory
+        ) as temporary_directory:
+            staging_directory = Path(temporary_directory)
+            for template in templates:
+                display = _safe_filename_part(
+                    str(template["display_name"]), "Документ"
+                )
+                output_name = (
+                    f"{display}_Ячейка-{cell}_{client}_{event_date.isoformat()}.docx"
+                )
+                render_docx(
+                    template_directory=settings.database_directory / "templates",
+                    template_file_name=str(template["relative_file_name"]),
+                    output_directory=staging_directory,
+                    output_file_name=output_name,
+                    values=values,
+                    required_placeholders=_required_placeholders(
+                        template["required_placeholders_json"]
+                    ),
+                )
+                generated.append(GeneratedDocument(output_name))
+            for document in generated:
+                os.replace(
+                    staging_directory / document.file_name,
+                    output_directory / document.file_name,
+                )
+    except (DocumentTemplateError, DocumentPublishError, DocumentValidationError):
+        raise
+    except OSError as exc:
+        raise DocumentPublishError(
+            "Не удалось сохранить комплект документов в папку «Загрузки»."
+        ) from exc
+    return generated

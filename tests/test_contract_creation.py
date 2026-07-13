@@ -23,6 +23,7 @@ from app.services.contracts import (
     ContractWriteUncertainError,
     create_contract,
 )
+from app.services.employee import save_employee_full_name
 
 
 OCCURRED_AT = datetime(2026, 7, 12, 9, 30, tzinfo=timezone(timedelta(hours=6)))
@@ -52,6 +53,45 @@ def _counts(settings: Settings) -> tuple[int, int]:
     with open_readonly(paths.archive) as connection:
         logs = connection.execute("SELECT COUNT(*) FROM log").fetchone()[0]
     return int(contracts), int(logs)
+
+
+def test_document_failure_after_api_save_returns_warning_without_undoing_contract(
+    settings: Settings, initialized_databases
+) -> None:
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "INSERT INTO document_templates VALUES(?, ?, ?, ?, ?, 1, ?, ?)",
+            (
+                "missing-opening-template",
+                "opening",
+                "ТЕСТОВЫЙ ДОКУМЕНТ",
+                "missing.docx",
+                json.dumps(["Сейф.Номер"], ensure_ascii=False),
+                OCCURRED_AT.isoformat(),
+                "test-user",
+            ),
+        )
+        connection.commit()
+    app = create_app(settings)
+    app.config.update(
+        TODAY_PROVIDER=lambda: date(2026, 7, 12),
+        TIMESTAMP_PROVIDER=lambda: OCCURRED_AT,
+        DOWNLOADS_DIRECTORY_PROVIDER=lambda: settings.database_directory / "downloads",
+    )
+    save_employee_full_name(
+        app.config["EMPLOYEE_PROFILE_PATH"],
+        app.config["EMPLOYEE_PROVIDER"](),
+        "Тестовый Сотрудник",
+    )
+
+    response = app.test_client().post("/api/contracts", json=contract_payload())
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["documents"] == []
+    assert "Файл шаблона не найден" in body["document_warning"]
+    assert _counts(settings) == (1, 1)
 
 
 def test_create_contract_saves_active_row_audit_and_verified_backups(

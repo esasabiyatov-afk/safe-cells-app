@@ -16,7 +16,7 @@ from app.db.connections import (
     validate_database_pair,
 )
 from app.db.schema import DatabaseInitializationError, initialize_databases
-from app.db.seed import SeedDataError
+from app.db.seed import DOCUMENT_TEMPLATE_SEEDS, SeedDataError
 
 
 @contextmanager
@@ -41,6 +41,25 @@ def _connect_writable(path: Path) -> Iterator[sqlite3.Connection]:
         raise
     finally:
         connection.close()
+
+
+def test_initialization_registers_only_supplied_approved_document_templates(
+    settings: Settings, cells_csv_path: Path
+) -> None:
+    template_directory = settings.database_directory / "templates"
+    template_directory.mkdir()
+    for _template_id, _event, _display, file_name, _required in DOCUMENT_TEMPLATE_SEEDS:
+        (template_directory / file_name).write_bytes(b"test placeholder file")
+
+    result = initialize_databases(settings, cells_csv_path=cells_csv_path)
+
+    with _connect_readonly(result.working_database) as connection:
+        rows = connection.execute(
+            """SELECT document_type, COUNT(*)
+               FROM document_templates GROUP BY document_type
+               ORDER BY document_type"""
+        ).fetchall()
+    assert rows == [("closing", 1), ("opening", 3), ("renewal", 1)]
 
 
 def test_initialization_creates_two_complete_databases(

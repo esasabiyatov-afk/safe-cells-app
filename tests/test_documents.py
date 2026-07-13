@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
+from uuid import uuid4
 
 from docx import Document
 from docx.shared import Cm
@@ -11,7 +12,12 @@ import pytest
 from app import create_app
 from app.db.connections import open_write
 from app.documents import DocumentPublishError, DocumentTemplateError, render_docx
-from app.services.documents import build_document_values, generate_active_contract_document
+from app.services.closures import close_contract
+from app.services.documents import (
+    build_document_values,
+    generate_active_contract_document,
+    generate_event_documents,
+)
 from app.services.employee import save_employee_full_name
 from app.documents.values import (
     amount_in_words_ky, amount_in_words_ru,
@@ -303,3 +309,168 @@ def test_renewal_codes_keep_original_contract_start_and_specific_period(
     assert "«12» июль 2026-жылдагы" in text
     assert "2026--жылдагы" not in text
     assert "[Продление." not in text
+
+
+def test_opening_renewal_and_closing_document_bundles(
+    settings, initialized_databases, insert_test_contract, tmp_path: Path
+):
+    insert_test_contract(
+        cell_number="41",
+        start_date="2026-07-01",
+        end_date="2026-07-30",
+        client_name="Вымышленный Клиент",
+        account_number="TEST-ACCOUNT-041",
+    )
+    templates = settings.database_directory / "templates"
+    templates.mkdir()
+    definitions = (
+        ("open-a", "opening", "ТЕСТ-АКТ", "open-a.docx", "Сейф.Номер"),
+        ("open-b", "opening", "ТЕСТ-ДОГОВОР", "open-b.docx", "Договор.Начало"),
+        ("open-c", "opening", "ТЕСТ-РАСПОРЯЖЕНИЕ", "open-c.docx", "Счет.Номер"),
+        ("renew", "renewal", "ТЕСТ-ПРОДЛЕНИЕ", "renew.docx", "Продление.Начало"),
+        ("close", "closing", "ТЕСТ-ЗАКРЫТИЕ", "close.docx", "Залог.Пропись"),
+    )
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for template_id, event, display, file_name, placeholder in definitions:
+            document = Document()
+            document.add_paragraph(f"ТЕСТОВЫЙ ДОКУМЕНТ: [{placeholder}]")
+            document.save(templates / file_name)
+            connection.execute(
+                "INSERT INTO document_templates VALUES(?, ?, ?, ?, ?, 1, ?, ?)",
+                (
+                    template_id,
+                    event,
+                    display,
+                    file_name,
+                    json.dumps([placeholder], ensure_ascii=False),
+                    "2026-07-30T10:00:00+06:00",
+                    "test-user",
+                ),
+            )
+        connection.execute(
+            """INSERT INTO archive.renewals(
+                   renewal_id, contract_id, cell_number, old_end_date,
+                   renewal_date, new_start_date, new_end_date, renewal_days,
+                   price_per_day_minor, renewal_price_minor, penalty_days,
+                   penalty_rate_minor, penalty_amount_minor, created_at,
+                   created_by, operation_id
+               ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "renewal-test-docs",
+                "contract-test-41",
+                "41",
+                "2026-07-30",
+                "2026-07-30",
+                "2026-07-31",
+                "2026-08-29",
+                30,
+                15,
+                450,
+                0,
+                15,
+                0,
+                "2026-07-30T10:00:00+06:00",
+                "test-user",
+                "renewal-operation-docs",
+            ),
+        )
+        connection.commit()
+
+    downloads = tmp_path / "downloads"
+    opening = generate_event_documents(
+        settings,
+        event_type="opening",
+        contract_ref="contract-test-41",
+        event_ref=None,
+        output_directory=downloads,
+        employee="Тестовый Сотрудник",
+    )
+    renewal = generate_event_documents(
+        settings,
+        event_type="renewal",
+        contract_ref="contract-test-41",
+        event_ref="renewal-test-docs",
+        output_directory=downloads,
+        employee="Тестовый Сотрудник",
+    )
+    assert len(opening) == 3
+    assert len(renewal) == 1
+
+    operation_id = str(uuid4())
+    close_contract(
+        settings,
+        payload={
+            "operation_id": operation_id,
+            "cell_number": "41",
+            "contract_ref": "contract-test-41",
+            "expected_end_date": "2026-07-30",
+            "reason_code": "standard",
+        },
+        employee="test-user",
+        close_date=date(2026, 7, 30),
+        occurred_at=datetime(
+            2026, 7, 30, 11, 0, tzinfo=timezone(timedelta(hours=6))
+        ),
+    )
+    closing = generate_event_documents(
+        settings,
+        event_type="closing",
+        contract_ref="contract-test-41",
+        event_ref=operation_id,
+        output_directory=downloads,
+        employee="Тестовый Сотрудник",
+    )
+    assert len(closing) == 1
+    assert len(list(downloads.glob("*.docx"))) == 5
+    for path in downloads.glob("*.docx"):
+        assert "[" not in "\n".join(paragraph.text for paragraph in Document(path).paragraphs)
+
+
+def test_event_bundle_is_not_published_when_one_template_is_invalid(
+    settings, initialized_databases, insert_test_contract, tmp_path: Path
+):
+    insert_test_contract(
+        cell_number="42",
+        end_date="2026-08-31",
+        client_name="Вымышленный Клиент",
+    )
+    templates = settings.database_directory / "templates"
+    templates.mkdir()
+    valid = Document()
+    valid.add_paragraph("ТЕСТОВЫЙ ДОКУМЕНТ: [Сейф.Номер]")
+    valid.save(templates / "valid.docx")
+    invalid = Document()
+    invalid.add_paragraph("ТЕСТОВЫЙ ДОКУМЕНТ: [НЕИЗВЕСТНОЕ.ПОЛЕ]")
+    invalid.save(templates / "invalid.docx")
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for template_id, display_name, file_name in (
+            ("valid-opening", "А-ТЕСТ", "valid.docx"),
+            ("invalid-opening", "Б-ТЕСТ", "invalid.docx"),
+        ):
+            connection.execute(
+                "INSERT INTO document_templates VALUES(?, 'opening', ?, ?, ?, 1, ?, ?)",
+                (
+                    template_id,
+                    display_name,
+                    file_name,
+                    json.dumps(["Сейф.Номер"], ensure_ascii=False),
+                    "2026-07-30T10:00:00+06:00",
+                    "test-user",
+                ),
+            )
+        connection.commit()
+
+    downloads = tmp_path / "downloads"
+    with pytest.raises(DocumentTemplateError, match="обязательные поля"):
+        generate_event_documents(
+            settings,
+            event_type="opening",
+            contract_ref="contract-test-42",
+            event_ref=None,
+            output_directory=downloads,
+            employee="Тестовый Сотрудник",
+        )
+
+    assert list(downloads.glob("*.docx")) == []

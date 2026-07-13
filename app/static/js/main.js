@@ -242,6 +242,17 @@ function errorMessage(error, fallback) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function documentResultMessage(payload) {
+  if (payload.document_warning) {
+    return ` Документы: ${payload.document_warning}`;
+  }
+  const count = Array.isArray(payload.documents) ? payload.documents.length : 0;
+  if (count === 0) {
+    return "";
+  }
+  return ` Документы сохранены в папку «Загрузки»: ${count}.`;
+}
+
 function clearError() {
   elements.errorBanner.hidden = true;
   elements.errorMessage.textContent = "";
@@ -815,13 +826,14 @@ async function submitClosure(event) {
       throw new Error(payload.message || "Не удалось закрыть договор");
     }
     const warning = payload.warning ? ` ${payload.warning}` : "";
+    const documents = documentResultMessage(payload);
     state.closureSubmitting = false;
     elements.closureDialog.close();
     state.activeClosureQuote = null;
     state.closureOperationId = null;
     state.activeOccupiedCell = null;
     await refreshCells();
-    showSuccess(`Договор по ячейке № ${payload.cell_number} закрыт. Ячейка свободна.${warning}`);
+    showSuccess(`Договор по ячейке № ${payload.cell_number} закрыт. Ячейка свободна.${warning}${documents}`);
   } catch (error) {
     showClosureError(errorMessage(error, "Не удалось закрыть договор"));
   } finally {
@@ -1014,6 +1026,7 @@ async function submitRenewal(event) {
     }
     const cellNumber = payload.cell_number;
     const warning = payload.warning ? ` ${payload.warning}` : "";
+    const documents = documentResultMessage(payload);
     state.renewalSubmitting = false;
     elements.renewalDialog.close();
     state.activeRenewalQuote = null;
@@ -1024,7 +1037,7 @@ async function submitRenewal(event) {
     if (updated && updated.status !== "free") {
       openCellDialog(updated);
     }
-    showSuccess(`Аренда ячейки № ${cellNumber} продлена до ${formatDate(payload.new_end_date)}.${warning}`);
+    showSuccess(`Аренда ячейки № ${cellNumber} продлена до ${formatDate(payload.new_end_date)}.${warning}${documents}`);
   } catch (error) {
     showRenewalError(errorMessage(error, "Не удалось сохранить продление"));
   } finally {
@@ -1299,13 +1312,14 @@ async function submitContract(event) {
     }
     const savedCellNumber = payload.cell_number;
     const warning = payload.warning ? ` ${payload.warning}` : "";
+    const documents = documentResultMessage(payload);
     elements.contractDialog.close();
     elements.contractForm.reset();
     state.activeRentalCell = null;
     state.activeQuote = null;
     state.activeOperationId = null;
     await refreshCells();
-    showSuccess(`Ячейка № ${savedCellNumber} занята.${warning} Документы будут доступны после подключения шаблонов.`);
+    showSuccess(`Ячейка № ${savedCellNumber} занята.${warning}${documents}`);
   } catch (error) {
     showContractError(errorMessage(error, "Не удалось сохранить договор"));
   } finally {

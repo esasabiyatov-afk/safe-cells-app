@@ -273,7 +273,12 @@ def _initialize_pair(
             """,
             (SCHEMA_VERSION, applied_at),
         )
-        seed_working_database(connection, cells, applied_at=applied_at)
+        seed_working_database(
+            connection,
+            cells,
+            applied_at=applied_at,
+            template_directory=settings.database_directory / "templates",
+        )
         connection.commit()
 
         if connection.execute("PRAGMA main.quick_check").fetchone()[0] != "ok":

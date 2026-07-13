@@ -7,6 +7,7 @@ from datetime import datetime
 from flask import Blueprint, current_app, jsonify, request
 
 from app.config import Settings
+from app.routes.document_events import document_event_payload
 from app.services.closures import (
     ClosureBusyError, ClosureConflictError, ClosureNetworkError, ClosureReadError,
     ClosureValidationError, ClosureWriteError, ClosureWriteUncertainError,
@@ -45,13 +46,14 @@ def calculate():
 @closures_blueprint.post("")
 def confirm():
     settings: Settings = current_app.extensions["safe_cells_settings"]
+    payload = request.get_json(silent=True)
     timestamp_provider = current_app.config.get(
         "TIMESTAMP_PROVIDER", lambda: datetime.now().astimezone()
     )
     try:
         result = close_contract(
             settings,
-            payload=request.get_json(silent=True),
+            payload=payload,
             employee=current_app.config["EMPLOYEE_PROVIDER"](),
             close_date=current_app.config["TODAY_PROVIDER"](),
             occurred_at=timestamp_provider(),
@@ -66,4 +68,12 @@ def confirm():
         return jsonify({"message": str(exc)}), 503
     except ClosureWriteError as exc:
         return jsonify({"message": str(exc)}), 500
-    return jsonify(result.to_dict()), 200 if result.repeated else 201
+    response = result.to_dict()
+    response.update(
+        document_event_payload(
+            event_type="closing",
+            contract_ref=result.contract_ref,
+            event_ref=str(payload.get("operation_id")) if isinstance(payload, dict) else None,
+        )
+    )
+    return jsonify(response), 200 if result.repeated else 201

@@ -7,6 +7,7 @@ from datetime import datetime
 from flask import Blueprint, current_app, jsonify, request
 
 from app.config import Settings
+from app.routes.document_events import document_event_payload
 from app.services.renewals import (
     RenewalBusyError,
     RenewalConflictError,
@@ -52,13 +53,14 @@ def calculate():
 @renewals_blueprint.post("")
 def confirm():
     settings: Settings = current_app.extensions["safe_cells_settings"]
+    payload = request.get_json(silent=True)
     timestamp_provider = current_app.config.get(
         "TIMESTAMP_PROVIDER", lambda: datetime.now().astimezone()
     )
     try:
         result = renew_contract(
             settings,
-            payload=request.get_json(silent=True),
+            payload=payload,
             employee=current_app.config["EMPLOYEE_PROVIDER"](),
             renewal_date=current_app.config["TODAY_PROVIDER"](),
             occurred_at=timestamp_provider(),
@@ -73,4 +75,12 @@ def confirm():
         return jsonify({"message": str(exc)}), 503
     except RenewalWriteError as exc:
         return jsonify({"message": str(exc)}), 500
-    return jsonify(result.to_dict()), 200 if result.repeated else 201
+    response = result.to_dict()
+    response.update(
+        document_event_payload(
+            event_type="renewal",
+            contract_ref=result.contract_ref,
+            event_ref=result.renewal_id,
+        )
+    )
+    return jsonify(response), 200 if result.repeated else 201

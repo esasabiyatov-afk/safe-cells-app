@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import sqlite3
 
@@ -42,6 +43,59 @@ INITIAL_CONFIG: dict[str, str] = {
     "currency_code": "KGS",
     "currency_scale": "0",
 }
+
+DOCUMENT_TEMPLATE_SEEDS: tuple[
+    tuple[str, str, str, str, tuple[str, ...]], ...
+] = (
+    (
+        "opening-transfer-act",
+        "opening",
+        "Акт приема передач сейф",
+        "Акт приема передач сейф.docx",
+        ("Дата.Сегодня", "Клиент.ФИО", "Сейф.Номер", "Система.Пользователь", "Счет.Номер"),
+    ),
+    (
+        "opening-individual-safe-contract",
+        "opening",
+        "Договор индивидуального сейфа ф.л",
+        "Договор индивидуального сейфа ф.л.docx",
+        (
+            "Дата.Сегодня", "Дата.СегодняК", "Договор.Конец", "Договор.КонецК",
+            "Договор.Начало", "Договор.НачалоК", "Залог.Пропись",
+            "Залог.ПрописьК", "Залог.Цифр", "Клиент.Документ.Выдан",
+            "Клиент.Документ.ДатаВыдачи", "Клиент.Документ.Номер", "Клиент.ФИО",
+            "Сейф.Номер", "Сейф.Размер", "Система.Пользователь", "Сумма", "Счет.Номер",
+        ),
+    ),
+    (
+        "opening-order",
+        "opening",
+        "Распоряжение Открытие сейф",
+        "Распоряжение Открытие сейф.docx",
+        ("Дата.Сегодня", "Сейф.Номер", "Счет.Номер"),
+    ),
+    (
+        "renewal-addendum",
+        "renewal",
+        "Доп. соглашение сейф ф.л",
+        "Доп. соглашение сейф ф.л.docx",
+        (
+            "Дата.Сегодня", "Дата.СегодняК", "Договор.НачалоД", "Договор.НачалоДК",
+            "Клиент.Документ.Выдан", "Клиент.Документ.ДатаВыдачи",
+            "Клиент.Документ.Номер", "Клиент.ФИО", "Продление.Конец",
+            "Продление.КонецК", "Продление.Начало", "Продление.НачалоК",
+            "Продление.Срок", "Продление.Сумма", "Сейф.Номер",
+            "Система.Пользователь", "Счет.Номер",
+        ),
+    ),
+    (
+        "closing-order",
+        "closing",
+        "Распоряжение Закрытие сейф",
+        "Распоряжение Закрытие сейф.docx",
+        ("Дата.Сегодня", "Залог.Пропись", "Залог.Цифр", "Сейф.Номер", "Счет.Номер"),
+    ),
+)
 
 
 def load_cell_seed(csv_path: Path | str) -> tuple[CellSeed, ...]:
@@ -83,6 +137,7 @@ def seed_working_database(
     cells: tuple[CellSeed, ...],
     *,
     applied_at: str,
+    template_directory: Path | None = None,
 ) -> None:
     connection.execute(
         "INSERT OR IGNORE INTO main.vault_defaults(id, width_mm, depth_mm) VALUES(1, 220, 330)"
@@ -129,3 +184,22 @@ def seed_working_database(
             """,
             (value, applied_at, "system-seed", key),
         )
+
+    if template_directory is not None:
+        for template_id, document_type, display_name, file_name, required in DOCUMENT_TEMPLATE_SEEDS:
+            if not (template_directory / file_name).is_file():
+                continue
+            connection.execute(
+                """INSERT OR IGNORE INTO main.document_templates(
+                       template_id, document_type, display_name, relative_file_name,
+                       required_placeholders_json, is_active, updated_at, updated_by
+                   ) VALUES(?, ?, ?, ?, ?, 1, ?, 'system-seed')""",
+                (
+                    template_id,
+                    document_type,
+                    display_name,
+                    file_name,
+                    json.dumps(required, ensure_ascii=False),
+                    applied_at,
+                ),
+            )

@@ -8,6 +8,7 @@ from hmac import compare_digest
 from flask import Blueprint, current_app, jsonify, request
 
 from app.config import Settings
+from app.routes.document_events import document_event_payload
 from app.services.contracts import (
     ContractBusyError,
     ContractConflictError,
@@ -44,13 +45,14 @@ def _private_request_payload():
 def create():
     settings: Settings = current_app.extensions["safe_cells_settings"]
     employee = current_app.config["EMPLOYEE_PROVIDER"]()
+    payload = request.get_json(silent=True)
     timestamp_provider = current_app.config.get(
         "TIMESTAMP_PROVIDER", lambda: datetime.now().astimezone()
     )
     try:
         result = create_contract(
             settings,
-            payload=request.get_json(silent=True),
+            payload=payload,
             employee=employee,
             occurred_at=timestamp_provider(),
             as_of_date=current_app.config["TODAY_PROVIDER"](),
@@ -66,7 +68,15 @@ def create():
     except ContractWriteError as exc:
         return jsonify({"message": str(exc)}), 500
     status = 200 if result.repeated else 201
-    return jsonify(result.to_dict()), status
+    response = result.to_dict()
+    response.update(
+        document_event_payload(
+            event_type="opening",
+            contract_ref=result.contract_id,
+            event_ref=None,
+        )
+    )
+    return jsonify(response), status
 
 
 @contracts_blueprint.post("/private")

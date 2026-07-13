@@ -85,7 +85,7 @@
 | Поле | Тип | Правило |
 |---|---|---|
 | `template_id` | TEXT | UUID, `PRIMARY KEY`. |
-| `document_type` | TEXT | Тип из разрешённого списка. |
+| `document_type` | TEXT | Событие комплекта: `opening`, `renewal` или `closing`; прочие разрешённые типы могут использоваться только для ручного формирования. |
 | `display_name` | TEXT | Название для интерфейса. |
 | `relative_file_name` | TEXT | Только безопасное имя внутри общей папки `templates`. |
 | `required_placeholders_json` | TEXT | Проверенный JSON-массив. |
