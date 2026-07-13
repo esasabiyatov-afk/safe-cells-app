@@ -13,6 +13,7 @@ import pytest
 from app import create_app
 from app.config import Settings
 from app.db.connections import open_readonly, open_write
+from app.services.contract_details import get_private_contract_details
 from app.services.renewals import (
     RenewalBusyError,
     RenewalConflictError,
@@ -116,6 +117,62 @@ def test_confirmed_renewal_updates_end_and_writes_history_audit_and_backups(
     assert changes["penalty_amount"] == 15
     backup_dir = settings.database_directory / "backups"
     assert len(list(backup_dir.glob(f"*_{request['operation_id']}.*.sqlite3"))) == 2
+
+
+def test_tariff_changes_do_not_reprice_contract_or_saved_renewal(
+    settings: Settings, initialized_databases, insert_test_contract
+):
+    insert_test_contract(cell_number="1", end_date="2026-07-10")
+
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """UPDATE tariffs SET price_per_day_minor = 21
+               WHERE height_mm = 50 AND period_from_days = 1"""
+        )
+        connection.commit()
+
+    result = renew_contract(
+        settings,
+        payload=payload(),
+        employee="test-user",
+        renewal_date=TODAY,
+        occurred_at=OCCURRED_AT,
+    )
+    assert result.price_per_day == 21
+    assert result.renewal_price == 630
+    assert result.penalty_rate == 21
+
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """UPDATE tariffs SET price_per_day_minor = 27
+               WHERE height_mm = 50 AND period_from_days = 1"""
+        )
+        connection.commit()
+
+    with open_readonly(settings.database_directory / "vault_cells.sqlite3") as working:
+        contract = working.execute(
+            "SELECT price_per_day_minor, rent_price_minor FROM contracts WHERE cell_number = ?",
+            ("1",),
+        ).fetchone()
+    with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
+        renewal = archive.execute(
+            """SELECT price_per_day_minor, renewal_price_minor, penalty_rate_minor
+               FROM renewals WHERE renewal_id = ?""",
+            (result.renewal_id,),
+        ).fetchone()
+
+    assert dict(contract) == {"price_per_day_minor": 15, "rent_price_minor": 15}
+    assert dict(renewal) == {
+        "price_per_day_minor": 21,
+        "renewal_price_minor": 630,
+        "penalty_rate_minor": 21,
+    }
+    details = get_private_contract_details(
+        settings, cell_number="1", contract_ref="contract-test-1"
+    )
+    assert details.renewals[0].renewal_price == 630
 
 
 def test_repeat_same_operation_is_idempotent(

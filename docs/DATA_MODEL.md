@@ -67,7 +67,7 @@
 | Идентификаторы | `contract_id TEXT PRIMARY KEY` (UUID), `cell_number TEXT NOT NULL UNIQUE REFERENCES cells(number)`. |
 | Клиент | `client_full_name`, `id_card_number`, `id_card_issuer`, `id_card_issue_date`, `account_number` — обязательны; `extra_fields_json` зарезервирован для утверждённых дополнительных реквизитов шаблона. |
 | Срок | `start_date`, `end_date` ISO-даты; `rent_days INTEGER >= 1`; backend проверяет включительную формулу. |
-| Деньги | `price_per_day_minor`, `rent_price_minor`, `deposit_amount_minor` — целые неотрицательные значения; сохраняются фактические значения на момент сделки. |
+| Деньги | `price_per_day_minor`, `rent_price_minor`, `deposit_amount_minor` — целые неотрицательные значения; сохраняются неизменяемым финансовым снимком на момент открытия и не пересчитываются при изменении справочника тарифов. |
 | Аудит | `created_at`, `created_by`, `updated_at`, `updated_by`; обязательны. |
 
 Номер договора не хранится; дата выдачи ID-карты хранится в `id_card_issue_date` и используется в утверждённых DOCX. Внутренний UUID договора всегда уникален.
@@ -127,8 +127,8 @@
 | `contract_id`, `cell_number` | Снимок идентификаторов договора. |
 | `old_end_date`, `renewal_date`, `new_start_date`, `new_end_date` | ISO-даты. |
 | `renewal_days` | Включительная длительность, не меньше 1. |
-| `price_per_day_minor`, `renewal_price_minor` | Фактическая стоимость. |
-| `penalty_days`, `penalty_rate_minor`, `penalty_amount_minor` | Фактический штраф. |
+| `price_per_day_minor`, `renewal_price_minor` | Фактическая стоимость по тарифу на момент конкретного продления; последующие изменения тарифов её не меняют. |
+| `penalty_days`, `penalty_rate_minor`, `penalty_amount_minor` | Фактический штраф на момент конкретного продления; сохраняется неизменяемым снимком. |
 | `created_at`, `created_by`, `operation_id` | Аудит; `operation_id` уникален. |
 
 История продлений не удаляется и не изменяется.
