@@ -905,6 +905,7 @@ function resetRenewalQuote() {
   elements.renewalPrice.textContent = "—";
   elements.renewalPenaltyDays.textContent = "—";
   elements.renewalPenaltyAmount.textContent = "—";
+  elements.renewalPenaltyPanel.hidden = true;
   elements.renewalTotal.textContent = "—";
 }
 
@@ -987,9 +988,20 @@ function scheduleRenewalQuote() {
   renewalQuoteTimer = window.setTimeout(requestRenewalQuote, 180);
 }
 
+function renewalStartDateValue() {
+  const cell = state.activeOccupiedCell;
+  const oldEnd = parseIsoDateUtc(cell?.end_date || "");
+  const renewalDate = parseIsoDateUtc(state.asOfDate || "");
+  if (!oldEnd || !renewalDate) {
+    return null;
+  }
+  const dayAfterOldEnd = new Date(oldEnd.getTime());
+  dayAfterOldEnd.setUTCDate(dayAfterOldEnd.getUTCDate() + 1);
+  return isoFromUtcDate(dayAfterOldEnd > renewalDate ? dayAfterOldEnd : renewalDate);
+}
+
 function syncRenewalDaysFromEnd() {
-  const startValue = state.activeRenewalQuote?.new_start_date;
-  const start = parseIsoDateUtc(startValue || "");
+  const start = parseIsoDateUtc(renewalStartDateValue() || "");
   const end = parseIsoDateUtc(elements.renewalEndDate.value);
   if (!start || !end || end < start) {
     elements.renewalDays.value = "";
@@ -999,8 +1011,7 @@ function syncRenewalDaysFromEnd() {
 }
 
 function syncRenewalEndFromDays() {
-  const startValue = state.activeRenewalQuote?.new_start_date;
-  const start = parseIsoDateUtc(startValue || "");
+  const start = parseIsoDateUtc(renewalStartDateValue() || "");
   const days = Number(elements.renewalDays.value);
   if (!start || !Number.isInteger(days) || days < 1) {
     elements.renewalEndDate.value = "";

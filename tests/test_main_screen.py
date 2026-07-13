@@ -57,6 +57,7 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="renewAction" type="button">Продлить' in html
     assert 'id="renewalDialog"' in html
     assert 'id="renewalSubmit" type="submit" disabled' in html
+    assert 'id="renewalPenaltyPanel" aria-label="Расчёт штрафа" hidden' in html
     assert 'id="closeAction" type="button">Закрыть договор' in html
     assert 'id="closureDialog"' in html
     assert 'id="closureSubmit" type="submit" disabled' in html
@@ -195,6 +196,7 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert ".legend-dot.normal { background: #2476a8; }" in stylesheet
         assert ".legend-dot.expiring { background: #e5a900; }" in stylesheet
         assert ".legend-dot.overdue { background: #c83b2d; }" in stylesheet
+        assert "grid-template-columns: repeat(2, 1fr);" in stylesheet
         assert "15_000" in script
         assert "setInterval" in script
         assert "innerHTML" not in script
@@ -210,6 +212,9 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "hidePrivateDetails" in script
         assert "clearPrivateValues" in script
         assert "renderRenewals" in script
+        assert "renewalStartDateValue" in script
+        assert "dayAfterOldEnd > renewalDate" in script
+        assert "elements.renewalPenaltyPanel.hidden = true" in script
         assert "showOperationResult" in script
         assert "operationDocumentList" in script
         assert "Операция сохранена, но документы не сформированы" in script
