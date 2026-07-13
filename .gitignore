@@ -35,6 +35,7 @@ local_config.*
 secrets.*
 private_templates/
 templates_local/
+договора/
 employee-profiles.json
 
 # Editor and operating-system files

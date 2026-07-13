@@ -23,6 +23,20 @@ def format_kyrgyz_date(value: date) -> str:
     return f"{value.day}-{KY_MONTHS[value.month - 1]} {value.year}-ж."
 
 
+def format_quoted_russian_date(value: date) -> str:
+    return f"«{value.day}» {RU_MONTHS[value.month - 1]} {value.year} г."
+
+
+def format_quoted_kyrgyz_date(value: date) -> str:
+    return f"«{value.day}» {KY_MONTHS[value.month - 1]} {value.year}-ж."
+
+
+def format_quoted_kyrgyz_date_stem(value: date) -> str:
+    """Format a date before a suffix already present in the DOCX template."""
+
+    return f"«{value.day}» {KY_MONTHS[value.month - 1]} {value.year}"
+
+
 def format_document_issue_date(value: date) -> str:
     return value.strftime("%d.%m.%Y-ж/г.")
 

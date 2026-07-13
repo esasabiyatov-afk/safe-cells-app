@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+from typing import Mapping
 
 from app.config import Settings
 from app.db.connections import DatabaseUnavailableError, NETWORK_ERROR_MESSAGE, open_readonly, validate_database_pair
@@ -17,6 +18,9 @@ from app.documents.values import (
     amount_in_words_ru,
     format_document_issue_date,
     format_kyrgyz_date,
+    format_quoted_kyrgyz_date,
+    format_quoted_kyrgyz_date_stem,
+    format_quoted_russian_date,
     format_russian_date,
 )
 
@@ -59,6 +63,76 @@ def _safe_filename_part(value: str, fallback: str) -> str:
     return (cleaned[:60] or fallback)
 
 
+def build_document_values(
+    contract: Mapping[str, object] | sqlite3.Row,
+    *,
+    creation_date: date,
+    employee: str,
+    renewal: Mapping[str, object] | sqlite3.Row | None = None,
+) -> dict[str, object]:
+    """Build approved placeholder values without guessing legal requisites."""
+
+    start_date = date.fromisoformat(str(contract["start_date"]))
+    end_date = date.fromisoformat(str(contract["end_date"]))
+    issue_date = date.fromisoformat(str(contract["id_card_issue_date"]))
+    deposit = int(contract["deposit_amount_minor"])
+    safe_size = (
+        f'{contract["height_mm"]}×{contract["width_mm"]}×{contract["depth_mm"]} мм'
+    )
+    values: dict[str, object] = {
+        "CLIENT_FULL_NAME": contract["client_full_name"],
+        "ID_CARD_NUMBER": contract["id_card_number"],
+        "ID_CARD_ISSUER": contract["id_card_issuer"],
+        "ID_CARD_ISSUE_DATE": contract["id_card_issue_date"],
+        "ACCOUNT_NUMBER": contract["account_number"],
+        "SAFE_NUMBER": contract["cell_number"],
+        "SAFE_HEIGHT": contract["height_mm"],
+        "SAFE_WIDTH": contract["width_mm"],
+        "SAFE_DEPTH": contract["depth_mm"],
+        "START_DATE": contract["start_date"],
+        "END_DATE": contract["end_date"],
+        "RENT_DAYS": contract["rent_days"],
+        "RENT_PRICE": contract["rent_price_minor"],
+        "CREATION_DATE": creation_date.isoformat(),
+        "EMPLOYEE": employee,
+        "Дата.Сегодня": format_russian_date(creation_date),
+        "Дата.СегодняК": format_kyrgyz_date(creation_date),
+        "Счет.Номер": contract["account_number"],
+        "Клиент.ФИО": contract["client_full_name"],
+        "Клиент.Документ.Номер": contract["id_card_number"],
+        "Клиент.Документ.Выдан": contract["id_card_issuer"],
+        "Клиент.Документ.ДатаВыдачи": format_document_issue_date(issue_date),
+        "Система.Пользователь": employee,
+        "Договор.Начало": format_russian_date(start_date),
+        "Договор.Конец": format_russian_date(end_date),
+        "Договор.НачалоК": format_kyrgyz_date(start_date),
+        "Договор.КонецК": format_kyrgyz_date(end_date),
+        "Договор.НачалоД": format_quoted_russian_date(start_date),
+        # The supplied addendum already appends "-жылдагы" after this code.
+        "Договор.НачалоДК": format_quoted_kyrgyz_date_stem(start_date),
+        "Сумма": contract["rent_price_minor"],
+        "Залог.Цифр": deposit,
+        "Залог.Пропись": amount_in_words_ru(deposit),
+        "Залог.ПрописьК": amount_in_words_ky(deposit),
+        "Сейф.Номер": contract["cell_number"],
+        "Сейф.Размер": safe_size,
+    }
+    if renewal is not None:
+        renewal_start = date.fromisoformat(str(renewal["new_start_date"]))
+        renewal_end = date.fromisoformat(str(renewal["new_end_date"]))
+        values.update(
+            {
+                "Продление.Начало": format_quoted_russian_date(renewal_start),
+                "Продление.Конец": format_quoted_russian_date(renewal_end),
+                "Продление.НачалоК": format_quoted_kyrgyz_date(renewal_start),
+                "Продление.КонецК": format_quoted_kyrgyz_date(renewal_end),
+                "Продление.Сумма": int(renewal["renewal_price_minor"]),
+                "Продление.Срок": int(renewal["renewal_days"]),
+            }
+        )
+    return values
+
+
 def generate_active_contract_document(
     settings: Settings, *, cell_number: object, contract_ref: object,
     template_id: object, output_directory: Path, creation_date: date,
@@ -95,40 +169,9 @@ def generate_active_contract_document(
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise DocumentValidationError("Настройка обязательных полей шаблона повреждена.") from exc
 
-    start_date = date.fromisoformat(str(contract["start_date"]))
-    end_date = date.fromisoformat(str(contract["end_date"]))
-    issue_date = date.fromisoformat(str(contract["id_card_issue_date"]))
-    deposit = int(contract["deposit_amount_minor"])
-    safe_size = (
-        f'{contract["height_mm"]}×{contract["width_mm"]}×{contract["depth_mm"]} мм'
+    values = build_document_values(
+        contract, creation_date=creation_date, employee=employee
     )
-    values = {
-        "CLIENT_FULL_NAME": contract["client_full_name"], "ID_CARD_NUMBER": contract["id_card_number"],
-        "ID_CARD_ISSUER": contract["id_card_issuer"], "ID_CARD_ISSUE_DATE": contract["id_card_issue_date"],
-        "ACCOUNT_NUMBER": contract["account_number"], "SAFE_NUMBER": contract["cell_number"],
-        "SAFE_HEIGHT": contract["height_mm"], "SAFE_WIDTH": contract["width_mm"], "SAFE_DEPTH": contract["depth_mm"],
-        "START_DATE": contract["start_date"], "END_DATE": contract["end_date"],
-        "RENT_DAYS": contract["rent_days"], "RENT_PRICE": contract["rent_price_minor"],
-        "CREATION_DATE": creation_date.isoformat(), "EMPLOYEE": employee,
-        "Дата.Сегодня": format_russian_date(creation_date),
-        "Дата.СегодняК": format_kyrgyz_date(creation_date),
-        "Счет.Номер": contract["account_number"],
-        "Клиент.ФИО": contract["client_full_name"],
-        "Клиент.Документ.Номер": contract["id_card_number"],
-        "Клиент.Документ.Выдан": contract["id_card_issuer"],
-        "Клиент.Документ.ДатаВыдачи": format_document_issue_date(issue_date),
-        "Система.Пользователь": employee,
-        "Договор.Начало": format_russian_date(start_date),
-        "Договор.Конец": format_russian_date(end_date),
-        "Договор.НачалоК": format_kyrgyz_date(start_date),
-        "Договор.КонецК": format_kyrgyz_date(end_date),
-        "Сумма": contract["rent_price_minor"],
-        "Залог.Цифр": deposit,
-        "Залог.Пропись": amount_in_words_ru(deposit),
-        "Залог.ПрописьК": amount_in_words_ky(deposit),
-        "Сейф.Номер": contract["cell_number"],
-        "Сейф.Размер": safe_size,
-    }
     display = _safe_filename_part(str(template["display_name"]), "Документ")
     cell = _safe_filename_part(str(contract["cell_number"]), "ячейка")
     client = _safe_filename_part(str(contract["client_full_name"]), "клиент")
