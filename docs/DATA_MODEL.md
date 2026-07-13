@@ -56,7 +56,7 @@
 | `updated_at` | TEXT | ISO-время. |
 | `updated_by` | TEXT | Windows-логин. |
 
-Обязательные ключи: `expiring_soon_days`, `deposit_amount_minor`, `currency_code`, `currency_scale`. Секреты здесь не хранятся.
+Обязательные ключи: `expiring_soon_days`, `deposit_amount_minor`, `currency_code`, `currency_scale`, `admin_access_mode`. Последний содержит только `password` или `acknowledgement`, не является секретом. Секреты здесь не хранятся.
 
 ### `contracts`
 
@@ -88,7 +88,7 @@
 | `document_type` | TEXT | Событие комплекта: `opening`, `renewal` или `closing`; прочие разрешённые типы могут использоваться только для ручного формирования. |
 | `display_name` | TEXT | Название для интерфейса. |
 | `relative_file_name` | TEXT | Только безопасное имя внутри общей папки `templates`. |
-| `required_placeholders_json` | TEXT | Проверенный JSON-массив. |
+| `required_placeholders_json` | TEXT | Проверенный JSON-массив; пустой массив означает готовый документ без заполнения. |
 | `is_active` | INTEGER | 0 или 1. |
 | `updated_at`, `updated_by` | TEXT | Аудит изменения. |
 
@@ -166,3 +166,4 @@
 - `config.currency_code`: `KGS`; выбора валюты в пользовательских формах нет.
 - `config.currency_scale`: `0`; дробные суммы запрещены.
 - `config.deposit_amount_minor`: `1500`; настройка редактируется администратором рядом с тарифами.
+- `config.admin_access_mode`: `password`; после первичной настройки можно выбрать `acknowledgement`.

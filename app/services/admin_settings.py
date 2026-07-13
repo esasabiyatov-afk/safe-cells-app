@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import json
+from pathlib import Path
 import sqlite3
 from typing import Any
 from uuid import UUID, uuid4
@@ -26,6 +27,9 @@ UNCERTAIN_MESSAGE = (
     "Не удалось подтвердить результат записи. Обновите настройки и проверьте данные."
 )
 EDITABLE_CONFIG_KEYS = frozenset({"expiring_soon_days", "deposit_amount_minor"})
+ACCESS_MODE_PASSWORD = "password"
+ACCESS_MODE_ACKNOWLEDGEMENT = "acknowledgement"
+ADMIN_ACCESS_MODES = frozenset({ACCESS_MODE_PASSWORD, ACCESS_MODE_ACKNOWLEDGEMENT})
 MAX_MONEY_VALUE = 10_000_000
 
 
@@ -123,6 +127,26 @@ def get_admin_password_hash(settings: Settings) -> str | None:
 
 def is_admin_configured(settings: Settings) -> bool:
     return get_admin_password_hash(settings) is not None
+
+
+def get_admin_access_mode(settings: Settings) -> str:
+    """Read the access mode, defaulting old databases to password mode."""
+    try:
+        paths = validate_database_pair(settings)
+        with open_readonly(
+            paths.working, busy_timeout_ms=settings.busy_timeout_ms
+        ) as connection:
+            row = connection.execute(
+                "SELECT value FROM config WHERE key = 'admin_access_mode'"
+            ).fetchone()
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
+    if row is None:
+        return ACCESS_MODE_PASSWORD
+    mode = str(row["value"])
+    if mode not in ADMIN_ACCESS_MODES:
+        raise AdminWriteError("Режим доступа к настройкам повреждён.")
+    return mode
 
 
 def _backup_after_commit(
@@ -307,7 +331,7 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
             ).fetchall()
             template_rows = connection.execute(
                 """SELECT template_id, document_type, display_name,
-                          relative_file_name, is_active
+                          relative_file_name, required_placeholders_json, is_active
                    FROM document_templates
                    ORDER BY document_type, display_name, template_id"""
             ).fetchall()
@@ -319,16 +343,38 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
         raise AdminWriteError("Обязательные настройки отсутствуют или повреждены.") from exc
     if set(config) != EDITABLE_CONFIG_KEYS:
         raise AdminWriteError("Обязательные настройки отсутствуют или повреждены.")
+    templates = []
+    for row in template_rows:
+        try:
+            placeholders = json.loads(str(row["required_placeholders_json"]))
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise AdminWriteError("Список полей одного из шаблонов повреждён.") from exc
+        if not isinstance(placeholders, list) or not all(
+            isinstance(item, str) for item in placeholders
+        ):
+            raise AdminWriteError("Список полей одного из шаблонов повреждён.")
+        file_name = str(row["relative_file_name"])
+        file_present = (
+            Path(file_name).name == file_name
+            and file_name.casefold().endswith(".docx")
+            and (paths.directory / "templates" / file_name).is_file()
+        )
+        templates.append(
+            {
+                "template_id": row["template_id"],
+                "document_type": row["document_type"],
+                "display_name": row["display_name"],
+                "relative_file_name": file_name,
+                "required_placeholders": placeholders,
+                "file_present": file_present,
+                "is_active": bool(row["is_active"]),
+            }
+        )
     return {
         "config": config,
         "tariffs": [dict(row) for row in tariff_rows],
-        "templates": [
-            {
-                **dict(row),
-                "is_active": bool(row["is_active"]),
-            }
-            for row in template_rows
-        ],
+        "templates": templates,
+        "access_mode": get_admin_access_mode(settings),
     }
 
 
@@ -351,6 +397,91 @@ def _validate_config(value: object) -> dict[str, int]:
             maximum=MAX_MONEY_VALUE,
         ),
     }
+
+
+def update_admin_access_mode(
+    settings: Settings,
+    *,
+    payload: object,
+    employee: object,
+    occurred_at: datetime,
+) -> AdminWriteResult:
+    if not isinstance(payload, dict) or set(payload) != {"operation_id", "access_mode"}:
+        raise AdminValidationError("Переданы неизвестные или неполные данные режима доступа.")
+    operation_id = _operation_id(payload["operation_id"])
+    mode = payload["access_mode"]
+    if not isinstance(mode, str) or mode not in ADMIN_ACCESS_MODES:
+        raise AdminValidationError("Выберите один из двух режимов доступа.")
+    employee_name = _employee(employee)
+    timestamp = _timestamp(occurred_at)
+    phase = "opening"
+    try:
+        with open_write(settings, attach_archive=True) as connection:
+            phase = "begin"
+            connection.execute("BEGIN IMMEDIATE")
+            phase = "transaction"
+            action = "admin.access.updated"
+            if _existing_operation(connection, operation_id, action):
+                connection.rollback()
+                return AdminWriteResult(True, False, None)
+            if mode == ACCESS_MODE_PASSWORD and connection.execute(
+                "SELECT 1 FROM admin_credentials WHERE id = 1"
+            ).fetchone() is None:
+                raise AdminConflictError("Сначала создайте общий административный пароль.")
+            old_row = connection.execute(
+                "SELECT value FROM config WHERE key = 'admin_access_mode'"
+            ).fetchone()
+            old_mode = ACCESS_MODE_PASSWORD if old_row is None else str(old_row["value"])
+            connection.execute(
+                """INSERT INTO config(key, value, updated_at, updated_by)
+                   VALUES('admin_access_mode', ?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE SET
+                       value=excluded.value, updated_at=excluded.updated_at,
+                       updated_by=excluded.updated_by""",
+                (mode, timestamp, employee_name),
+            )
+            connection.execute(
+                """INSERT INTO archive.log(
+                       log_id, operation_id, occurred_at, employee, action,
+                       contract_id, cell_number, changes_json
+                   ) VALUES(?, ?, ?, ?, ?, NULL, NULL, ?)""",
+                (
+                    str(uuid4()), operation_id, timestamp, employee_name, action,
+                    json.dumps(
+                        {"access_mode": {"old": old_mode, "new": mode}},
+                        sort_keys=True,
+                    ),
+                ),
+            )
+            phase = "committing"
+            connection.commit()
+            phase = "verifying"
+            saved = connection.execute(
+                "SELECT value FROM config WHERE key = 'admin_access_mode'"
+            ).fetchone()
+            if saved is None or str(saved["value"]) != mode:
+                raise AdminWriteUncertainError(UNCERTAIN_MESSAGE)
+            backup_created, warning = _backup_after_commit(
+                connection,
+                settings,
+                operation_id=operation_id,
+                occurred_at=occurred_at,
+            )
+            return AdminWriteResult(False, backup_created, warning)
+    except (AdminValidationError, AdminConflictError, AdminWriteUncertainError):
+        raise
+    except DatabaseUnavailableError as exc:
+        raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc).lower() and phase in {"opening", "begin", "transaction"}:
+            raise AdminBusyError(BUSY_MESSAGE) from exc
+        if phase in {"committing", "verifying"}:
+            raise AdminWriteUncertainError(UNCERTAIN_MESSAGE) from exc
+        raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
+    except (OSError, sqlite3.Error) as exc:
+        if phase in {"committing", "verifying"}:
+            raise AdminWriteUncertainError(UNCERTAIN_MESSAGE) from exc
+        raise AdminWriteError("Режим доступа не сохранён. Изменения отменены.") from exc
 
 
 def _validate_tariffs(value: object) -> list[dict[str, int | None]]:

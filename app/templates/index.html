@@ -28,10 +28,13 @@
   data-admin-status-url="{{ url_for('admin.status') }}"
   data-admin-setup-url="{{ url_for('admin.setup') }}"
   data-admin-login-url="{{ url_for('admin.login') }}"
+  data-admin-acknowledge-url="{{ url_for('admin.acknowledge') }}"
   data-admin-logout-url="{{ url_for('admin.logout') }}"
   data-admin-settings-url="{{ url_for('admin.settings_view') }}"
+  data-admin-access-url="{{ url_for('admin.access_update') }}"
   data-admin-password-url="{{ url_for('admin.password_change') }}"
   data-admin-templates-url="{{ url_for('admin.template_upload') }}"
+  data-admin-template-file-url="{{ url_for('admin.template_file', template_id='__TEMPLATE_ID__') }}"
 >
   <header class="page-header">
     <div class="brand-block">
@@ -236,70 +239,93 @@
     <form id="adminAuthForm" class="admin-auth-form" autocomplete="off">
       <p class="dialog-note" id="adminAuthNote">Проверка состояния настроек…</p>
       <div class="calculation-error" id="adminAuthError" role="alert" hidden></div>
-      <label class="contract-field contract-field--wide">
-        <span id="adminPasswordLabel">Административный пароль</span>
+      <label class="contract-field contract-field--wide" id="adminPasswordField">
+        <span id="adminPasswordLabel">Общий пароль отдела</span>
         <input id="adminPassword" type="password" minlength="12" maxlength="256" required autocomplete="current-password">
       </label>
       <label class="contract-field contract-field--wide" id="adminPasswordConfirmField" hidden>
         <span>Повторите пароль</span>
         <input id="adminPasswordConfirm" type="password" minlength="12" maxlength="256" autocomplete="new-password">
       </label>
-      <div class="dialog-actions">
-        <button class="primary-button" id="adminAuthSubmit" type="submit">Войти</button>
-      </div>
+      <label class="admin-acknowledgement" id="adminAcknowledgementField" hidden>
+        <input id="adminAcknowledgement" type="checkbox">
+        <span>Я понимаю, что эти настройки должен менять только руководитель отдела, и принимаю ответственность за изменения.</span>
+      </label>
+      <div class="dialog-actions"><button class="primary-button" id="adminAuthSubmit" type="submit">Войти</button></div>
     </form>
 
     <div id="adminContent" hidden>
       <div class="admin-heading-actions">
         <p class="dialog-note">Изменения сохраняются в общей базе и фиксируются в журнале.</p>
-        <button class="secondary-button" id="adminLogout" type="button">Выйти из настроек</button>
+        <button class="secondary-button" id="adminLogout" type="button">Закрыть доступ</button>
       </div>
       <div class="calculation-error" id="adminError" role="alert" hidden></div>
       <div class="success-banner" id="adminSuccess" role="status" hidden></div>
 
-      <form id="adminSettingsForm">
-        <section class="admin-section" aria-labelledby="adminGeneralTitle">
-          <h3 id="adminGeneralTitle">Общие параметры</h3>
+      <nav class="admin-tabs" aria-label="Разделы настроек">
+        <button type="button" class="admin-tab is-active" data-admin-tab="general" aria-selected="true">Общие</button>
+        <button type="button" class="admin-tab" data-admin-tab="tariffs" aria-selected="false">Тарифы</button>
+        <button type="button" class="admin-tab" data-admin-tab="templates" aria-selected="false">Шаблоны</button>
+        <button type="button" class="admin-tab" data-admin-tab="access" aria-selected="false">Доступ</button>
+      </nav>
+
+      <section class="admin-panel" data-admin-panel="general">
+        <form id="adminGeneralForm" class="admin-section">
+          <h3>Общие параметры</h3>
+          <p class="dialog-note">Эти значения используются во всех экземплярах приложения отдела.</p>
           <div class="admin-config-grid">
-            <label class="contract-field"><span>Истекает через, дней</span><input id="adminExpiringDays" type="number" min="1" max="365" required></label>
-            <label class="contract-field"><span>Залог, сом</span><input id="adminDeposit" type="number" min="0" max="10000000" required></label>
+            <label class="contract-field"><span>Считать договор истекающим за, дней</span><input id="adminExpiringDays" type="number" min="1" max="365" required><small>Выделяет приближающиеся окончания на главном экране.</small></label>
+            <label class="contract-field"><span>Залог за ключ, сом</span><input id="adminDeposit" type="number" min="0" max="10000000" required><small>Подставляется при открытии и закрытии договора.</small></label>
           </div>
-        </section>
-
-        <section class="admin-section" aria-labelledby="adminTariffsTitle">
-          <h3 id="adminTariffsTitle">Тарифы, сом за день</h3>
-          <p class="dialog-note">Диапазоны срока защищены от изменения; редактируется только ставка.</p>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead><tr><th>Высота</th><th>Срок</th><th>Ставка</th></tr></thead>
-              <tbody id="adminTariffRows"></tbody>
-            </table>
-          </div>
-        </section>
-        <div class="dialog-actions"><button class="primary-button" id="adminSettingsSubmit" type="submit">Сохранить параметры и тарифы</button></div>
-      </form>
-
-      <section class="admin-section" aria-labelledby="adminTemplatesTitle">
-        <h3 id="adminTemplatesTitle">Шаблоны DOCX</h3>
-        <div id="adminTemplateRows" class="admin-template-list"></div>
-        <form id="adminTemplateUploadForm" class="admin-upload-form">
-          <h4>Добавить или заменить файл</h4>
-          <label class="contract-field"><span>Действие</span><select id="adminTemplateTarget"><option value="">Добавить новый шаблон</option></select></label>
-          <label class="contract-field"><span>Название</span><input id="adminTemplateDisplay" maxlength="120" required></label>
-          <label class="contract-field"><span>Комплект</span><select id="adminTemplateType"><option value="opening">Открытие</option><option value="renewal">Продление</option><option value="closing">Закрытие</option><option value="manual">Только вручную</option></select></label>
-          <label class="contract-field"><span>DOCX-файл</span><input id="adminTemplateFile" type="file" accept=".docx" required></label>
-          <div class="dialog-actions"><button class="secondary-button" id="adminTemplateUpload" type="submit">Загрузить шаблон</button></div>
+          <div class="dialog-actions"><button class="primary-button" id="adminGeneralSubmit" type="submit">Сохранить общие параметры</button></div>
         </form>
       </section>
 
-      <section class="admin-section" aria-labelledby="adminPasswordTitle">
-        <h3 id="adminPasswordTitle">Сменить административный пароль</h3>
-        <form id="adminPasswordForm" class="admin-password-grid" autocomplete="off">
-          <label class="contract-field"><span>Текущий пароль</span><input id="adminCurrentPassword" type="password" required autocomplete="current-password"></label>
-          <label class="contract-field"><span>Новый пароль</span><input id="adminNewPassword" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
-          <label class="contract-field"><span>Повторите новый пароль</span><input id="adminNewPasswordConfirm" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
-          <div class="dialog-actions"><button class="secondary-button" id="adminPasswordSubmit" type="submit">Сменить пароль</button></div>
+      <section class="admin-panel" data-admin-panel="tariffs" hidden>
+        <form id="adminTariffsForm" class="admin-section">
+          <h3>Тарифы, сом за день</h3>
+          <p class="dialog-note">Срок и высота уже утверждены. Меняется только ставка за один день.</p>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Высота</th><th>Срок</th><th>Ставка</th></tr></thead><tbody id="adminTariffRows"></tbody></table></div>
+          <div class="dialog-actions"><button class="primary-button" id="adminTariffsSubmit" type="submit">Сохранить тарифы</button></div>
         </form>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="templates" hidden>
+        <div class="admin-section">
+          <h3>Шаблоны DOCX</h3>
+          <p class="dialog-note">Здесь видно, для какой операции используется каждый файл и какие данные он заполняет. Если полей нет, документ просто копируется как готовый файл — его можно получить и распечатать.</p>
+          <div id="adminTemplateRows" class="admin-template-list"></div>
+          <form id="adminTemplateUploadForm" class="admin-upload-form">
+            <h4>Добавить или заменить файл</h4>
+            <label class="contract-field"><span>Действие</span><select id="adminTemplateTarget"><option value="">Добавить новый шаблон</option></select></label>
+            <label class="contract-field"><span>Понятное название</span><input id="adminTemplateDisplay" maxlength="120" required></label>
+            <label class="contract-field"><span>Когда используется</span><select id="adminTemplateType"><option value="opening">При открытии</option><option value="renewal">При продлении</option><option value="closing">При закрытии</option><option value="manual">Только вручную</option></select></label>
+            <label class="contract-field"><span>DOCX-файл</span><input id="adminTemplateFile" type="file" accept=".docx" required><small>Поля подстановки необязательны.</small></label>
+            <div class="dialog-actions"><button class="secondary-button" id="adminTemplateUpload" type="submit">Проверить и загрузить</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="access" hidden>
+        <div class="admin-section">
+          <h3>Доступ к настройкам</h3>
+          <p class="dialog-note">Выберите удобный для отдела вариант. Оба режима относятся только к этому окну, обычная работа с ячейками не меняется.</p>
+          <form id="adminAccessForm" class="admin-access-options">
+            <label class="admin-access-card"><input type="radio" name="adminAccessMode" value="password" id="adminAccessPassword"><span><strong>1. Общий пароль отдела</strong><small>Один пароль для всех, без блокировки попыток и без автоматического выхода по времени.</small></span></label>
+            <label class="admin-access-card"><input type="radio" name="adminAccessMode" value="acknowledgement" id="adminAccessAcknowledgement"><span><strong>2. Без пароля, с предупреждением</strong><small>Для входа достаточно отметить, что настройки меняет руководитель отдела.</small></span></label>
+            <div class="dialog-actions"><button class="primary-button" id="adminAccessSubmit" type="submit">Сохранить способ входа</button></div>
+          </form>
+        </div>
+        <div class="admin-section" id="adminPasswordSection">
+          <h3>Общий пароль отдела</h3>
+          <p class="dialog-note">Пароль хранится только как стойкий хеш с солью. Он пригодится, если позже снова выбрать вариант 1.</p>
+          <form id="adminPasswordForm" class="admin-password-grid" autocomplete="off">
+            <label class="contract-field"><span>Текущий пароль</span><input id="adminCurrentPassword" type="password" required autocomplete="current-password"></label>
+            <label class="contract-field"><span>Новый пароль</span><input id="adminNewPassword" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
+            <label class="contract-field"><span>Повторите новый пароль</span><input id="adminNewPasswordConfirm" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
+            <div class="dialog-actions"><button class="secondary-button" id="adminPasswordSubmit" type="submit">Сменить общий пароль</button></div>
+          </form>
+        </div>
       </section>
     </div>
   </dialog>

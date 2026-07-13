@@ -15,7 +15,6 @@ from app.db.connections import open_readonly, open_write
 from app.services.admin_auth import (
     AdminAccessManager,
     AdminAuthenticationError,
-    AdminRateLimitError,
     hash_password,
     verify_password,
 )
@@ -69,6 +68,15 @@ def _docx_bytes(placeholder: str = "Сейф.Номер") -> BytesIO:
     return buffer
 
 
+def _static_docx_bytes() -> BytesIO:
+    buffer = BytesIO()
+    document = Document()
+    document.add_paragraph("ТЕСТОВЫЙ ДОКУМЕНТ БЕЗ ПОЛЕЙ")
+    document.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
 def test_password_hash_uses_random_salt_and_never_contains_plaintext():
     first = hash_password(PASSWORD)
     second = hash_password(PASSWORD)
@@ -81,13 +89,23 @@ def test_password_hash_uses_random_salt_and_never_contains_plaintext():
 def test_initial_password_is_hashed_audited_and_required_for_settings(
     settings, initialized_databases
 ):
+    # A database created before this option existed must stay usable.
+    with open_write(settings) as working:
+        working.execute("DELETE FROM config WHERE key = 'admin_access_mode'")
+        working.commit()
     app = _ready_app(settings)
     client = app.test_client()
-    assert client.get("/api/admin/status").get_json() == {"configured": False}
+    assert client.get("/api/admin/status").get_json() == {
+        "configured": False,
+        "access_mode": "password",
+    }
     assert client.get("/api/admin/settings").status_code == 401
 
     token = _setup(client)
-    assert client.get("/api/admin/status").get_json() == {"configured": True}
+    assert client.get("/api/admin/status").get_json() == {
+        "configured": True,
+        "access_mode": "password",
+    }
     assert _snapshot(client, token)["config"]["deposit_amount_minor"] == 1500
 
     with open_readonly(settings.database_directory / "vault_cells.sqlite3") as working:
@@ -103,33 +121,26 @@ def test_initial_password_is_hashed_audited_and_required_for_settings(
     assert "password_hash" not in log
 
 
-def test_login_is_limited_after_five_wrong_attempts(settings, initialized_databases):
+def test_shared_password_has_no_attempt_lock(settings, initialized_databases):
     app = _ready_app(settings)
     client = app.test_client()
     _setup(client)
-    for _ in range(4):
+    for _ in range(7):
         response = client.post("/api/admin/login", json={"password": "WrongPassword-1"})
         assert response.status_code == 401
-    fifth = client.post("/api/admin/login", json={"password": "WrongPassword-1"})
-    assert fifth.status_code == 429
-    assert client.post("/api/admin/login", json={"password": PASSWORD}).status_code == 429
+    assert client.post("/api/admin/login", json={"password": PASSWORD}).status_code == 200
 
 
-def test_access_manager_unlocks_and_expires_sessions():
-    now = datetime(2026, 7, 14, tzinfo=timezone.utc)
-    current = [now]
-    manager = AdminAccessManager(now_provider=lambda: current[0])
+def test_access_manager_session_lasts_until_revoked():
+    manager = AdminAccessManager()
     encoded = hash_password(PASSWORD)
-    for _ in range(4):
+    for _ in range(7):
         with pytest.raises(AdminAuthenticationError, match="Неверный"):
             manager.authenticate("WrongPassword-1", encoded)
-    with pytest.raises(AdminRateLimitError, match="15 минут"):
-        manager.authenticate("WrongPassword-1", encoded)
-    current[0] += timedelta(minutes=16)
     session = manager.authenticate(PASSWORD, encoded)
     manager.require(session.token)
-    current[0] += timedelta(minutes=21)
-    with pytest.raises(AdminAuthenticationError, match="Сеанс"):
+    manager.revoke(session.token)
+    with pytest.raises(AdminAuthenticationError, match="завершён"):
         manager.require(session.token)
 
 
@@ -355,6 +366,78 @@ def test_template_upload_rejects_unknown_field_and_path_escape(
             occurred_at=OCCURRED_AT,
         )
     assert not (settings.database_directory.parent / "outside.docx").exists()
+
+
+def test_static_docx_without_placeholders_can_be_uploaded_and_downloaded(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+    upload = client.post(
+        "/api/admin/templates",
+        headers=_headers(token),
+        data={
+            "operation_id": str(uuid4()),
+            "document_type": "manual",
+            "display_name": "ГОТОВЫЙ ТЕСТОВЫЙ ДОКУМЕНТ",
+            "file": (_static_docx_bytes(), "TEST_STATIC.docx"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert upload.status_code == 201, upload.get_json()
+    template_id = upload.get_json()["template_id"]
+    template = next(
+        item
+        for item in _snapshot(client, token)["templates"]
+        if item["template_id"] == template_id
+    )
+    assert template["required_placeholders"] == []
+    assert template["file_present"] is True
+    downloaded = client.get(
+        f"/api/admin/templates/{template_id}/file", headers=_headers(token)
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.data.startswith(b"PK")
+    assert client.get(f"/api/admin/templates/{template_id}/file").status_code == 401
+
+
+def test_access_mode_can_switch_between_password_and_acknowledgement(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    password_token = _setup(client)
+    operation_id = str(uuid4())
+    switched = client.put(
+        "/api/admin/access",
+        headers=_headers(password_token),
+        json={"operation_id": operation_id, "access_mode": "acknowledgement"},
+    )
+    assert switched.status_code == 200, switched.get_json()
+    assert client.get("/api/admin/status").get_json()["access_mode"] == "acknowledgement"
+    assert client.post("/api/admin/login", json={"password": PASSWORD}).status_code == 409
+    assert client.post("/api/admin/acknowledge", json={"accepted": False}).status_code == 400
+    acknowledged = client.post("/api/admin/acknowledge", json={"accepted": True})
+    assert acknowledged.status_code == 200
+    acknowledgement_token = acknowledged.get_json()["token"]
+    assert _snapshot(client, acknowledgement_token)["access_mode"] == "acknowledgement"
+
+    restored = client.put(
+        "/api/admin/access",
+        headers=_headers(acknowledgement_token),
+        json={"operation_id": str(uuid4()), "access_mode": "password"},
+    )
+    assert restored.status_code == 200
+    assert client.post("/api/admin/acknowledge", json={"accepted": True}).status_code == 409
+    assert client.post("/api/admin/login", json={"password": PASSWORD}).status_code == 200
+
+    with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
+        changes = archive.execute(
+            "SELECT changes_json FROM log WHERE operation_id = ?", (operation_id,)
+        ).fetchone()["changes_json"]
+    assert PASSWORD not in changes
+    assert "acknowledgement" in changes
 
 
 def test_password_change_requires_current_password_and_invalidates_old_one(

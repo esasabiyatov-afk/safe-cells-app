@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from app.services.admin_auth import (
     AdminAccessManager,
     AdminAuthenticationError,
     AdminPasswordError,
-    AdminRateLimitError,
 )
 from app.services.admin_settings import (
+    ACCESS_MODE_ACKNOWLEDGEMENT,
+    ACCESS_MODE_PASSWORD,
     AdminBusyError,
     AdminConflictError,
     AdminNetworkError,
@@ -21,12 +22,18 @@ from app.services.admin_settings import (
     AdminWriteUncertainError,
     change_admin_password,
     create_admin_password,
+    get_admin_access_mode,
     get_admin_password_hash,
     get_admin_settings,
     is_admin_configured,
     update_admin_settings,
+    update_admin_access_mode,
 )
-from app.services.admin_templates import save_document_template, update_document_template
+from app.services.admin_templates import (
+    get_document_template_path,
+    save_document_template,
+    update_document_template,
+)
 
 
 admin_blueprint = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -76,19 +83,17 @@ def _write_error(exc: Exception):
 
 
 def _session_payload(session) -> dict[str, str]:
-    return {
-        "token": session.token,
-        "expires_at": session.expires_at.isoformat(timespec="seconds"),
-    }
+    return {"token": session.token}
 
 
 @admin_blueprint.get("/status")
 def status():
     try:
         configured = is_admin_configured(_settings())
-    except AdminNetworkError as exc:
+        access_mode = get_admin_access_mode(_settings())
+    except (AdminNetworkError, AdminWriteError) as exc:
         return jsonify({"message": str(exc)}), 503
-    return jsonify({"configured": configured})
+    return jsonify({"configured": configured, "access_mode": access_mode})
 
 
 @admin_blueprint.post("/setup")
@@ -131,19 +136,34 @@ def login():
     if not isinstance(payload, dict) or set(payload) != {"password"}:
         return jsonify({"message": "Введите административный пароль."}), 400
     try:
+        if get_admin_access_mode(_settings()) != ACCESS_MODE_PASSWORD:
+            raise AdminConflictError("Для настроек выбран вход без пароля.")
         stored_hash = get_admin_password_hash(_settings())
         if stored_hash is None:
             raise AdminConflictError("Административный пароль ещё не создан.")
         session = _manager().authenticate(payload["password"], stored_hash)
     except AdminAuthenticationError as exc:
         return jsonify({"message": str(exc)}), 401
-    except AdminRateLimitError as exc:
-        return jsonify({"message": str(exc)}), 429
     except AdminConflictError as exc:
         return jsonify({"message": str(exc)}), 409
     except AdminNetworkError as exc:
         return jsonify({"message": str(exc)}), 503
     return jsonify(_session_payload(session))
+
+
+@admin_blueprint.post("/acknowledge")
+def acknowledge():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or set(payload) != {"accepted"} or payload["accepted"] is not True:
+        return jsonify({"message": "Подтвердите, что настройки меняет руководитель отдела."}), 400
+    try:
+        if get_admin_access_mode(_settings()) != ACCESS_MODE_ACKNOWLEDGEMENT:
+            raise AdminConflictError("Для настроек выбран вход по общему паролю.")
+    except AdminConflictError as exc:
+        return jsonify({"message": str(exc)}), 409
+    except (AdminNetworkError, AdminWriteError) as exc:
+        return jsonify({"message": str(exc)}), 503
+    return jsonify(_session_payload(_manager().issue_session()))
 
 
 @admin_blueprint.post("/logout")
@@ -172,6 +192,30 @@ def settings_update():
         return denied
     try:
         result = update_admin_settings(
+            _settings(),
+            payload=request.get_json(silent=True),
+            employee=_employee(),
+            occurred_at=_occurred_at(),
+        )
+    except (
+        AdminValidationError,
+        AdminConflictError,
+        AdminBusyError,
+        AdminNetworkError,
+        AdminWriteError,
+        AdminWriteUncertainError,
+    ) as exc:
+        return _write_error(exc)
+    return jsonify(result.to_dict())
+
+
+@admin_blueprint.put("/access")
+def access_update():
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        result = update_admin_access_mode(
             _settings(),
             payload=request.get_json(silent=True),
             employee=_employee(),
@@ -284,3 +328,15 @@ def template_update():
     ) as exc:
         return _write_error(exc)
     return jsonify(result.to_dict())
+
+
+@admin_blueprint.get("/templates/<template_id>/file")
+def template_file(template_id: str):
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        path = get_document_template_path(_settings(), template_id)
+    except (AdminValidationError, AdminConflictError, AdminNetworkError, AdminWriteError) as exc:
+        return _write_error(exc)
+    return send_file(path, as_attachment=True, download_name=path.name)

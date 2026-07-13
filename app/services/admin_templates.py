@@ -15,7 +15,13 @@ import zipfile
 from docx import Document
 
 from app.config import Settings
-from app.db.connections import DatabaseUnavailableError, NETWORK_ERROR_MESSAGE, open_write, validate_database_pair
+from app.db.connections import (
+    DatabaseUnavailableError,
+    NETWORK_ERROR_MESSAGE,
+    open_readonly,
+    open_write,
+    validate_database_pair,
+)
 from app.documents.renderer import DocumentTemplateError, inspect_placeholders
 from app.services.admin_settings import (
     AdminBusyError,
@@ -116,8 +122,6 @@ def _stage_docx(template_directory: Path, stream: BinaryIO) -> tuple[Path, list[
         except (OSError, ValueError) as exc:
             raise AdminValidationError("Не удалось открыть загруженный DOCX-шаблон.") from exc
         placeholders = sorted(inspect_placeholders(document))
-        if not placeholders:
-            raise AdminValidationError("В DOCX-шаблоне не найдено ни одного поля подстановки.")
         unknown = sorted(set(placeholders) - ALLOWED_DOCUMENT_PLACEHOLDERS)
         if unknown:
             raise AdminValidationError(
@@ -269,6 +273,29 @@ def save_document_template(
                 os.replace(previous_file, target)
         if committed and previous_file is not None:
             previous_file.unlink(missing_ok=True)
+
+
+def get_document_template_path(settings: Settings, template_id: object) -> Path:
+    """Return a validated registered DOCX path for an administrator download."""
+    normalized_id = _template_id(template_id)
+    try:
+        paths = validate_database_pair(settings)
+        with open_readonly(
+            paths.working, busy_timeout_ms=settings.busy_timeout_ms
+        ) as connection:
+            row = connection.execute(
+                "SELECT relative_file_name FROM document_templates WHERE template_id = ?",
+                (normalized_id,),
+            ).fetchone()
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
+    if row is None:
+        raise AdminConflictError("Шаблон не найден. Обновите настройки.")
+    file_name = _file_name(row["relative_file_name"])
+    path = paths.directory / "templates" / file_name
+    if not path.is_file():
+        raise AdminConflictError("Файл DOCX этого шаблона не найден.")
+    return path
 
 
 def update_document_template(
