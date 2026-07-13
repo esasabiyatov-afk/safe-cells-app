@@ -10,6 +10,7 @@ from flask import Flask, request
 
 from app.config import Settings
 from app.routes import (
+    admin_blueprint,
     cells_blueprint,
     closures_blueprint,
     contracts_blueprint,
@@ -21,6 +22,7 @@ from app.routes import (
     renewals_blueprint,
     system_blueprint,
 )
+from app.services.admin_auth import AdminAccessManager
 from app.services.employee import default_employee_profile_path, get_employee_username
 
 
@@ -44,6 +46,8 @@ def create_app(settings: Settings) -> Flask:
     )
     app.extensions["safe_cells_settings"] = settings
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
+    app.extensions["safe_cells_admin_access"] = AdminAccessManager()
+    app.register_blueprint(admin_blueprint)
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
     app.register_blueprint(closures_blueprint)

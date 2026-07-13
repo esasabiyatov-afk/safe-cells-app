@@ -6,6 +6,7 @@
   <title>Депозитарий</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
   <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </head>
 <body
   data-cells-url="{{ url_for('cells.cells_list') }}"
@@ -24,6 +25,13 @@
   data-employee-profile-url="{{ url_for('employee.profile') }}"
   data-employee-profile-required="{{ 'true' if employee_profile_required else 'false' }}"
   data-private-token="{{ private_token }}"
+  data-admin-status-url="{{ url_for('admin.status') }}"
+  data-admin-setup-url="{{ url_for('admin.setup') }}"
+  data-admin-login-url="{{ url_for('admin.login') }}"
+  data-admin-logout-url="{{ url_for('admin.logout') }}"
+  data-admin-settings-url="{{ url_for('admin.settings_view') }}"
+  data-admin-password-url="{{ url_for('admin.password_change') }}"
+  data-admin-templates-url="{{ url_for('admin.template_upload') }}"
 >
   <header class="page-header">
     <div class="brand-block">
@@ -47,6 +55,7 @@
     </section>
 
     <div class="header-side">
+      <button class="settings-button" id="adminOpen" type="button">Настройки</button>
       <div class="employee" aria-label="Текущий сотрудник">
         <span class="employee-label">Сотрудник</span>
         <strong id="employeeName">{{ employee }}</strong>
@@ -217,6 +226,82 @@
       <label class="contract-field contract-field--wide"><span>Фамилия и имя *</span><input id="employeeFullName" maxlength="128" autocomplete="name" required></label>
       <div class="dialog-actions"><button class="primary-button" id="employeeSubmit" type="submit">Сохранить</button></div>
     </form>
+  </dialog>
+
+  <dialog class="admin-dialog" id="adminDialog" aria-labelledby="adminDialogTitle">
+    <button class="dialog-close" id="adminDialogClose" type="button" aria-label="Закрыть настройки">×</button>
+    <p class="section-kicker">Административный раздел</p>
+    <h2 id="adminDialogTitle">Настройки</h2>
+
+    <form id="adminAuthForm" class="admin-auth-form" autocomplete="off">
+      <p class="dialog-note" id="adminAuthNote">Проверка состояния настроек…</p>
+      <div class="calculation-error" id="adminAuthError" role="alert" hidden></div>
+      <label class="contract-field contract-field--wide">
+        <span id="adminPasswordLabel">Административный пароль</span>
+        <input id="adminPassword" type="password" minlength="12" maxlength="256" required autocomplete="current-password">
+      </label>
+      <label class="contract-field contract-field--wide" id="adminPasswordConfirmField" hidden>
+        <span>Повторите пароль</span>
+        <input id="adminPasswordConfirm" type="password" minlength="12" maxlength="256" autocomplete="new-password">
+      </label>
+      <div class="dialog-actions">
+        <button class="primary-button" id="adminAuthSubmit" type="submit">Войти</button>
+      </div>
+    </form>
+
+    <div id="adminContent" hidden>
+      <div class="admin-heading-actions">
+        <p class="dialog-note">Изменения сохраняются в общей базе и фиксируются в журнале.</p>
+        <button class="secondary-button" id="adminLogout" type="button">Выйти из настроек</button>
+      </div>
+      <div class="calculation-error" id="adminError" role="alert" hidden></div>
+      <div class="success-banner" id="adminSuccess" role="status" hidden></div>
+
+      <form id="adminSettingsForm">
+        <section class="admin-section" aria-labelledby="adminGeneralTitle">
+          <h3 id="adminGeneralTitle">Общие параметры</h3>
+          <div class="admin-config-grid">
+            <label class="contract-field"><span>Истекает через, дней</span><input id="adminExpiringDays" type="number" min="1" max="365" required></label>
+            <label class="contract-field"><span>Залог, сом</span><input id="adminDeposit" type="number" min="0" max="10000000" required></label>
+          </div>
+        </section>
+
+        <section class="admin-section" aria-labelledby="adminTariffsTitle">
+          <h3 id="adminTariffsTitle">Тарифы, сом за день</h3>
+          <p class="dialog-note">Диапазоны срока защищены от изменения; редактируется только ставка.</p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Высота</th><th>Срок</th><th>Ставка</th></tr></thead>
+              <tbody id="adminTariffRows"></tbody>
+            </table>
+          </div>
+        </section>
+        <div class="dialog-actions"><button class="primary-button" id="adminSettingsSubmit" type="submit">Сохранить параметры и тарифы</button></div>
+      </form>
+
+      <section class="admin-section" aria-labelledby="adminTemplatesTitle">
+        <h3 id="adminTemplatesTitle">Шаблоны DOCX</h3>
+        <div id="adminTemplateRows" class="admin-template-list"></div>
+        <form id="adminTemplateUploadForm" class="admin-upload-form">
+          <h4>Добавить или заменить файл</h4>
+          <label class="contract-field"><span>Действие</span><select id="adminTemplateTarget"><option value="">Добавить новый шаблон</option></select></label>
+          <label class="contract-field"><span>Название</span><input id="adminTemplateDisplay" maxlength="120" required></label>
+          <label class="contract-field"><span>Комплект</span><select id="adminTemplateType"><option value="opening">Открытие</option><option value="renewal">Продление</option><option value="closing">Закрытие</option><option value="manual">Только вручную</option></select></label>
+          <label class="contract-field"><span>DOCX-файл</span><input id="adminTemplateFile" type="file" accept=".docx" required></label>
+          <div class="dialog-actions"><button class="secondary-button" id="adminTemplateUpload" type="submit">Загрузить шаблон</button></div>
+        </form>
+      </section>
+
+      <section class="admin-section" aria-labelledby="adminPasswordTitle">
+        <h3 id="adminPasswordTitle">Сменить административный пароль</h3>
+        <form id="adminPasswordForm" class="admin-password-grid" autocomplete="off">
+          <label class="contract-field"><span>Текущий пароль</span><input id="adminCurrentPassword" type="password" required autocomplete="current-password"></label>
+          <label class="contract-field"><span>Новый пароль</span><input id="adminNewPassword" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
+          <label class="contract-field"><span>Повторите новый пароль</span><input id="adminNewPasswordConfirm" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
+          <div class="dialog-actions"><button class="secondary-button" id="adminPasswordSubmit" type="submit">Сменить пароль</button></div>
+        </form>
+      </section>
+    </div>
   </dialog>
 
   <dialog class="contract-dialog" id="editDialog" aria-labelledby="editDialogTitle">

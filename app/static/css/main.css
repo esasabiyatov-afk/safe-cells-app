@@ -324,6 +324,51 @@ main {
   background: #f2f4f5;
 }
 
+.settings-button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.admin-dialog {
+  width: min(980px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 28px;
+  overflow: auto;
+  border: 1px solid var(--line-dark);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(28, 41, 56, 0.32);
+}
+
+.admin-dialog::backdrop { background: rgba(28, 41, 56, 0.58); }
+.admin-dialog h2 { margin: 0 0 14px; font-family: Georgia, "Times New Roman", serif; font-size: 28px; }
+.admin-auth-form { display: grid; gap: 14px; max-width: 520px; }
+.admin-heading-actions { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.admin-section { margin-top: 20px; padding: 16px; border: 1px solid var(--line-dark); border-radius: 5px; background: var(--surface); }
+.admin-section h3, .admin-section h4 { margin: 0 0 12px; font-family: Georgia, "Times New Roman", serif; }
+.admin-config-grid, .admin-password-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.admin-password-grid { grid-template-columns: repeat(3, 1fr); }
+.admin-password-grid .dialog-actions { grid-column: 1 / -1; }
+.admin-table-wrap { margin-top: 12px; overflow-x: auto; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+.admin-table th { color: var(--ink-soft); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.admin-table input { width: 140px; height: 36px; padding: 0 9px; border: 1px solid var(--line-dark); border-radius: 4px; }
+.admin-template-list { display: grid; gap: 8px; }
+.admin-template-row { display: grid; grid-template-columns: minmax(190px, 1.4fr) minmax(130px, .8fr) auto minmax(170px, 1fr) auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 4px; }
+.admin-template-row > input, .admin-template-row > select, .admin-upload-form select { min-width: 0; height: 38px; padding: 0 9px; border: 1px solid var(--line-dark); border-radius: 4px; background: var(--surface); }
+.admin-checkbox { white-space: nowrap; font-size: 12px; font-weight: 650; }
+.admin-template-file { overflow-wrap: anywhere; color: var(--ink-soft); font-size: 11px; }
+.admin-upload-form { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.admin-upload-form h4, .admin-upload-form .dialog-actions { grid-column: 1 / -1; }
+.admin-upload-form input[type="file"] { min-height: 38px; padding: 7px; border: 1px solid var(--line-dark); border-radius: 4px; background: var(--surface); }
+
 .refresh-button.loading span {
   animation: spin 0.8s linear infinite;
 }
@@ -1329,9 +1374,18 @@ main {
   .contract-fields,
   .contract-summary,
   .private-details,
-  .card-actions {
+  .card-actions,
+  .admin-config-grid,
+  .admin-password-grid,
+  .admin-upload-form,
+  .admin-template-row {
     grid-template-columns: 1fr;
   }
+
+  .admin-heading-actions { align-items: flex-start; flex-direction: column; }
+  .admin-password-grid .dialog-actions,
+  .admin-upload-form h4,
+  .admin-upload-form .dialog-actions { grid-column: auto; }
 
   .occupied-card-heading,
   .private-card-heading {

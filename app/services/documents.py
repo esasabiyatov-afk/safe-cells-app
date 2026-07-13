@@ -34,6 +34,25 @@ class DocumentReadError(RuntimeError): pass
 
 DOCUMENT_EVENT_TYPES = frozenset({"opening", "renewal", "closing"})
 
+# The admin upload validator accepts only fields the renderer can actually fill.
+ALLOWED_DOCUMENT_PLACEHOLDERS = frozenset(
+    {
+        "CLIENT_FULL_NAME", "ID_CARD_NUMBER", "ID_CARD_ISSUER",
+        "ID_CARD_ISSUE_DATE", "ACCOUNT_NUMBER", "SAFE_NUMBER", "SAFE_HEIGHT",
+        "SAFE_WIDTH", "SAFE_DEPTH", "START_DATE", "END_DATE", "RENT_DAYS",
+        "RENT_PRICE", "CREATION_DATE", "EMPLOYEE", "Дата.Сегодня",
+        "Дата.СегодняК", "Счет.Номер", "Клиент.ФИО",
+        "Клиент.Документ.Номер", "Клиент.Документ.Выдан",
+        "Клиент.Документ.ДатаВыдачи", "Система.Пользователь",
+        "Договор.Начало", "Договор.Конец", "Договор.НачалоК",
+        "Договор.КонецК", "Договор.НачалоД", "Договор.НачалоДК", "Сумма",
+        "Залог.Цифр", "Залог.Пропись", "Залог.ПрописьК", "Сейф.Номер",
+        "Сейф.Размер", "Продление.Начало", "Продление.Конец",
+        "Продление.НачалоК", "Продление.КонецК", "Продление.Сумма",
+        "Продление.Срок",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class GeneratedDocument:
