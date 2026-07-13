@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from docx import Document
+from docx.shared import Cm
 import pytest
 
 from app import create_app
@@ -52,6 +53,43 @@ def test_renderer_replaces_split_runs_tables_and_header(tmp_path: Path):
     assert rendered.tables[0].cell(0, 1).text == "41"
     assert "2026-07-13" in rendered.sections[0].header.paragraphs[0].text
     assert not list(downloads.glob(".safe-cells-*.docx"))
+
+
+def test_renderer_preserves_document_page_margins(tmp_path: Path):
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    document = Document()
+    section = document.sections[0]
+    section.top_margin = Cm(1.5)
+    section.bottom_margin = Cm(1.1)
+    section.left_margin = Cm(2.5)
+    section.right_margin = Cm(1.5)
+    document.add_paragraph("Клиент: [Клиент.ФИО]")
+    document.save(templates / "margins.docx")
+    saved_section = Document(templates / "margins.docx").sections[0]
+    expected_margins = (
+        saved_section.top_margin,
+        saved_section.bottom_margin,
+        saved_section.left_margin,
+        saved_section.right_margin,
+    )
+
+    result = render_docx(
+        template_directory=templates,
+        template_file_name="margins.docx",
+        output_directory=tmp_path / "downloads",
+        output_file_name="result.docx",
+        values={"Клиент.ФИО": "Вымышленный Клиент"},
+        required_placeholders=["Клиент.ФИО"],
+    )
+
+    rendered_section = Document(result).sections[0]
+    assert (
+        rendered_section.top_margin,
+        rendered_section.bottom_margin,
+        rendered_section.left_margin,
+        rendered_section.right_margin,
+    ) == expected_margins
 
 
 def test_renderer_rejects_missing_required_placeholder(tmp_path: Path):
