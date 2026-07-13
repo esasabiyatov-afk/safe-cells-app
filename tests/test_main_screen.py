@@ -52,8 +52,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     )
     assert 'name="currency"' not in html
     assert "Сумма аренды" in html
-    assert "Залог отдельно" in html
-    assert "Не входит в сумму аренды" in html
+    assert '<section class="deposit-panel rental-deposit" aria-label="Залог">' in html
+    assert "<span>Залог</span>" in html
     assert 'id="renewAction" type="button">Продлить' in html
     assert 'id="renewalDialog"' in html
     assert 'id="renewalSubmit" type="submit" disabled' in html
@@ -64,11 +64,13 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Оплаченная аренда за неиспользованные дни не возвращается" in html
     assert "Потеря ключа" in html
     assert "Штрафные дни" in html
+    assert 'id="adminPenaltyRows"' in html
     assert 'id="contractForm"' in html
     assert 'name="client_full_name"' in html
     assert 'name="id_card_number"' in html
     assert 'name="account_number"' in html
     assert 'id="privateDetails" hidden' in html
+    assert 'id="privateCreatedBy"' in html
     assert 'id="historyControls" hidden' in html
     assert 'id="renewalHistory" aria-label="История продлений" hidden' in html
     assert "Показать данные" in html
@@ -180,11 +182,14 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
 
     css = client.get("/static/css/main.css")
     javascript = client.get("/static/js/main.js")
+    admin_javascript = client.get("/static/js/admin.js")
     try:
         assert css.status_code == 200
         assert javascript.status_code == 200
+        assert admin_javascript.status_code == 200
         stylesheet = css.get_data(as_text=True)
         script = javascript.get_data(as_text=True)
+        admin_script = admin_javascript.get_data(as_text=True)
         assert "--free-border:" in stylesheet
         assert "--normal-border:" in stylesheet
         assert "--expiring-border:" in stylesheet
@@ -212,6 +217,8 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "hidePrivateDetails" in script
         assert "clearPrivateValues" in script
         assert "renderRenewals" in script
+        assert "privateCreatedBy" in script
+        assert "renewal.created_by" in script
         assert "renewalStartDateValue" in script
         assert "dayAfterOldEnd > renewalDate" in script
         assert "elements.renewalPenaltyPanel.hidden = true" in script
@@ -219,6 +226,13 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "operationDocumentList" in script
         assert "Операция сохранена, но документы не сформированы" in script
         assert "refreshButton" not in script
+        assert "@media (max-width: 1600px)" in stylesheet
+        assert ".rental-deposit" in stylesheet
+        assert ".dialog-actions" in stylesheet
+        assert "penaltyTariffIndex" in admin_script
+        assert "row.period_from_days === 1 && row.period_to_days === 30" in admin_script
+        assert "penaltyInput.addEventListener" in admin_script
     finally:
         css.close()
         javascript.close()
+        admin_javascript.close()

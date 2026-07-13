@@ -37,6 +37,7 @@ class RenewalDetails:
     renewal_price: int
     penalty_days: int
     penalty_amount: int
+    created_by: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,7 @@ class PrivateContractDetails:
     id_card_issue_date: str
     account_number: str
     created_at: str
+    created_by: str
     renewals: tuple[RenewalDetails, ...]
 
     def to_dict(self) -> dict[str, Any]:
@@ -120,7 +122,7 @@ def get_private_contract_details(
                 SELECT
                     contract_id, cell_number, client_full_name, id_card_number,
                     id_card_issuer, id_card_issue_date,
-                    account_number, created_at
+                    account_number, created_at, created_by
                 FROM contracts
                 WHERE cell_number = ? AND contract_id = ?
                 """,
@@ -138,7 +140,7 @@ def get_private_contract_details(
                 SELECT
                     renewal_date, old_end_date, new_start_date, new_end_date,
                     renewal_days, renewal_price_minor, penalty_days,
-                    penalty_amount_minor
+                    penalty_amount_minor, created_by
                 FROM renewals
                 WHERE contract_id = ?
                 ORDER BY created_at, renewal_id
@@ -160,6 +162,7 @@ def get_private_contract_details(
             renewal_price=int(row["renewal_price_minor"]),
             penalty_days=int(row["penalty_days"]),
             penalty_amount=int(row["penalty_amount_minor"]),
+            created_by=str(row["created_by"]),
         )
         for row in renewal_rows
     )
@@ -171,5 +174,6 @@ def get_private_contract_details(
         id_card_issue_date=str(contract["id_card_issue_date"]),
         account_number=str(contract["account_number"]),
         created_at=str(contract["created_at"]),
+        created_by=str(contract["created_by"]),
         renewals=renewals,
     )

@@ -357,6 +357,7 @@ main {
 .admin-panel[hidden] { display: none; }
 .admin-section { margin-top: 16px; padding: 16px; border: 1px solid var(--line-dark); border-radius: 5px; background: var(--surface); }
 .admin-section h3, .admin-section h4 { margin: 0 0 12px; font-family: Georgia, "Times New Roman", serif; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .admin-config-grid, .admin-password-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .admin-config-grid small, .admin-upload-form small { color: var(--ink-soft); font-size: 11px; font-weight: 400; line-height: 1.35; }
 .admin-password-grid { grid-template-columns: repeat(3, 1fr); }
@@ -366,6 +367,13 @@ main {
 .admin-table th, .admin-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; }
 .admin-table th { color: var(--ink-soft); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .admin-table input { width: 140px; height: 36px; padding: 0 9px; border: 1px solid var(--line-dark); border-radius: 4px; }
+.admin-penalty-section { margin-top: 16px; padding: 14px; border: 1px solid #b9984b; border-radius: 5px; background: #fff8e6; }
+.admin-penalty-section h4 { margin-bottom: 6px; }
+.admin-penalty-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.admin-penalty-card { display: grid; grid-template-columns: auto minmax(70px, 1fr) auto; align-items: center; gap: 7px; padding: 9px; border: 1px solid #d5bd80; border-radius: 4px; background: var(--surface); }
+.admin-penalty-card span { font-weight: 700; }
+.admin-penalty-card input { min-width: 0; width: 100%; height: 34px; padding: 0 8px; border: 1px solid var(--line-dark); border-radius: 4px; }
+.admin-penalty-card small { color: var(--ink-soft); font-size: 10px; }
 .admin-template-list { display: grid; gap: 8px; }
 .admin-template-row { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); }
 .admin-template-controls { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(150px, .5fr) auto; gap: 8px; align-items: center; }
@@ -1020,6 +1028,13 @@ main {
   font-size: 11px;
 }
 
+.rental-deposit {
+  width: min(270px, 100%);
+  margin-left: auto;
+  padding: 10px 12px;
+  border-width: 1px;
+}
+
 .rental-actions {
   display: flex;
   justify-content: flex-end;
@@ -1283,7 +1298,7 @@ main {
   font-size: 12px;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1600px) {
   .page-header {
     grid-template-columns: 1fr auto;
   }

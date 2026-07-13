@@ -75,9 +75,11 @@ def test_private_details_are_read_only_and_include_hidden_history(
     assert details.id_card_issue_date == "2017-09-12"
     assert details.account_number == "PRIVATE-TEST-ACCOUNT"
     assert details.created_at == "2026-07-01T09:00:00+06:00"
+    assert details.created_by == "test-user"
     assert len(details.renewals) == 1
     assert details.renewals[0].renewal_price == 450
     assert details.renewals[0].new_end_date == "2026-08-08"
+    assert details.renewals[0].created_by == "test-user"
 
     paths = DatabasePaths.from_settings(settings)
     renamed_working = paths.working.with_suffix(".closed-check")
@@ -180,6 +182,7 @@ def test_private_api_requires_instance_token_and_post(
     assert response.status_code == 200
     assert response.headers["Cache-Control"] == "no-store"
     assert response.get_json()["client_full_name"] == "Тестовый Клиент"
+    assert response.get_json()["created_by"] == "test-user"
     missing_ref = client.post(
         "/api/contracts/private",
         json={"cell_number": "1"},

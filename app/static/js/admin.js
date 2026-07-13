@@ -12,7 +12,7 @@
     content: document.getElementById("adminContent"), logout: document.getElementById("adminLogout"), error: document.getElementById("adminError"), success: document.getElementById("adminSuccess"),
     tabs: [...document.querySelectorAll("[data-admin-tab]")], panels: [...document.querySelectorAll("[data-admin-panel]")],
     generalForm: document.getElementById("adminGeneralForm"), tariffsForm: document.getElementById("adminTariffsForm"),
-    expiringDays: document.getElementById("adminExpiringDays"), deposit: document.getElementById("adminDeposit"), tariffRows: document.getElementById("adminTariffRows"),
+    expiringDays: document.getElementById("adminExpiringDays"), deposit: document.getElementById("adminDeposit"), tariffRows: document.getElementById("adminTariffRows"), penaltyRows: document.getElementById("adminPenaltyRows"),
     generalSubmit: document.getElementById("adminGeneralSubmit"), tariffsSubmit: document.getElementById("adminTariffsSubmit"),
     templateRows: document.getElementById("adminTemplateRows"), templateUploadForm: document.getElementById("adminTemplateUploadForm"), templateTarget: document.getElementById("adminTemplateTarget"),
     templateDisplay: document.getElementById("adminTemplateDisplay"), templateType: document.getElementById("adminTemplateType"), templateFile: document.getElementById("adminTemplateFile"), templateUpload: document.getElementById("adminTemplateUpload"),
@@ -90,6 +90,7 @@
 
   function renderTariffs() {
     elements.tariffRows.replaceChildren();
+    elements.penaltyRows.replaceChildren();
     state.snapshot.tariffs.forEach((row, index) => {
       const tr = document.createElement("tr");
       const input = document.createElement("input");
@@ -99,6 +100,17 @@
       const period = document.createElement("td"); period.textContent = periodLabel(row);
       const rate = document.createElement("td"); rate.append(input);
       tr.append(height, period, rate); elements.tariffRows.append(tr);
+      if (row.period_from_days === 1 && row.period_to_days === 30) {
+        const label = document.createElement("label"); label.className = "admin-penalty-card";
+        const title = document.createElement("span"); title.textContent = `${row.height_mm} мм`;
+        const penaltyInput = document.createElement("input");
+        penaltyInput.type = "number"; penaltyInput.min = "0"; penaltyInput.max = "10000000"; penaltyInput.required = true; penaltyInput.value = input.value; penaltyInput.dataset.penaltyTariffIndex = String(index);
+        penaltyInput.setAttribute("aria-label", `Штрафная ставка для высоты ${row.height_mm} мм`);
+        const suffix = document.createElement("small"); suffix.textContent = "сом за день";
+        label.append(title, penaltyInput, suffix); elements.penaltyRows.append(label);
+        input.addEventListener("input", () => { penaltyInput.value = input.value; });
+        penaltyInput.addEventListener("input", () => { input.value = penaltyInput.value; });
+      }
     });
   }
 

@@ -75,6 +75,7 @@ const elements = {
   privateIdCardIssueDate: document.getElementById("privateIdCardIssueDate"),
   privateAccountNumber: document.getElementById("privateAccountNumber"),
   privateCreatedAt: document.getElementById("privateCreatedAt"),
+  privateCreatedBy: document.getElementById("privateCreatedBy"),
   historyControls: document.getElementById("historyControls"),
   historyToggle: document.getElementById("historyToggle"),
   renewalHistory: document.getElementById("renewalHistory"),
@@ -494,6 +495,7 @@ function clearPrivateValues() {
   elements.privateIdCardIssueDate.textContent = "";
   elements.privateAccountNumber.textContent = "";
   elements.privateCreatedAt.textContent = "";
+  elements.privateCreatedBy.textContent = "";
   elements.renewalList.replaceChildren();
 }
 
@@ -522,7 +524,7 @@ function renderRenewals(renewals) {
     const penalty = renewal.penalty_days > 0
       ? `, штраф ${renewal.penalty_days} дн. — ${money(renewal.penalty_amount)}`
       : ", без штрафа";
-    details.textContent = `Продлено ${formatDate(renewal.renewal_date)}, сумма ${money(renewal.renewal_price)}${penalty}`;
+    details.textContent = `Продлено ${formatDate(renewal.renewal_date)} · сотрудник: ${renewal.created_by}, сумма ${money(renewal.renewal_price)}${penalty}`;
     item.append(title, details);
     fragment.appendChild(item);
   }
@@ -572,6 +574,7 @@ async function togglePrivateDetails() {
     elements.privateIdCardIssueDate.textContent = formatDate(payload.id_card_issue_date);
     elements.privateAccountNumber.textContent = payload.account_number;
     elements.privateCreatedAt.textContent = formatDateTime(payload.created_at);
+    elements.privateCreatedBy.textContent = payload.created_by;
     renderRenewals(payload.renewals);
     state.privateVisible = true;
     elements.privateDetails.hidden = false;
