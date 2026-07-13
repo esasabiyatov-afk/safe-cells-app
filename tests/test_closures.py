@@ -252,6 +252,7 @@ def test_closure_api_uses_server_date_and_returns_no_personal_data(
     app = create_app(settings)
     app.config["TODAY_PROVIDER"] = lambda: TODAY
     app.config["TIMESTAMP_PROVIDER"] = lambda: OCCURRED
+    app.config["EMPLOYEE_PROVIDER"] = lambda: "Тестовый Сотрудник"
     client = app.test_client()
     quote = client.post(
         "/api/closures/calculate",

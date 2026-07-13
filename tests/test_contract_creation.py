@@ -23,7 +23,6 @@ from app.services.contracts import (
     ContractWriteUncertainError,
     create_contract,
 )
-from app.services.employee import save_employee_full_name
 
 
 OCCURRED_AT = datetime(2026, 7, 12, 9, 30, tzinfo=timezone(timedelta(hours=6)))
@@ -78,11 +77,7 @@ def test_document_failure_after_api_save_returns_warning_without_undoing_contrac
         TODAY_PROVIDER=lambda: date(2026, 7, 12),
         TIMESTAMP_PROVIDER=lambda: OCCURRED_AT,
         DOWNLOADS_DIRECTORY_PROVIDER=lambda: settings.database_directory / "downloads",
-    )
-    save_employee_full_name(
-        app.config["EMPLOYEE_PROFILE_PATH"],
-        app.config["EMPLOYEE_PROVIDER"](),
-        "Тестовый Сотрудник",
+        EMPLOYEE_PROVIDER=lambda: "Тестовый Сотрудник",
     )
 
     response = app.test_client().post("/api/contracts", json=contract_payload())

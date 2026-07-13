@@ -20,6 +20,15 @@ from app.db.connections import (
 )
 from app.services.admin_auth import hash_password, validate_new_password, verify_password
 from app.services.backups import create_backup_pair
+from app.services.employee import (
+    EMPLOYEES_CONFIG_KEY,
+    MAX_EMPLOYEES,
+    EmployeeProfileError,
+    EmployeeRecord,
+    decode_employee_config,
+    encode_employee_config,
+    validate_employee_full_name,
+)
 
 
 BUSY_MESSAGE = "База сейчас занята другим сотрудником. Повторите позже."
@@ -335,6 +344,9 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
                    FROM document_templates
                    ORDER BY document_type, display_name, template_id"""
             ).fetchall()
+            employee_row = connection.execute(
+                "SELECT value FROM config WHERE key = ?", (EMPLOYEES_CONFIG_KEY,)
+            ).fetchone()
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     try:
@@ -343,6 +355,12 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
         raise AdminWriteError("Обязательные настройки отсутствуют или повреждены.") from exc
     if set(config) != EDITABLE_CONFIG_KEYS:
         raise AdminWriteError("Обязательные настройки отсутствуют или повреждены.")
+    try:
+        employees = decode_employee_config(
+            None if employee_row is None else employee_row["value"]
+        )
+    except EmployeeProfileError as exc:
+        raise AdminWriteError(str(exc)) from exc
     templates = []
     for row in template_rows:
         try:
@@ -374,6 +392,10 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
         "config": config,
         "tariffs": [dict(row) for row in tariff_rows],
         "templates": templates,
+        "employees": [
+            employee.to_dict()
+            for employee in sorted(employees, key=lambda item: item.full_name.casefold())
+        ],
         "access_mode": get_admin_access_mode(settings),
     }
 
@@ -482,6 +504,153 @@ def update_admin_access_mode(
         if phase in {"committing", "verifying"}:
             raise AdminWriteUncertainError(UNCERTAIN_MESSAGE) from exc
         raise AdminWriteError("Режим доступа не сохранён. Изменения отменены.") from exc
+
+
+def update_admin_employee(
+    settings: Settings,
+    *,
+    payload: object,
+    employee: object,
+    occurred_at: datetime,
+) -> tuple[AdminWriteResult, EmployeeRecord]:
+    expected = {
+        "operation_id", "employee_id", "full_name", "is_active", "create"
+    }
+    if not isinstance(payload, dict) or set(payload) != expected:
+        raise AdminValidationError("Переданы неизвестные или неполные данные сотрудника.")
+    operation_id = _operation_id(payload["operation_id"])
+    employee_id = payload["employee_id"]
+    try:
+        employee_id = str(UUID(employee_id))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise AdminValidationError("Неверный идентификатор сотрудника.") from exc
+    try:
+        full_name = validate_employee_full_name(payload["full_name"])
+    except EmployeeProfileError as exc:
+        raise AdminValidationError(str(exc)) from exc
+    if not isinstance(payload["is_active"], bool) or not isinstance(payload["create"], bool):
+        raise AdminValidationError("Состояние сотрудника должно быть включено или выключено.")
+    is_active = payload["is_active"]
+    create = payload["create"]
+    actor = _employee(employee)
+    timestamp = _timestamp(occurred_at)
+    action = "admin.employee.created" if create else "admin.employee.updated"
+    phase = "opening"
+    try:
+        with open_write(settings, attach_archive=True) as connection:
+            phase = "begin"
+            connection.execute("BEGIN IMMEDIATE")
+            phase = "transaction"
+            row = connection.execute(
+                "SELECT value FROM config WHERE key = ?", (EMPLOYEES_CONFIG_KEY,)
+            ).fetchone()
+            try:
+                records = decode_employee_config(None if row is None else row["value"])
+            except EmployeeProfileError as exc:
+                raise AdminWriteError(str(exc)) from exc
+            by_id = {record.employee_id: record for record in records}
+            if _existing_operation(connection, operation_id, action):
+                connection.rollback()
+                saved = by_id.get(employee_id)
+                if saved is None:
+                    raise AdminWriteUncertainError(UNCERTAIN_MESSAGE)
+                return AdminWriteResult(True, False, None), saved
+            existing = by_id.get(employee_id)
+            if create:
+                if existing is not None:
+                    raise AdminConflictError("Сотрудник уже существует. Обновите настройки.")
+                if len(records) >= MAX_EMPLOYEES:
+                    raise AdminValidationError("Нельзя добавить более 200 сотрудников.")
+            elif existing is None:
+                raise AdminConflictError("Сотрудник не найден. Обновите настройки.")
+            if any(
+                record.employee_id != employee_id
+                and record.full_name.casefold() == full_name.casefold()
+                for record in records
+            ):
+                raise AdminConflictError("Сотрудник с таким именем уже есть в списке.")
+            updated = EmployeeRecord(employee_id, full_name, is_active)
+            new_records = [
+                updated if record.employee_id == employee_id else record
+                for record in records
+            ]
+            if create:
+                new_records.append(updated)
+            if new_records and not any(record.is_active for record in new_records):
+                raise AdminValidationError("В списке должен остаться хотя бы один активный сотрудник.")
+            connection.execute(
+                """INSERT INTO config(key, value, updated_at, updated_by)
+                   VALUES(?, ?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE SET
+                       value=excluded.value, updated_at=excluded.updated_at,
+                       updated_by=excluded.updated_by""",
+                (
+                    EMPLOYEES_CONFIG_KEY,
+                    encode_employee_config(new_records),
+                    timestamp,
+                    actor,
+                ),
+            )
+            changes = {
+                "employee_id": employee_id,
+                "full_name": {
+                    "old": None if existing is None else existing.full_name,
+                    "new": full_name,
+                },
+                "is_active": {
+                    "old": None if existing is None else existing.is_active,
+                    "new": is_active,
+                },
+            }
+            connection.execute(
+                """INSERT INTO archive.log(
+                       log_id, operation_id, occurred_at, employee, action,
+                       contract_id, cell_number, changes_json
+                   ) VALUES(?, ?, ?, ?, ?, NULL, NULL, ?)""",
+                (
+                    str(uuid4()), operation_id, timestamp, actor, action,
+                    json.dumps(changes, ensure_ascii=False, sort_keys=True),
+                ),
+            )
+            phase = "committing"
+            connection.commit()
+            phase = "verifying"
+            saved_row = connection.execute(
+                "SELECT value FROM config WHERE key = ?", (EMPLOYEES_CONFIG_KEY,)
+            ).fetchone()
+            try:
+                saved_records = decode_employee_config(saved_row["value"])
+            except (EmployeeProfileError, TypeError) as exc:
+                raise AdminWriteUncertainError(UNCERTAIN_MESSAGE) from exc
+            saved = next(
+                (record for record in saved_records if record.employee_id == employee_id),
+                None,
+            )
+            if saved != updated:
+                raise AdminWriteUncertainError(UNCERTAIN_MESSAGE)
+            backup_created, warning = _backup_after_commit(
+                connection, settings, operation_id=operation_id, occurred_at=occurred_at
+            )
+            return AdminWriteResult(False, backup_created, warning), saved
+    except (
+        AdminValidationError,
+        AdminConflictError,
+        AdminWriteError,
+        AdminWriteUncertainError,
+    ):
+        raise
+    except DatabaseUnavailableError as exc:
+        raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc).lower() and phase in {"opening", "begin", "transaction"}:
+            raise AdminBusyError(BUSY_MESSAGE) from exc
+        if phase in {"committing", "verifying"}:
+            raise AdminWriteUncertainError(UNCERTAIN_MESSAGE) from exc
+        raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
+    except (OSError, sqlite3.Error) as exc:
+        if phase in {"committing", "verifying"}:
+            raise AdminWriteUncertainError(UNCERTAIN_MESSAGE) from exc
+        raise AdminWriteError("Список сотрудников не сохранён. Изменения отменены.") from exc
 
 
 def _validate_tariffs(value: object) -> list[dict[str, int | None]]:

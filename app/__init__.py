@@ -23,7 +23,12 @@ from app.routes import (
     system_blueprint,
 )
 from app.services.admin_auth import AdminAccessManager
-from app.services.employee import default_employee_profile_path, get_employee_username
+from app.services.employee import (
+    EmployeeDirectoryReadError,
+    EmployeeSelectionManager,
+    EmployeeSelectionRequiredError,
+    get_selected_employee,
+)
 
 
 def create_app(settings: Settings) -> Flask:
@@ -37,16 +42,16 @@ def create_app(settings: Settings) -> Flask:
         BUSY_TIMEOUT_MS=settings.busy_timeout_ms,
         TESTING=settings.testing,
         TODAY_PROVIDER=date.today,
-        EMPLOYEE_PROVIDER=get_employee_username,
-        EMPLOYEE_PROFILE_PATH=(
-            settings.database_directory / ".test-employee-profiles.json"
-            if settings.testing else default_employee_profile_path()
-        ),
         DOWNLOADS_DIRECTORY_PROVIDER=lambda: Path.home() / "Downloads",
     )
     app.extensions["safe_cells_settings"] = settings
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
     app.extensions["safe_cells_admin_access"] = AdminAccessManager()
+    employee_selection = EmployeeSelectionManager()
+    app.extensions["safe_cells_employee_selection"] = employee_selection
+    app.config["EMPLOYEE_PROVIDER"] = lambda: get_selected_employee(
+        settings, employee_selection
+    ).full_name
     app.register_blueprint(admin_blueprint)
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
@@ -71,5 +76,13 @@ def create_app(settings: Settings) -> Flask:
         if request.path == "/" or request.path.startswith(("/api/", "/health")):
             response.headers["Cache-Control"] = "no-store"
         return response
+
+    @app.errorhandler(EmployeeSelectionRequiredError)
+    def employee_selection_required(error):
+        return {"message": str(error), "selection_required": True}, 409
+
+    @app.errorhandler(EmployeeDirectoryReadError)
+    def employee_directory_unavailable(error):
+        return {"message": str(error)}, 503
 
     return app

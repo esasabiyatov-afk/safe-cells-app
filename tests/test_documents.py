@@ -18,7 +18,6 @@ from app.services.documents import (
     generate_active_contract_document,
     generate_event_documents,
 )
-from app.services.employee import save_employee_full_name
 from app.documents.values import (
     amount_in_words_ky, amount_in_words_ru,
     format_document_issue_date, format_kyrgyz_date,
@@ -173,10 +172,10 @@ def test_active_contract_document_and_private_endpoint(
     assert (downloads / result.file_name).is_file()
 
     app = create_app(settings)
-    app.config.update(TODAY_PROVIDER=lambda: date(2026, 7, 13), DOWNLOADS_DIRECTORY_PROVIDER=lambda: downloads)
-    save_employee_full_name(
-        app.config["EMPLOYEE_PROFILE_PATH"], app.config["EMPLOYEE_PROVIDER"](),
-        "Тестовый Сотрудник",
+    app.config.update(
+        TODAY_PROVIDER=lambda: date(2026, 7, 13),
+        DOWNLOADS_DIRECTORY_PROVIDER=lambda: downloads,
+        EMPLOYEE_PROVIDER=lambda: "Тестовый Сотрудник",
     )
     token = app.extensions["safe_cells_private_token"]
     templates_response = app.test_client().post(

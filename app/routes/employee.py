@@ -1,46 +1,62 @@
-"""Local employee display-name setup for the current Windows account."""
+"""Shared employee directory and local-process employee selection."""
 
 from hmac import compare_digest
+
 from flask import Blueprint, current_app, jsonify, request
 
 from app.services.employee import (
-    EmployeeProfileError,
-    get_employee_full_name,
-    save_employee_full_name,
+    EmployeeDirectoryReadError,
+    EmployeeSelectionRequiredError,
+    get_selected_employee,
+    list_employees,
+    select_employee,
 )
 
 
 employee_blueprint = Blueprint("employee", __name__, url_prefix="/api/employee")
 
 
-@employee_blueprint.get("/profile")
-def profile():
-    username = current_app.config["EMPLOYEE_PROVIDER"]()
+def _manager():
+    return current_app.extensions["safe_cells_employee_selection"]
+
+
+def _settings():
+    return current_app.extensions["safe_cells_settings"]
+
+
+@employee_blueprint.get("")
+def directory():
     try:
-        full_name = get_employee_full_name(
-            current_app.config["EMPLOYEE_PROFILE_PATH"], username
-        )
-    except EmployeeProfileError as exc:
-        return jsonify({"message": str(exc)}), 500
+        employees = list_employees(_settings(), active_only=True)
+        try:
+            selected = get_selected_employee(_settings(), _manager())
+        except EmployeeSelectionRequiredError:
+            selected = None
+    except EmployeeDirectoryReadError as exc:
+        return jsonify({"message": str(exc)}), 503
     return jsonify(
-        {"username": username, "full_name": full_name, "profile_required": full_name is None}
+        {
+            "employees": [employee.to_dict() for employee in employees],
+            "selected_employee_id": None if selected is None else selected.employee_id,
+            "selected_employee_name": None if selected is None else selected.full_name,
+            "selection_required": selected is None,
+        }
     )
 
 
-@employee_blueprint.post("/profile")
-def save_profile():
+@employee_blueprint.post("/select")
+def select():
     supplied_token = request.headers.get("X-Safe-Cells-Token", "")
     expected_token = current_app.extensions["safe_cells_private_token"]
     if not supplied_token or not compare_digest(supplied_token, expected_token):
-        return jsonify({"message": "Доступ к настройке сотрудника не подтверждён."}), 403
+        return jsonify({"message": "Выбор сотрудника не подтверждён."}), 403
     payload = request.get_json(silent=True)
-    if not isinstance(payload, dict) or set(payload) != {"full_name"}:
-        return jsonify({"message": "Переданы неверные данные сотрудника."}), 400
-    username = current_app.config["EMPLOYEE_PROVIDER"]()
+    if not isinstance(payload, dict) or set(payload) != {"employee_id"}:
+        return jsonify({"message": "Выберите сотрудника."}), 400
     try:
-        full_name = save_employee_full_name(
-            current_app.config["EMPLOYEE_PROFILE_PATH"], username, payload.get("full_name")
-        )
-    except EmployeeProfileError as exc:
-        return jsonify({"message": str(exc)}), 400
-    return jsonify({"username": username, "full_name": full_name})
+        employee = select_employee(_settings(), _manager(), payload["employee_id"])
+    except EmployeeSelectionRequiredError as exc:
+        return jsonify({"message": str(exc), "selection_required": True}), 409
+    except EmployeeDirectoryReadError as exc:
+        return jsonify({"message": str(exc)}), 503
+    return jsonify(employee.to_dict())

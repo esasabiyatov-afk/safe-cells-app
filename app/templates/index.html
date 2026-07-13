@@ -22,8 +22,8 @@
   data-closure-url="{{ url_for('closures.confirm') }}"
   data-document-templates-url="{{ url_for('documents.templates') }}"
   data-document-generate-url="{{ url_for('documents.generate') }}"
-  data-employee-profile-url="{{ url_for('employee.profile') }}"
-  data-employee-profile-required="{{ 'true' if employee_profile_required else 'false' }}"
+  data-employee-directory-url="{{ url_for('employee.directory') }}"
+  data-employee-select-url="{{ url_for('employee.select') }}"
   data-private-token="{{ private_token }}"
   data-admin-status-url="{{ url_for('admin.status') }}"
   data-admin-setup-url="{{ url_for('admin.setup') }}"
@@ -35,6 +35,7 @@
   data-admin-password-url="{{ url_for('admin.password_change') }}"
   data-admin-templates-url="{{ url_for('admin.template_upload') }}"
   data-admin-template-file-url="{{ url_for('admin.template_file', template_id='__TEMPLATE_ID__') }}"
+  data-admin-employees-url="{{ url_for('admin.employee_update') }}"
 >
   <header class="page-header">
     <div class="brand-block">
@@ -58,16 +59,17 @@
     </section>
 
     <div class="header-side">
-      <button class="settings-button" id="adminOpen" type="button">Настройки</button>
       <div class="employee" aria-label="Текущий сотрудник">
-        <span class="employee-label">Сотрудник</span>
-        <strong id="employeeName">{{ employee }}</strong>
-        <small id="employeeUsername">{{ employee_username }}</small>
+        <label class="employee-label" for="employeeSelect">Сотрудник</label>
+        <select id="employeeSelect" aria-label="Текущий сотрудник">
+          <option value="">Выберите сотрудника</option>
+        </select>
       </div>
       <div class="connection-state" id="connectionState" role="status">
         <span class="connection-dot" aria-hidden="true"></span>
         <span>Проверка данных…</span>
       </div>
+      <button class="settings-icon-button" id="adminOpen" type="button" title="Настройки" aria-label="Настройки">⚙</button>
     </div>
   </header>
 
@@ -105,10 +107,6 @@
           </select>
         </label>
 
-        <button class="refresh-button" id="refreshButton" type="button" title="Немедленно перечитать данные из общей базы">
-          <span aria-hidden="true">↻</span>
-          Обновить
-        </button>
       </div>
 
       <div class="status-row">
@@ -221,14 +219,30 @@
   </dialog>
 
   <dialog class="contract-dialog" id="employeeDialog" aria-labelledby="employeeDialogTitle">
-    <p class="section-kicker">Первый запуск учётной записи</p>
-    <h2 id="employeeDialogTitle">Укажите сотрудника</h2>
-    <p class="dialog-note">Windows-учётка: <strong>{{ employee_username }}</strong>. Полное имя сохранится только на этом компьютере и будет подставляться в документы.</p>
+    <p class="section-kicker">Начало работы</p>
+    <h2 id="employeeDialogTitle">Кто сейчас работает?</h2>
+    <p class="dialog-note" id="employeeDialogNote">Выберите своё имя. Оно будет записано в операции и подставлено в документы.</p>
     <form id="employeeForm">
       <div class="calculation-error" id="employeeError" role="alert" hidden></div>
-      <label class="contract-field contract-field--wide"><span>Фамилия и имя *</span><input id="employeeFullName" maxlength="128" autocomplete="name" required></label>
-      <div class="dialog-actions"><button class="primary-button" id="employeeSubmit" type="submit">Сохранить</button></div>
+      <label class="contract-field contract-field--wide"><span>Сотрудник *</span><select id="employeeDialogSelect" required><option value="">Выберите сотрудника</option></select></label>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="employeeOpenSettings" type="button" hidden>Открыть настройки</button>
+        <button class="primary-button" id="employeeSubmit" type="submit">Начать работу</button>
+      </div>
     </form>
+  </dialog>
+
+  <dialog class="contract-dialog operation-result-dialog" id="operationResultDialog" aria-labelledby="operationResultTitle">
+    <p class="section-kicker">Операция завершена</p>
+    <h2 id="operationResultTitle">Готово</h2>
+    <p class="operation-result-summary" id="operationResultSummary"></p>
+    <section class="operation-documents-result" id="operationDocumentsSuccess">
+      <h3>Документы сформированы</h3>
+      <p>Файлы сохранены в папке «Загрузки»:</p>
+      <ul id="operationDocumentList"></ul>
+    </section>
+    <div class="calculation-error" id="operationDocumentsWarning" role="alert" hidden></div>
+    <div class="dialog-actions"><button class="primary-button" id="operationResultClose" type="button">Понятно</button></div>
   </dialog>
 
   <dialog class="admin-dialog" id="adminDialog" aria-labelledby="adminDialogTitle">
@@ -266,6 +280,7 @@
         <button type="button" class="admin-tab is-active" data-admin-tab="general" aria-selected="true">Общие</button>
         <button type="button" class="admin-tab" data-admin-tab="tariffs" aria-selected="false">Тарифы</button>
         <button type="button" class="admin-tab" data-admin-tab="templates" aria-selected="false">Шаблоны</button>
+        <button type="button" class="admin-tab" data-admin-tab="employees" aria-selected="false">Сотрудники</button>
         <button type="button" class="admin-tab" data-admin-tab="access" aria-selected="false">Доступ</button>
       </nav>
 
@@ -324,6 +339,18 @@
             <label class="contract-field"><span>Новый пароль</span><input id="adminNewPassword" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
             <label class="contract-field"><span>Повторите новый пароль</span><input id="adminNewPasswordConfirm" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
             <div class="dialog-actions"><button class="secondary-button" id="adminPasswordSubmit" type="submit">Сменить общий пароль</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="employees" hidden>
+        <div class="admin-section">
+          <h3>Сотрудники отдела</h3>
+          <p class="dialog-note">Активные сотрудники доступны в списке на главном экране. Отключение не изменяет старые договоры и журнал операций.</p>
+          <div id="adminEmployeeRows" class="admin-employee-list"></div>
+          <form id="adminEmployeeAddForm" class="admin-employee-add-form">
+            <label class="contract-field"><span>Фамилия и имя нового сотрудника</span><input id="adminEmployeeName" maxlength="128" required autocomplete="off"></label>
+            <div class="dialog-actions"><button class="secondary-button" id="adminEmployeeAdd" type="submit">Добавить сотрудника</button></div>
           </form>
         </div>
       </section>

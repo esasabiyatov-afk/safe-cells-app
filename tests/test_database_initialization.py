@@ -132,6 +132,7 @@ def test_seed_values_are_exact(
             "currency_code": "KGS",
             "currency_scale": "0",
             "deposit_amount_minor": "1500",
+            "employees_json": "[]",
             "expiring_soon_days": "7",
         }
 

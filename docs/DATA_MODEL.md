@@ -43,7 +43,7 @@
 | `period_to_days` | INTEGER | `NULL` для последнего диапазона; иначе не меньше начала. |
 | `price_per_day_minor` | INTEGER | `NOT NULL`, неотрицательное. |
 | `updated_at` | TEXT | ISO-время. |
-| `updated_by` | TEXT | Windows-логин сотрудника. |
+| `updated_by` | TEXT | Полное имя выбранного сотрудника. |
 
 Первичный ключ: (`height_mm`, `period_from_days`). Сервис дополнительно запрещает пробелы и пересечения диапазонов и требует ровно один подходящий тариф для каждого допустимого дня.
 
@@ -54,9 +54,9 @@
 | `key` | TEXT | `PRIMARY KEY`. |
 | `value` | TEXT | `NOT NULL`; преобразуется и проверяется по белому списку ключей. |
 | `updated_at` | TEXT | ISO-время. |
-| `updated_by` | TEXT | Windows-логин. |
+| `updated_by` | TEXT | Полное имя выбранного сотрудника. |
 
-Обязательные ключи: `expiring_soon_days`, `deposit_amount_minor`, `currency_code`, `currency_scale`, `admin_access_mode`. Последний содержит только `password` или `acknowledgement`, не является секретом. Секреты здесь не хранятся.
+Обязательные ключи: `expiring_soon_days`, `deposit_amount_minor`, `currency_code`, `currency_scale`, `admin_access_mode`, `employees_json`. Режим доступа содержит только `password` или `acknowledgement`, не является секретом. `employees_json` содержит проверенный общий справочник с UUID, полным именем и признаком активности; выбранный для локального запуска сотрудник в БД не хранится. Секреты здесь не хранятся.
 
 ### `contracts`
 
@@ -139,7 +139,7 @@
 |---|---|
 | `log_id` | UUID, `PRIMARY KEY`. |
 | `operation_id` | `NOT NULL UNIQUE`, ключ проверки повторной операции. |
-| `occurred_at`, `employee` | Время со смещением и Windows-логин. |
+| `occurred_at`, `employee` | Время со смещением и полное имя выбранного сотрудника. |
 | `action` | Разрешённый код действия. |
 | `contract_id`, `cell_number` | Допускают `NULL` для общих настроек. |
 | `changes_json` | Валидный JSON только с разрешёнными полями; считается бизнес-данными. |
@@ -167,3 +167,4 @@
 - `config.currency_scale`: `0`; дробные суммы запрещены.
 - `config.deposit_amount_minor`: `1500`; настройка редактируется администратором рядом с тарифами.
 - `config.admin_access_mode`: `password`; после первичной настройки можно выбрать `acknowledgement`.
+- `config.employees_json`: пустой общий справочник; первый сотрудник добавляется через настройки.

@@ -9,7 +9,6 @@ from app.services.documents import (
     DocumentConflictError, DocumentReadError, DocumentValidationError,
     generate_active_contract_document, list_active_templates,
 )
-from app.services.employee import EmployeeProfileError, get_employee_full_name
 
 documents_blueprint = Blueprint("documents", __name__, url_prefix="/api/documents")
 
@@ -37,14 +36,7 @@ def generate():
     if error_response is not None:
         return error_response
     try:
-        username = current_app.config["EMPLOYEE_PROVIDER"]()
-        employee_full_name = get_employee_full_name(
-            current_app.config["EMPLOYEE_PROFILE_PATH"], username
-        )
-        if employee_full_name is None:
-            raise DocumentValidationError(
-                "Сначала укажите полные фамилию и имя сотрудника."
-            )
+        employee_full_name = current_app.config["EMPLOYEE_PROVIDER"]()
         result = generate_active_contract_document(
             current_app.extensions["safe_cells_settings"],
             cell_number=payload.get("cell_number"), contract_ref=payload.get("contract_ref"),
@@ -53,7 +45,7 @@ def generate():
             creation_date=current_app.config["TODAY_PROVIDER"](),
             employee=employee_full_name,
         )
-    except (DocumentValidationError, DocumentTemplateError, EmployeeProfileError) as exc:
+    except (DocumentValidationError, DocumentTemplateError) as exc:
         return jsonify({"message": str(exc)}), 400
     except DocumentConflictError as exc:
         return jsonify({"message": str(exc)}), 409

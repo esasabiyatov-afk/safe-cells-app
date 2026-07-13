@@ -327,6 +327,7 @@ def test_renewal_api_uses_server_date_and_does_not_return_personal_data(
     app = create_app(settings)
     app.config["TODAY_PROVIDER"] = lambda: TODAY
     app.config["TIMESTAMP_PROVIDER"] = lambda: OCCURRED_AT
+    app.config["EMPLOYEE_PROVIDER"] = lambda: "Тестовый Сотрудник"
     client = app.test_client()
     quote_response = client.post(
         "/api/renewals/calculate",

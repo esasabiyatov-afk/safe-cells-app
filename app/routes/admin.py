@@ -28,11 +28,17 @@ from app.services.admin_settings import (
     is_admin_configured,
     update_admin_settings,
     update_admin_access_mode,
+    update_admin_employee,
 )
 from app.services.admin_templates import (
     get_document_template_path,
     save_document_template,
     update_document_template,
+)
+from app.services.employee import (
+    EmployeeDirectoryReadError,
+    EmployeeSelectionRequiredError,
+    list_employees,
 )
 
 
@@ -48,7 +54,15 @@ def _settings():
 
 
 def _employee() -> str:
-    return current_app.config["EMPLOYEE_PROVIDER"]()
+    try:
+        return current_app.config["EMPLOYEE_PROVIDER"]()
+    except EmployeeSelectionRequiredError:
+        try:
+            if not list_employees(_settings()):
+                return "Первичная настройка"
+        except EmployeeDirectoryReadError as exc:
+            raise AdminNetworkError(str(exc)) from exc
+        raise
 
 
 def _occurred_at() -> datetime:
@@ -231,6 +245,45 @@ def access_update():
     ) as exc:
         return _write_error(exc)
     return jsonify(result.to_dict())
+
+
+@admin_blueprint.put("/employees")
+def employee_update():
+    denied = _require_admin()
+    if denied:
+        return denied
+    payload = request.get_json(silent=True)
+    try:
+        existing_employees = list_employees(_settings())
+        actor = (
+            _employee()
+            if existing_employees
+            else payload.get("full_name") if isinstance(payload, dict) else None
+        )
+        result, employee = update_admin_employee(
+            _settings(),
+            payload=payload,
+            employee=actor,
+            occurred_at=_occurred_at(),
+        )
+    except (
+        AdminValidationError,
+        AdminConflictError,
+        AdminBusyError,
+        AdminNetworkError,
+        AdminWriteError,
+        AdminWriteUncertainError,
+        EmployeeDirectoryReadError,
+    ) as exc:
+        if isinstance(exc, EmployeeDirectoryReadError):
+            return jsonify({"message": str(exc)}), 503
+        return _write_error(exc)
+    manager = current_app.extensions["safe_cells_employee_selection"]
+    if manager.get() == employee.employee_id and not employee.is_active:
+        manager.clear()
+    response = result.to_dict()
+    response["employee"] = employee.to_dict()
+    return jsonify(response), 200 if result.repeated or not payload.get("create") else 201
 
 
 @admin_blueprint.put("/password")

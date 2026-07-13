@@ -1,33 +1,46 @@
-"""Windows employee identity and remembered local display names."""
+"""Shared employee directory and process-local employee selection."""
 
 from __future__ import annotations
 
-import getpass
+from dataclasses import asdict, dataclass
 import json
-import os
-from pathlib import Path
-from uuid import uuid4
+import sqlite3
+from threading import Lock
+from typing import Any
+
+from app.config import Settings
+from app.db.connections import (
+    DatabaseUnavailableError,
+    NETWORK_ERROR_MESSAGE,
+    open_readonly,
+    validate_database_pair,
+)
 
 
-def get_employee_username() -> str:
-    """Return the current Windows account name without logging it."""
-
-    try:
-        username = getpass.getuser().strip()
-    except (ImportError, KeyError, OSError):
-        username = ""
-    return username or "Не определён"
+EMPLOYEES_CONFIG_KEY = "employees_json"
+MAX_EMPLOYEES = 200
 
 
 class EmployeeProfileError(ValueError):
-    """The local employee profile is invalid or cannot be saved."""
+    """The shared employee directory or supplied name is invalid."""
 
 
-def default_employee_profile_path() -> Path:
-    base = os.environ.get("LOCALAPPDATA")
-    if base:
-        return Path(base) / "SafeCells" / "employee-profiles.json"
-    return Path.home() / ".safe-cells" / "employee-profiles.json"
+class EmployeeDirectoryReadError(RuntimeError):
+    """The shared employee directory cannot be read."""
+
+
+class EmployeeSelectionRequiredError(RuntimeError):
+    """No active employee is selected in this local process."""
+
+
+@dataclass(frozen=True, slots=True)
+class EmployeeRecord:
+    employee_id: str
+    full_name: str
+    is_active: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 def validate_employee_full_name(value: object) -> str:
@@ -41,46 +54,122 @@ def validate_employee_full_name(value: object) -> str:
     return normalized
 
 
-def _read_profiles(path: Path) -> dict[str, str]:
-    if not path.exists():
-        return {}
+def decode_employee_config(value: object | None) -> list[EmployeeRecord]:
+    if value is None:
+        return []
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise EmployeeProfileError(
-            "Не удалось прочитать локальный профиль сотрудника."
-        ) from exc
-    if not isinstance(payload, dict) or not all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in payload.items()
-    ):
-        raise EmployeeProfileError("Локальный профиль сотрудника повреждён.")
-    return payload
+        payload = json.loads(str(value))
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise EmployeeProfileError("Список сотрудников повреждён.") from exc
+    if not isinstance(payload, list) or len(payload) > MAX_EMPLOYEES:
+        raise EmployeeProfileError("Список сотрудников повреждён.")
+    records: list[EmployeeRecord] = []
+    identifiers: set[str] = set()
+    names: set[str] = set()
+    for raw in payload:
+        if not isinstance(raw, dict) or set(raw) != {"employee_id", "full_name", "is_active"}:
+            raise EmployeeProfileError("Список сотрудников повреждён.")
+        employee_id = raw["employee_id"]
+        if not isinstance(employee_id, str) or not employee_id or len(employee_id) > 100:
+            raise EmployeeProfileError("Список сотрудников повреждён.")
+        full_name = validate_employee_full_name(raw["full_name"])
+        is_active = raw["is_active"]
+        if not isinstance(is_active, bool):
+            raise EmployeeProfileError("Список сотрудников повреждён.")
+        if employee_id in identifiers or full_name.casefold() in names:
+            raise EmployeeProfileError("Список сотрудников содержит дубликат.")
+        identifiers.add(employee_id)
+        names.add(full_name.casefold())
+        records.append(EmployeeRecord(employee_id, full_name, is_active))
+    return records
 
 
-def get_employee_full_name(path: Path, username: str) -> str | None:
-    value = _read_profiles(Path(path)).get(username)
-    return validate_employee_full_name(value) if value is not None else None
+def encode_employee_config(records: list[EmployeeRecord]) -> str:
+    return json.dumps(
+        [record.to_dict() for record in records],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
-def save_employee_full_name(path: Path, username: str, full_name: object) -> str:
-    """Atomically remember a full name outside the shared database."""
-
-    normalized = validate_employee_full_name(full_name)
-    target = Path(path)
-    profiles = _read_profiles(target)
-    profiles[username] = normalized
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
+def list_employees(settings: Settings, *, active_only: bool = False) -> list[EmployeeRecord]:
     try:
-        temporary.write_text(
-            json.dumps(profiles, ensure_ascii=False, sort_keys=True, indent=2),
-            encoding="utf-8",
+        paths = validate_database_pair(settings)
+        with open_readonly(paths.working, busy_timeout_ms=settings.busy_timeout_ms) as connection:
+            row = connection.execute(
+                "SELECT value FROM config WHERE key = ?", (EMPLOYEES_CONFIG_KEY,)
+            ).fetchone()
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise EmployeeDirectoryReadError(NETWORK_ERROR_MESSAGE) from exc
+    try:
+        records = decode_employee_config(None if row is None else row["value"])
+    except EmployeeProfileError as exc:
+        raise EmployeeDirectoryReadError(str(exc)) from exc
+    if active_only:
+        records = [record for record in records if record.is_active]
+    return sorted(records, key=lambda record: record.full_name.casefold())
+
+
+class EmployeeSelectionManager:
+    """Remember the selected employee only until this local process exits."""
+
+    def __init__(self) -> None:
+        self._employee_id: str | None = None
+        self._lock = Lock()
+
+    def get(self) -> str | None:
+        with self._lock:
+            return self._employee_id
+
+    def set(self, employee_id: str) -> None:
+        with self._lock:
+            self._employee_id = employee_id
+
+    def clear(self) -> None:
+        with self._lock:
+            self._employee_id = None
+
+
+def select_employee(
+    settings: Settings, manager: EmployeeSelectionManager, employee_id: object
+) -> EmployeeRecord:
+    if not isinstance(employee_id, str) or not employee_id:
+        raise EmployeeSelectionRequiredError("Выберите сотрудника.")
+    record = next(
+        (
+            item
+            for item in list_employees(settings, active_only=True)
+            if item.employee_id == employee_id
+        ),
+        None,
+    )
+    if record is None:
+        manager.clear()
+        raise EmployeeSelectionRequiredError(
+            "Сотрудник не найден или отключён. Выберите другого сотрудника."
         )
-        os.replace(temporary, target)
-    except OSError as exc:
-        temporary.unlink(missing_ok=True)
-        raise EmployeeProfileError(
-            "Не удалось сохранить локальный профиль сотрудника."
-        ) from exc
-    return normalized
+    manager.set(record.employee_id)
+    return record
+
+
+def get_selected_employee(
+    settings: Settings, manager: EmployeeSelectionManager
+) -> EmployeeRecord:
+    employee_id = manager.get()
+    if employee_id is None:
+        raise EmployeeSelectionRequiredError("Перед операцией выберите сотрудника.")
+    record = next(
+        (
+            item
+            for item in list_employees(settings, active_only=True)
+            if item.employee_id == employee_id
+        ),
+        None,
+    )
+    if record is None:
+        manager.clear()
+        raise EmployeeSelectionRequiredError(
+            "Выбранный сотрудник отключён. Выберите другого сотрудника."
+        )
+    return record

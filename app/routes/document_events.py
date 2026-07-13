@@ -11,7 +11,10 @@ from app.services.documents import (
     DocumentValidationError,
     generate_event_documents,
 )
-from app.services.employee import EmployeeProfileError, get_employee_full_name
+from app.services.employee import (
+    EmployeeDirectoryReadError,
+    EmployeeSelectionRequiredError,
+)
 
 
 def document_event_payload(
@@ -20,14 +23,7 @@ def document_event_payload(
     """Return generated filenames or a warning without undoing committed data."""
 
     try:
-        username = current_app.config["EMPLOYEE_PROVIDER"]()
-        employee = get_employee_full_name(
-            current_app.config["EMPLOYEE_PROFILE_PATH"], username
-        )
-        if employee is None:
-            raise DocumentValidationError(
-                "Документы не сформированы: укажите полные фамилию и имя сотрудника."
-            )
+        employee = current_app.config["EMPLOYEE_PROVIDER"]()
         generated = generate_event_documents(
             current_app.extensions["safe_cells_settings"],
             event_type=event_type,
@@ -53,6 +49,7 @@ def document_event_payload(
         DocumentConflictError,
         DocumentReadError,
         DocumentPublishError,
-        EmployeeProfileError,
+        EmployeeDirectoryReadError,
+        EmployeeSelectionRequiredError,
     ) as exc:
         return {"documents": [], "document_warning": str(exc)}

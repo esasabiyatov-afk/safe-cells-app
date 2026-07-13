@@ -45,7 +45,6 @@ const elements = {
   search: document.getElementById("searchInput"),
   status: document.getElementById("statusFilter"),
   height: document.getElementById("heightFilter"),
-  refresh: document.getElementById("refreshButton"),
   errorBanner: document.getElementById("errorBanner"),
   errorMessage: document.getElementById("errorMessage"),
   successBanner: document.getElementById("successBanner"),
@@ -124,12 +123,21 @@ const elements = {
   documentError: document.getElementById("documentError"),
   documentBack: document.getElementById("documentBack"),
   documentSubmit: document.getElementById("documentSubmit"),
-  employeeName: document.getElementById("employeeName"),
+  employeeSelect: document.getElementById("employeeSelect"),
   employeeDialog: document.getElementById("employeeDialog"),
   employeeForm: document.getElementById("employeeForm"),
-  employeeFullName: document.getElementById("employeeFullName"),
+  employeeDialogSelect: document.getElementById("employeeDialogSelect"),
+  employeeDialogNote: document.getElementById("employeeDialogNote"),
+  employeeOpenSettings: document.getElementById("employeeOpenSettings"),
   employeeError: document.getElementById("employeeError"),
   employeeSubmit: document.getElementById("employeeSubmit"),
+  operationResultDialog: document.getElementById("operationResultDialog"),
+  operationResultTitle: document.getElementById("operationResultTitle"),
+  operationResultSummary: document.getElementById("operationResultSummary"),
+  operationDocumentsSuccess: document.getElementById("operationDocumentsSuccess"),
+  operationDocumentList: document.getElementById("operationDocumentList"),
+  operationDocumentsWarning: document.getElementById("operationDocumentsWarning"),
+  operationResultClose: document.getElementById("operationResultClose"),
   closureDialog: document.getElementById("closureDialog"),
   closureDialogClose: document.getElementById("closureDialogClose"),
   closureDialogTitle: document.getElementById("closureDialogTitle"),
@@ -187,36 +195,73 @@ function setConnection(mode, text) {
   elements.connection.querySelector("span:last-child").textContent = text;
 }
 
-function initializeEmployeeProfile() {
-  if (elements.body.dataset.employeeProfileRequired === "true") {
+function fillEmployeeSelect(select, employees, selectedId) {
+  select.replaceChildren(new Option("Выберите сотрудника", ""));
+  for (const employee of employees) {
+    select.append(new Option(employee.full_name, employee.employee_id));
+  }
+  select.value = selectedId || "";
+}
+
+function renderEmployeeDirectory(payload) {
+  const employees = Array.isArray(payload.employees) ? payload.employees : [];
+  fillEmployeeSelect(elements.employeeSelect, employees, payload.selected_employee_id);
+  fillEmployeeSelect(elements.employeeDialogSelect, employees, payload.selected_employee_id);
+  elements.employeeError.hidden = true;
+  const isEmpty = employees.length === 0;
+  elements.employeeSubmit.disabled = isEmpty;
+  elements.employeeOpenSettings.hidden = !isEmpty;
+  elements.employeeDialogNote.textContent = isEmpty
+    ? "Список сотрудников пока пуст. Добавьте первого сотрудника в настройках."
+    : "Выберите своё имя. Оно будет записано в операции и подставлено в документы.";
+  const adminDialog = document.getElementById("adminDialog");
+  if ((isEmpty || payload.selection_required) && !adminDialog?.open && !elements.employeeDialog.open) {
     elements.employeeDialog.showModal();
   }
 }
 
-async function saveEmployeeProfile(event) {
-  event.preventDefault();
-  if (state.employeeSubmitting) return;
+async function loadEmployeeDirectory() {
+  try {
+    const response = await fetch(elements.body.dataset.employeeDirectoryUrl, {cache: "no-store"});
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Не удалось получить список сотрудников");
+    renderEmployeeDirectory(payload);
+  } catch (error) {
+    elements.employeeError.textContent = errorMessage(error, "Не удалось получить список сотрудников");
+    elements.employeeError.hidden = false;
+    if (!elements.employeeDialog.open) elements.employeeDialog.showModal();
+  }
+}
+
+async function selectEmployee(employeeId) {
+  if (!employeeId || state.employeeSubmitting) return;
   state.employeeSubmitting = true;
   elements.employeeSubmit.disabled = true;
   elements.employeeError.hidden = true;
   try {
-    const response = await fetch(elements.body.dataset.employeeProfileUrl, {
+    const response = await fetch(elements.body.dataset.employeeSelectUrl, {
       method: "POST",
       headers: {"Content-Type": "application/json", "X-Safe-Cells-Token": elements.body.dataset.privateToken},
-      body: JSON.stringify({full_name: elements.employeeFullName.value}),
+      body: JSON.stringify({employee_id: employeeId}),
     });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.message || "Не удалось сохранить имя сотрудника");
-    elements.employeeName.textContent = payload.full_name;
-    elements.body.dataset.employeeProfileRequired = "false";
-    elements.employeeDialog.close();
+    if (!response.ok) throw new Error(payload.message || "Не удалось выбрать сотрудника");
+    elements.employeeSelect.value = payload.employee_id;
+    elements.employeeDialogSelect.value = payload.employee_id;
+    if (elements.employeeDialog.open) elements.employeeDialog.close();
   } catch (error) {
-    elements.employeeError.textContent = errorMessage(error, "Не удалось сохранить имя сотрудника");
+    elements.employeeError.textContent = errorMessage(error, "Не удалось выбрать сотрудника");
     elements.employeeError.hidden = false;
+    await loadEmployeeDirectory();
   } finally {
     state.employeeSubmitting = false;
-    elements.employeeSubmit.disabled = false;
+    elements.employeeSubmit.disabled = elements.employeeDialogSelect.options.length <= 1;
   }
+}
+
+async function saveEmployeeSelection(event) {
+  event.preventDefault();
+  await selectEmployee(elements.employeeDialogSelect.value);
 }
 
 function showError(message) {
@@ -242,15 +287,26 @@ function errorMessage(error, fallback) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-function documentResultMessage(payload) {
-  if (payload.document_warning) {
-    return ` Документы: ${payload.document_warning}`;
+function showOperationResult(summary, payload) {
+  const documents = Array.isArray(payload.documents) ? payload.documents : [];
+  elements.operationResultTitle.textContent = "Операция выполнена";
+  elements.operationResultSummary.textContent = summary;
+  elements.operationDocumentList.replaceChildren();
+  for (const generatedDocument of documents) {
+    const item = document.createElement("li");
+    item.textContent = typeof generatedDocument === "string"
+      ? generatedDocument
+      : generatedDocument.file_name || generatedDocument.display_name || "Документ DOCX";
+    elements.operationDocumentList.append(item);
   }
-  const count = Array.isArray(payload.documents) ? payload.documents.length : 0;
-  if (count === 0) {
-    return "";
+  const hasDocuments = documents.length > 0;
+  elements.operationDocumentsSuccess.hidden = !hasDocuments;
+  elements.operationDocumentsWarning.hidden = hasDocuments;
+  if (!hasDocuments) {
+    const details = payload.document_warning || "Не удалось сформировать документы.";
+    elements.operationDocumentsWarning.textContent = `Операция сохранена, но документы не сформированы: ${details}`;
   }
-  return ` Документы сохранены в папку «Загрузки»: ${count}.`;
+  if (!elements.operationResultDialog.open) elements.operationResultDialog.showModal();
 }
 
 function clearError() {
@@ -826,14 +882,13 @@ async function submitClosure(event) {
       throw new Error(payload.message || "Не удалось закрыть договор");
     }
     const warning = payload.warning ? ` ${payload.warning}` : "";
-    const documents = documentResultMessage(payload);
     state.closureSubmitting = false;
     elements.closureDialog.close();
     state.activeClosureQuote = null;
     state.closureOperationId = null;
     state.activeOccupiedCell = null;
     await refreshCells();
-    showSuccess(`Договор по ячейке № ${payload.cell_number} закрыт. Ячейка свободна.${warning}${documents}`);
+    showOperationResult(`Договор по ячейке № ${payload.cell_number} закрыт. Ячейка свободна.${warning}`, payload);
   } catch (error) {
     showClosureError(errorMessage(error, "Не удалось закрыть договор"));
   } finally {
@@ -1026,7 +1081,6 @@ async function submitRenewal(event) {
     }
     const cellNumber = payload.cell_number;
     const warning = payload.warning ? ` ${payload.warning}` : "";
-    const documents = documentResultMessage(payload);
     state.renewalSubmitting = false;
     elements.renewalDialog.close();
     state.activeRenewalQuote = null;
@@ -1037,7 +1091,7 @@ async function submitRenewal(event) {
     if (updated && updated.status !== "free") {
       openCellDialog(updated);
     }
-    showSuccess(`Аренда ячейки № ${cellNumber} продлена до ${formatDate(payload.new_end_date)}.${warning}${documents}`);
+    showOperationResult(`Аренда ячейки № ${cellNumber} продлена до ${formatDate(payload.new_end_date)}.${warning}`, payload);
   } catch (error) {
     showRenewalError(errorMessage(error, "Не удалось сохранить продление"));
   } finally {
@@ -1312,14 +1366,13 @@ async function submitContract(event) {
     }
     const savedCellNumber = payload.cell_number;
     const warning = payload.warning ? ` ${payload.warning}` : "";
-    const documents = documentResultMessage(payload);
     elements.contractDialog.close();
     elements.contractForm.reset();
     state.activeRentalCell = null;
     state.activeQuote = null;
     state.activeOperationId = null;
     await refreshCells();
-    showSuccess(`Ячейка № ${savedCellNumber} занята.${warning}${documents}`);
+    showOperationResult(`Ячейка № ${savedCellNumber} занята.${warning}`, payload);
   } catch (error) {
     showContractError(errorMessage(error, "Не удалось сохранить договор"));
   } finally {
@@ -1410,8 +1463,6 @@ function scheduleSearch() {
 }
 
 async function refreshCells() {
-  elements.refresh.classList.add("loading");
-  elements.refresh.disabled = true;
   elements.grid.setAttribute("aria-busy", "true");
   try {
     const response = await fetch(elements.body.dataset.cellsUrl, { cache: "no-store" });
@@ -1456,17 +1507,28 @@ async function refreshCells() {
     clearDisplayedData();
     elements.grid.setAttribute("aria-busy", "false");
   } finally {
-    elements.refresh.classList.remove("loading");
-    elements.refresh.disabled = false;
+    elements.grid.setAttribute("aria-busy", "false");
   }
 }
 
 elements.search.addEventListener("input", scheduleSearch);
-elements.employeeForm.addEventListener("submit", saveEmployeeProfile);
+elements.employeeForm.addEventListener("submit", saveEmployeeSelection);
 elements.employeeDialog.addEventListener("cancel", (event) => event.preventDefault());
+elements.employeeSelect.addEventListener("change", () => {
+  if (elements.employeeSelect.value) selectEmployee(elements.employeeSelect.value);
+  else if (!elements.employeeDialog.open) elements.employeeDialog.showModal();
+});
+elements.employeeOpenSettings.addEventListener("click", () => {
+  elements.employeeDialog.close();
+  document.getElementById("adminOpen")?.click();
+});
+elements.operationResultClose.addEventListener("click", () => elements.operationResultDialog.close());
+elements.operationResultDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  elements.operationResultDialog.close();
+});
 elements.status.addEventListener("change", renderGrid);
 elements.height.addEventListener("change", renderGrid);
-elements.refresh.addEventListener("click", refreshCells);
 elements.dialogClose.addEventListener("click", closeCellDialog);
 elements.privateToggle.addEventListener("click", togglePrivateDetails);
 elements.historyToggle.addEventListener("click", toggleRenewalHistory);
@@ -1560,6 +1622,11 @@ elements.contractDialog.addEventListener("cancel", (event) => {
   cancelContractWorkflow();
 });
 
-initializeEmployeeProfile();
+window.addEventListener("safe-cells:employees-changed", loadEmployeeDirectory);
+window.addEventListener("safe-cells:refresh", refreshCells);
+loadEmployeeDirectory();
 refreshCells();
-window.setInterval(refreshCells, 15_000);
+window.setInterval(() => {
+  refreshCells();
+  loadEmployeeDirectory();
+}, 15_000);

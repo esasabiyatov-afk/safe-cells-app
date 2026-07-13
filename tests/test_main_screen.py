@@ -26,7 +26,13 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "test-user" in html
+    assert "test-user" not in html
+    assert 'id="employeeSelect"' in html
+    assert 'id="adminOpen"' in html
+    assert 'id="refreshButton"' not in html
+    assert 'id="employeeDialog"' in html
+    assert 'id="operationResultDialog"' in html
+    assert 'id="operationDocumentList"' in html
     assert "http://" not in html
     assert "https://" not in html
     assert 'src="/static/js/main.js"' in html
@@ -78,16 +84,18 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert response.headers["Cache-Control"] == "no-store"
 
 
-def test_employee_name_is_escaped(
+def test_main_page_does_not_read_or_embed_employee_identity(
     settings: Settings, cells_csv_path: Path
 ) -> None:
     app = _ready_app(settings, cells_csv_path)
-    app.config["EMPLOYEE_PROVIDER"] = lambda: "<script>test</script>"
+    app.config["EMPLOYEE_PROVIDER"] = lambda: (_ for _ in ()).throw(
+        AssertionError("main page must not resolve employee identity")
+    )
 
     html = app.test_client().get("/").get_data(as_text=True)
 
-    assert "<script>test</script>" not in html
-    assert "&lt;script&gt;test&lt;/script&gt;" in html
+    assert 'data-employee-directory-url="/api/employee"' in html
+    assert 'data-employee-select-url="/api/employee/select"' in html
 
 
 def test_cells_api_returns_126_safe_rows(
@@ -202,6 +210,10 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "hidePrivateDetails" in script
         assert "clearPrivateValues" in script
         assert "renderRenewals" in script
+        assert "showOperationResult" in script
+        assert "operationDocumentList" in script
+        assert "Операция сохранена, но документы не сформированы" in script
+        assert "refreshButton" not in script
     finally:
         css.close()
         javascript.close()

@@ -16,6 +16,8 @@
     generalSubmit: document.getElementById("adminGeneralSubmit"), tariffsSubmit: document.getElementById("adminTariffsSubmit"),
     templateRows: document.getElementById("adminTemplateRows"), templateUploadForm: document.getElementById("adminTemplateUploadForm"), templateTarget: document.getElementById("adminTemplateTarget"),
     templateDisplay: document.getElementById("adminTemplateDisplay"), templateType: document.getElementById("adminTemplateType"), templateFile: document.getElementById("adminTemplateFile"), templateUpload: document.getElementById("adminTemplateUpload"),
+    employeeRows: document.getElementById("adminEmployeeRows"), employeeAddForm: document.getElementById("adminEmployeeAddForm"),
+    employeeName: document.getElementById("adminEmployeeName"), employeeAdd: document.getElementById("adminEmployeeAdd"),
     accessForm: document.getElementById("adminAccessForm"), accessPassword: document.getElementById("adminAccessPassword"), accessAcknowledgement: document.getElementById("adminAccessAcknowledgement"), accessSubmit: document.getElementById("adminAccessSubmit"),
     passwordForm: document.getElementById("adminPasswordForm"), currentPassword: document.getElementById("adminCurrentPassword"), newPassword: document.getElementById("adminNewPassword"), newPasswordConfirm: document.getElementById("adminNewPasswordConfirm"), passwordSubmit: document.getElementById("adminPasswordSubmit"),
   };
@@ -128,13 +130,47 @@
     }
   }
 
+  function renderEmployees() {
+    elements.employeeRows.replaceChildren();
+    if (!state.snapshot.employees.length) {
+      const empty = document.createElement("p");
+      empty.className = "dialog-note";
+      empty.textContent = "Список пока пуст. Добавьте первого сотрудника.";
+      elements.employeeRows.append(empty);
+    }
+    for (const employee of state.snapshot.employees) {
+      const row = document.createElement("article");
+      row.className = "admin-employee-row";
+      row.dataset.employeeId = employee.employee_id;
+      const name = document.createElement("input");
+      name.type = "text";
+      name.maxLength = 128;
+      name.required = true;
+      name.value = employee.full_name;
+      name.setAttribute("aria-label", "Полное имя сотрудника");
+      const activeLabel = document.createElement("label");
+      activeLabel.className = "admin-checkbox";
+      const active = document.createElement("input");
+      active.type = "checkbox";
+      active.checked = employee.is_active;
+      activeLabel.append(active, document.createTextNode(" Активен"));
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "secondary-button";
+      save.dataset.action = "save-employee";
+      save.textContent = "Сохранить";
+      row.append(name, activeLabel, save);
+      elements.employeeRows.append(row);
+    }
+  }
+
   function renderSettings() {
     elements.expiringDays.value = String(state.snapshot.config.expiring_soon_days);
     elements.deposit.value = String(state.snapshot.config.deposit_amount_minor);
     state.accessMode = state.snapshot.access_mode;
     elements.accessPassword.checked = state.accessMode === "password";
     elements.accessAcknowledgement.checked = state.accessMode === "acknowledgement";
-    renderTariffs(); renderTemplates();
+    renderTariffs(); renderTemplates(); renderEmployees();
   }
 
   async function loadSettings() {
@@ -180,7 +216,7 @@
     event.preventDefault(); if (state.busy) return; state.busy = true; button.disabled = true; clearMessages();
     try {
       const payload = await jsonRequest(body.dataset.adminSettingsUrl, {method: "PUT", body: JSON.stringify(currentSettingsPayload())});
-      await loadSettings(); selectTab(tabName); showSuccess(payload.warning || successMessage); document.getElementById("refreshButton")?.click();
+      await loadSettings(); selectTab(tabName); showSuccess(payload.warning || successMessage); window.dispatchEvent(new Event("safe-cells:refresh"));
     } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
     finally { state.busy = false; button.disabled = false; }
   }
@@ -211,6 +247,47 @@
     const row = button.closest(".admin-template-row");
     if (button.dataset.action === "save-template") saveTemplate(row, button);
     if (button.dataset.action === "download-template") downloadTemplate(row, button);
+  }
+
+  async function saveEmployee(row, button) {
+    state.busy = true; button.disabled = true; clearMessages();
+    try {
+      const payload = await jsonRequest(body.dataset.adminEmployeesUrl, {
+        method: "PUT",
+        body: JSON.stringify({
+          operation_id: operationId(), employee_id: row.dataset.employeeId,
+          full_name: row.querySelector("input[type='text']").value,
+          is_active: row.querySelector("input[type='checkbox']").checked, create: false,
+        }),
+      });
+      await loadSettings(); selectTab("employees"); showSuccess(payload.warning || "Данные сотрудника сохранены.");
+      window.dispatchEvent(new Event("safe-cells:employees-changed"));
+    } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
+    finally { state.busy = false; button.disabled = false; }
+  }
+
+  function employeeAction(event) {
+    const button = event.target.closest("[data-action='save-employee']");
+    if (!button || state.busy) return;
+    saveEmployee(button.closest(".admin-employee-row"), button);
+  }
+
+  async function addEmployee(event) {
+    event.preventDefault(); if (state.busy || !elements.employeeAddForm.checkValidity()) return;
+    state.busy = true; elements.employeeAdd.disabled = true; clearMessages();
+    try {
+      const payload = await jsonRequest(body.dataset.adminEmployeesUrl, {
+        method: "PUT",
+        body: JSON.stringify({
+          operation_id: operationId(), employee_id: operationId(),
+          full_name: elements.employeeName.value, is_active: true, create: true,
+        }),
+      });
+      elements.employeeAddForm.reset(); await loadSettings(); selectTab("employees");
+      showSuccess(payload.warning || "Сотрудник добавлен.");
+      window.dispatchEvent(new Event("safe-cells:employees-changed"));
+    } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
+    finally { state.busy = false; elements.employeeAdd.disabled = false; }
   }
 
   function selectTemplateTarget() {
@@ -250,7 +327,10 @@
   async function logout(closeDialog = false) {
     const token = state.token; state.token = null; state.snapshot = null;
     if (token) fetch(body.dataset.adminLogoutUrl, {method: "POST", headers: {"X-Safe-Cells-Admin-Token": token}}).catch(() => {});
-    if (closeDialog && elements.dialog.open) elements.dialog.close(); else setAuthMode();
+    if (closeDialog && elements.dialog.open) {
+      elements.dialog.close();
+      window.dispatchEvent(new Event("safe-cells:employees-changed"));
+    } else setAuthMode();
   }
 
   elements.open.addEventListener("click", openAdmin); elements.close.addEventListener("click", () => logout(true));
@@ -259,5 +339,6 @@
   elements.generalForm.addEventListener("submit", event => saveSettings(event, elements.generalSubmit, "Общие параметры сохранены.", "general"));
   elements.tariffsForm.addEventListener("submit", event => saveSettings(event, elements.tariffsSubmit, "Тарифы сохранены.", "tariffs"));
   elements.templateRows.addEventListener("click", templateAction); elements.templateTarget.addEventListener("change", selectTemplateTarget); elements.templateUploadForm.addEventListener("submit", uploadTemplate);
+  elements.employeeRows.addEventListener("click", employeeAction); elements.employeeAddForm.addEventListener("submit", addEmployee);
   elements.accessForm.addEventListener("submit", saveAccess); elements.passwordForm.addEventListener("submit", changePassword);
 })();

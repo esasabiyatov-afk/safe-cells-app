@@ -56,6 +56,7 @@ def test_edit_rejects_no_changes(settings, insert_test_contract):
 def test_edit_api(settings, insert_test_contract):
     insert_test_contract(cell_number="1", end_date="2026-07-20")
     app = create_app(settings); app.config["TIMESTAMP_PROVIDER"] = lambda: WHEN
+    app.config["EMPLOYEE_PROVIDER"] = lambda: "Тестовый Сотрудник"
     response = app.test_client().post("/api/contracts/edit", json=payload())
     assert response.status_code == 200
     assert response.get_json()["cell_number"] == "1"
