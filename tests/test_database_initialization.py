@@ -134,6 +134,8 @@ def test_seed_values_are_exact(
             "deposit_amount_minor": "1500",
             "employees_json": "[]",
             "expiring_soon_days": "7",
+            "penalty_manual_rates_json": '{"100":17,"125":20,"175":25,"300":30,"50":15,"75":17}',
+            "penalty_rate_mode": "linked",
         }
 
 

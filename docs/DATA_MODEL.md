@@ -168,3 +168,5 @@
 - `config.deposit_amount_minor`: `1500`; настройка редактируется администратором рядом с тарифами.
 - `config.admin_access_mode`: `password`; после первичной настройки можно выбрать `acknowledgement`.
 - `config.employees_json`: пустой общий справочник; первый сотрудник добавляется через настройки.
+- `config.penalty_rate_mode`: `linked` для тарифа 1–30 дней либо `manual` для независимого набора.
+- `config.penalty_manual_rates_json`: полный проверяемый набор ручных штрафных ставок по фактическим высотам; хранится даже при режиме `linked`.

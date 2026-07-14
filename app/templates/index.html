@@ -303,8 +303,15 @@
           <p class="dialog-note">Срок и высота уже утверждены. Меняется только ставка за один день.</p>
           <section class="admin-penalty-section" aria-labelledby="adminPenaltyTitle">
             <h4 id="adminPenaltyTitle">Штрафные ставки</h4>
-            <p class="dialog-note">Штраф считается по тарифу «1–30 дней» для соответствующей высоты. Значения ниже и в общей таблице связаны: изменение в одном месте сразу меняет второе.</p>
-            <div class="admin-penalty-grid" id="adminPenaltyRows"></div>
+            <p class="dialog-note">Выберите единое правило для всех высот. Новая настройка применяется только к следующим продлениям и закрытиям.</p>
+            <div class="admin-penalty-mode-options">
+              <label class="admin-penalty-mode-card"><input id="adminPenaltyLinked" type="radio" name="penaltyRateMode" value="linked"><span><strong>Тариф 1–30 дней</strong><small>Штрафная ставка автоматически следует за обычным тарифом 1–30 дней для каждой высоты.</small></span></label>
+              <label class="admin-penalty-mode-card"><input id="adminPenaltyManual" type="radio" name="penaltyRateMode" value="manual"><span><strong>Ручная ставка</strong><small>Отдельные значения штрафа, не связанные с обычными тарифами аренды.</small></span></label>
+            </div>
+            <div class="admin-penalty-manual" id="adminPenaltyManualFields" hidden>
+              <p class="dialog-note">Укажите отдельную ставку штрафа за один день для каждой высоты.</p>
+              <div class="admin-penalty-grid" id="adminPenaltyRows"></div>
+            </div>
           </section>
           <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Высота</th><th>Срок</th><th>Ставка</th></tr></thead><tbody id="adminTariffRows"></tbody></table></div>
           <div class="dialog-actions"><button class="primary-button" id="adminTariffsSubmit" type="submit">Сохранить тарифы</button></div>

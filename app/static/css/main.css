@@ -369,6 +369,13 @@ main {
 .admin-table input { width: 140px; height: 36px; padding: 0 9px; border: 1px solid var(--line-dark); border-radius: 4px; }
 .admin-penalty-section { margin-top: 16px; padding: 14px; border: 1px solid #b9984b; border-radius: 5px; background: #fff8e6; }
 .admin-penalty-section h4 { margin-bottom: 6px; }
+.admin-penalty-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.admin-penalty-mode-card { display: flex; align-items: flex-start; gap: 9px; padding: 12px; border: 1px solid #d5bd80; border-radius: 5px; background: var(--surface); cursor: pointer; }
+.admin-penalty-mode-card:has(input:checked) { border-color: #8a6b23; box-shadow: inset 0 0 0 1px #8a6b23; }
+.admin-penalty-mode-card input { margin-top: 3px; }
+.admin-penalty-mode-card span { display: grid; gap: 4px; }
+.admin-penalty-mode-card small { color: var(--ink-soft); font-size: 11px; font-weight: 400; line-height: 1.35; }
+.admin-penalty-manual { margin-top: 14px; padding-top: 12px; border-top: 1px solid #d5bd80; }
 .admin-penalty-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
 .admin-penalty-card { display: grid; grid-template-columns: auto minmax(70px, 1fr) auto; align-items: center; gap: 7px; padding: 9px; border: 1px solid #d5bd80; border-radius: 4px; background: var(--surface); }
 .admin-penalty-card span { font-weight: 700; }
@@ -1423,6 +1430,7 @@ main {
   .admin-template-controls,
   .admin-template-details,
   .admin-access-options,
+  .admin-penalty-mode-options,
   .admin-employee-row,
   .admin-employee-add-form {
     grid-template-columns: 1fr;

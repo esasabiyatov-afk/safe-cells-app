@@ -85,6 +85,73 @@ def test_renewal_tariff_boundaries_and_penalty_rate(
     assert quote.penalty_amount == 15
 
 
+def test_renewal_can_use_independent_manual_penalty_rate(
+    settings: Settings, initialized_databases, insert_test_contract
+):
+    insert_test_contract(cell_number="1", end_date="2026-07-10")
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "UPDATE config SET value = 'manual' WHERE key = 'penalty_rate_mode'"
+        )
+        connection.execute(
+            "UPDATE config SET value = ? WHERE key = 'penalty_manual_rates_json'",
+            (json.dumps({"50": 33, "75": 17, "100": 17, "125": 20, "175": 25, "300": 30}),),
+        )
+        connection.commit()
+
+    quote = calculate_renewal_quote(
+        settings,
+        cell_number="1",
+        contract_ref="contract-test-1",
+        renewal_date=TODAY,
+        new_end_date_value="2026-08-10",
+        renewal_days_value=30,
+    )
+
+    assert quote.price_per_day == 15
+    assert quote.penalty_rate == 33
+    assert quote.penalty_amount == 33
+
+    result = renew_contract(
+        settings,
+        payload=payload(),
+        employee="test-user",
+        renewal_date=TODAY,
+        occurred_at=OCCURRED_AT,
+    )
+    assert result.penalty_rate == 33
+    with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
+        stored = archive.execute(
+            "SELECT penalty_rate_minor, penalty_amount_minor FROM renewals WHERE renewal_id = ?",
+            (result.renewal_id,),
+        ).fetchone()
+    assert dict(stored) == {"penalty_rate_minor": 33, "penalty_amount_minor": 33}
+
+
+def test_manual_penalty_mode_rejects_missing_rate_set(
+    settings: Settings, initialized_databases, insert_test_contract
+):
+    insert_test_contract(cell_number="1", end_date="2026-07-10")
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "UPDATE config SET value = 'manual' WHERE key = 'penalty_rate_mode'"
+        )
+        connection.execute("DELETE FROM config WHERE key = 'penalty_manual_rates_json'")
+        connection.commit()
+
+    with pytest.raises(RenewalWriteError, match="не сохранены"):
+        calculate_renewal_quote(
+            settings,
+            cell_number="1",
+            contract_ref="contract-test-1",
+            renewal_date=TODAY,
+            new_end_date_value="2026-08-10",
+            renewal_days_value=30,
+        )
+
+
 def test_confirmed_renewal_updates_end_and_writes_history_audit_and_backups(
     settings: Settings, initialized_databases, insert_test_contract
 ):

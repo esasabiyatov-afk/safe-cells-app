@@ -65,6 +65,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Потеря ключа" in html
     assert "Штрафные дни" in html
     assert 'id="adminPenaltyRows"' in html
+    assert 'id="adminPenaltyLinked"' in html
+    assert 'id="adminPenaltyManual"' in html
+    assert "Тариф 1–30 дней" in html
+    assert "Ручная ставка" in html
     assert 'id="contractForm"' in html
     assert 'name="client_full_name"' in html
     assert 'name="id_card_number"' in html
@@ -229,9 +233,9 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "@media (max-width: 1600px)" in stylesheet
         assert ".rental-deposit" in stylesheet
         assert ".dialog-actions" in stylesheet
-        assert "penaltyTariffIndex" in admin_script
-        assert "row.period_from_days === 1 && row.period_to_days === 30" in admin_script
-        assert "penaltyInput.addEventListener" in admin_script
+        assert "updatePenaltyMode" in admin_script
+        assert "data-penalty-height" in admin_script
+        assert 'elements.penaltyManual.checked ? "manual" : "linked"' in admin_script
     finally:
         css.close()
         javascript.close()

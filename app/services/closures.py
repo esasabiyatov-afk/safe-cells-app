@@ -19,6 +19,10 @@ from app.db.connections import (
     validate_database_pair,
 )
 from app.services.backups import create_backup_pair
+from app.services.penalty_rates import (
+    PenaltyRateConfigurationError,
+    resolve_penalty_rate,
+)
 from app.services.rental_calculator import parse_iso_date
 
 
@@ -147,22 +151,6 @@ def _stored_date(value: object) -> date:
         raise ClosureWriteError("В договоре указана некорректная дата окончания.") from exc
 
 
-def _penalty_rate(connection: sqlite3.Connection, *, height_mm: int) -> int:
-    rows = connection.execute(
-        """
-        SELECT price_per_day_minor FROM tariffs
-        WHERE height_mm = ? AND period_from_days = 1 AND period_to_days = 30
-        """,
-        (height_mm,),
-    ).fetchall()
-    if len(rows) != 1:
-        raise ClosureWriteError("Не найден штрафной тариф до 30 дней.")
-    rate = int(rows[0]["price_per_day_minor"])
-    if rate < 0:
-        raise ClosureWriteError("Штрафной тариф не может быть отрицательным.")
-    return rate
-
-
 def calculate_closure_quote_in_connection(
     connection: sqlite3.Connection,
     *,
@@ -190,7 +178,12 @@ def calculate_closure_quote_in_connection(
     kind = closing_kind(close_date=close_date, end_date=end)
     unused_days = max(0, (end - close_date).days)
     penalty_days = closing_penalty_days(close_date=close_date, end_date=end)
-    penalty_rate = _penalty_rate(connection, height_mm=int(row["height_mm"]))
+    try:
+        penalty_rate = resolve_penalty_rate(
+            connection, height_mm=int(row["height_mm"])
+        )
+    except PenaltyRateConfigurationError as exc:
+        raise ClosureWriteError(str(exc)) from exc
     deposit = int(row["deposit_amount_minor"])
     if deposit < 0:
         raise ClosureWriteError("В договоре указан некорректный залог.")

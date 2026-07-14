@@ -91,7 +91,9 @@ def test_initial_password_is_hashed_audited_and_required_for_settings(
 ):
     # A database created before this option existed must stay usable.
     with open_write(settings) as working:
-        working.execute("DELETE FROM config WHERE key = 'admin_access_mode'")
+        working.execute(
+            "DELETE FROM config WHERE key IN ('admin_access_mode', 'penalty_rate_mode', 'penalty_manual_rates_json')"
+        )
         working.commit()
     app = _ready_app(settings)
     client = app.test_client()
@@ -106,7 +108,10 @@ def test_initial_password_is_hashed_audited_and_required_for_settings(
         "configured": True,
         "access_mode": "password",
     }
-    assert _snapshot(client, token)["config"]["deposit_amount_minor"] == 1500
+    initial_snapshot = _snapshot(client, token)
+    assert initial_snapshot["config"]["deposit_amount_minor"] == 1500
+    assert initial_snapshot["penalty"]["mode"] == "linked"
+    assert len(initial_snapshot["penalty"]["manual_rates"]) == 6
 
     with open_readonly(settings.database_directory / "vault_cells.sqlite3") as working:
         stored = working.execute(
@@ -154,6 +159,8 @@ def test_update_tariffs_and_config_is_atomic_audited_and_backed_up(
     snapshot["config"]["expiring_soon_days"] = 10
     snapshot["config"]["deposit_amount_minor"] = 2000
     snapshot["tariffs"][0]["price_per_day_minor"] = 16
+    snapshot["penalty"]["mode"] = "manual"
+    snapshot["penalty"]["manual_rates"][0]["price_per_day_minor"] = 23
     operation_id = str(uuid4())
     response = client.put(
         "/api/admin/settings",
@@ -162,6 +169,7 @@ def test_update_tariffs_and_config_is_atomic_audited_and_backed_up(
             "operation_id": operation_id,
             "config": snapshot["config"],
             "tariffs": snapshot["tariffs"],
+            "penalty": snapshot["penalty"],
         },
     )
     assert response.status_code == 200, response.get_json()
@@ -173,6 +181,11 @@ def test_update_tariffs_and_config_is_atomic_audited_and_backed_up(
     }
     assert saved["tariffs"][0]["price_per_day_minor"] == 16
     assert len(saved["tariffs"]) == 24
+    assert saved["penalty"]["mode"] == "manual"
+    assert saved["penalty"]["manual_rates"][0] == {
+        "height_mm": 50,
+        "price_per_day_minor": 23,
+    }
     with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
         row = archive.execute(
             "SELECT employee, changes_json FROM log WHERE operation_id = ?",
@@ -195,6 +208,7 @@ def test_repeated_settings_operation_does_not_duplicate_audit(
         "operation_id": operation_id,
         "config": snapshot["config"],
         "tariffs": snapshot["tariffs"],
+        "penalty": snapshot["penalty"],
     }
     first = client.put(
         "/api/admin/settings", headers=_headers(token), json=payload
@@ -224,6 +238,14 @@ def test_repeated_settings_operation_does_not_duplicate_audit(
             ),
             "пропуск или пересечение",
         ),
+        (lambda payload: payload["penalty"].update({"mode": "other"}), "способ"),
+        (lambda payload: payload["penalty"]["manual_rates"].pop(), "всех существующих"),
+        (
+            lambda payload: payload["penalty"]["manual_rates"][0].update(
+                {"price_per_day_minor": -1}
+            ),
+            "от 0",
+        ),
     ],
 )
 def test_invalid_admin_settings_are_rejected_without_partial_change(
@@ -237,6 +259,10 @@ def test_invalid_admin_settings_are_rejected_without_partial_change(
         "operation_id": str(uuid4()),
         "config": dict(before["config"]),
         "tariffs": [dict(row) for row in before["tariffs"]],
+        "penalty": {
+            "mode": before["penalty"]["mode"],
+            "manual_rates": [dict(row) for row in before["penalty"]["manual_rates"]],
+        },
     }
     mutate(payload)
     response = client.put("/api/admin/settings", headers=_headers(token), json=payload)
@@ -244,6 +270,7 @@ def test_invalid_admin_settings_are_rejected_without_partial_change(
     assert expected in response.get_json()["message"]
     assert _snapshot(client, token)["config"] == before["config"]
     assert _snapshot(client, token)["tariffs"] == before["tariffs"]
+    assert _snapshot(client, token)["penalty"] == before["penalty"]
 
 
 def test_database_lock_does_not_partially_save_admin_settings(
@@ -262,6 +289,7 @@ def test_database_lock_does_not_partially_save_admin_settings(
         "operation_id": str(uuid4()),
         "config": {**before["config"], "deposit_amount_minor": 2100},
         "tariffs": before["tariffs"],
+        "penalty": before["penalty"],
     }
     with open_write(short, attach_archive=True) as blocker:
         blocker.execute("BEGIN IMMEDIATE")
@@ -270,6 +298,7 @@ def test_database_lock_does_not_partially_save_admin_settings(
         )
         assert response.status_code == 423
     assert _snapshot(client, token)["config"] == before["config"]
+    assert _snapshot(client, token)["penalty"] == before["penalty"]
 
 
 def test_unexpected_mid_transaction_failure_rolls_back(
@@ -283,6 +312,7 @@ def test_unexpected_mid_transaction_failure_rolls_back(
         "operation_id": str(uuid4()),
         "config": {**before["config"], "deposit_amount_minor": 2200},
         "tariffs": before["tariffs"],
+        "penalty": before["penalty"],
     }
     with monkeypatch.context() as patcher:
         patcher.setattr(
@@ -297,6 +327,7 @@ def test_unexpected_mid_transaction_failure_rolls_back(
                 occurred_at=OCCURRED_AT,
             )
     assert _snapshot(client, token)["config"] == before["config"]
+    assert _snapshot(client, token)["penalty"] == before["penalty"]
 
 
 def test_admin_can_upload_and_disable_valid_docx_template(

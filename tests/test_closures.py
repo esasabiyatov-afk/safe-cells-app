@@ -94,6 +94,48 @@ def test_overdue_quote_uses_1_to_30_penalty_rate(
     assert quote.penalty_amount == 30
 
 
+def test_overdue_quote_can_use_independent_manual_penalty_rate(
+    settings, initialized_databases, insert_test_contract
+):
+    insert_test_contract(cell_number="1", end_date="2026-07-10")
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "UPDATE config SET value = 'manual' WHERE key = 'penalty_rate_mode'"
+        )
+        connection.execute(
+            "UPDATE config SET value = ? WHERE key = 'penalty_manual_rates_json'",
+            (json.dumps({"50": 28, "75": 17, "100": 17, "125": 20, "175": 25, "300": 30}),),
+        )
+        connection.commit()
+
+    quote = calculate_closure_quote(
+        settings,
+        cell_number="1",
+        contract_ref="contract-test-1",
+        close_date=TODAY,
+        reason_code="standard",
+    )
+
+    assert quote.penalty_days == 2
+    assert quote.penalty_rate == 28
+    assert quote.penalty_amount == 56
+
+    result = close_contract(
+        settings,
+        payload=payload(expected_end_date="2026-07-10"),
+        employee="test-user",
+        close_date=TODAY,
+        occurred_at=OCCURRED,
+    )
+    assert result.penalty_rate == 28
+    with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
+        stored = archive.execute(
+            "SELECT penalty_rate_minor, penalty_amount_minor FROM contracts_archive"
+        ).fetchone()
+    assert dict(stored) == {"penalty_rate_minor": 28, "penalty_amount_minor": 56}
+
+
 def test_close_atomically_archives_audits_deletes_active_and_preserves_renewals(
     settings, initialized_databases, insert_test_contract
 ):

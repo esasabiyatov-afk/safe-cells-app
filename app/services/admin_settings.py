@@ -29,6 +29,14 @@ from app.services.employee import (
     encode_employee_config,
     validate_employee_full_name,
 )
+from app.services.penalty_rates import (
+    PENALTY_MANUAL_RATES_KEY,
+    PENALTY_RATE_MODE_KEY,
+    PENALTY_RATE_MODES,
+    PenaltyRateConfigurationError,
+    encode_manual_rates,
+    get_penalty_settings,
+)
 
 
 BUSY_MESSAGE = "База сейчас занята другим сотрудником. Повторите позже."
@@ -347,6 +355,9 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
             employee_row = connection.execute(
                 "SELECT value FROM config WHERE key = ?", (EMPLOYEES_CONFIG_KEY,)
             ).fetchone()
+            penalty = get_penalty_settings(connection)
+    except PenaltyRateConfigurationError as exc:
+        raise AdminWriteError(str(exc)) from exc
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     try:
@@ -396,6 +407,7 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
             employee.to_dict()
             for employee in sorted(employees, key=lambda item: item.full_name.casefold())
         ],
+        "penalty": penalty,
         "access_mode": get_admin_access_mode(settings),
     }
 
@@ -721,6 +733,38 @@ def _validate_tariffs(value: object) -> list[dict[str, int | None]]:
     )
 
 
+def _validate_penalty(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {"mode", "manual_rates"}:
+        raise AdminValidationError("Переданы неизвестные или неполные настройки штрафа.")
+    mode = value["mode"]
+    if not isinstance(mode, str) or mode not in PENALTY_RATE_MODES:
+        raise AdminValidationError("Выберите способ расчёта штрафной ставки.")
+    raw_rates = value["manual_rates"]
+    if not isinstance(raw_rates, list) or not raw_rates:
+        raise AdminValidationError("Передайте ручные штрафные ставки по всем высотам.")
+    rates: dict[int, int] = {}
+    for raw in raw_rates:
+        if not isinstance(raw, dict) or set(raw) != {
+            "height_mm",
+            "price_per_day_minor",
+        }:
+            raise AdminValidationError("Ручная штрафная ставка содержит неизвестные поля.")
+        height = _integer(raw["height_mm"], "Высота", minimum=1, maximum=10_000)
+        rate = _integer(
+            raw["price_per_day_minor"],
+            "Ручная штрафная ставка",
+            minimum=0,
+            maximum=MAX_MONEY_VALUE,
+        )
+        if height in rates:
+            raise AdminValidationError("Ручная штрафная ставка одной высоты повторяется.")
+        rates[height] = rate
+    return {
+        "mode": mode,
+        "manual_rates": rates,
+    }
+
+
 def update_admin_settings(
     settings: Settings,
     *,
@@ -728,11 +772,14 @@ def update_admin_settings(
     employee: object,
     occurred_at: datetime,
 ) -> AdminWriteResult:
-    if not isinstance(payload, dict) or set(payload) != {"operation_id", "config", "tariffs"}:
+    if not isinstance(payload, dict) or set(payload) != {
+        "operation_id", "config", "tariffs", "penalty"
+    }:
         raise AdminValidationError("Переданы неизвестные или неполные настройки.")
     operation_id = _operation_id(payload["operation_id"])
     config = _validate_config(payload["config"])
     tariffs = _validate_tariffs(payload["tariffs"])
+    penalty = _validate_penalty(payload["penalty"])
     employee_name = _employee(employee)
     timestamp = _timestamp(occurred_at)
     phase = "opening"
@@ -760,6 +807,10 @@ def update_admin_settings(
                 raise AdminValidationError(
                     "Нужен полный набор тарифов для всех существующих высот ячеек."
                 )
+            if set(penalty["manual_rates"]) != heights:
+                raise AdminValidationError(
+                    "Нужны ручные штрафные ставки для всех существующих высот ячеек."
+                )
             old_config = {
                 str(row["key"]): str(row["value"])
                 for row in connection.execute(
@@ -775,6 +826,10 @@ def update_admin_settings(
                        ORDER BY height_mm, period_from_days"""
                 ).fetchall()
             ]
+            try:
+                old_penalty = get_penalty_settings(connection)
+            except PenaltyRateConfigurationError as exc:
+                raise AdminConflictError(str(exc)) from exc
             for key, value in config.items():
                 cursor = connection.execute(
                     """UPDATE config SET value = ?, updated_at = ?, updated_by = ?
@@ -783,6 +838,22 @@ def update_admin_settings(
                 )
                 if cursor.rowcount != 1:
                     raise AdminConflictError("Обязательная настройка отсутствует в базе.")
+            penalty_values = {
+                PENALTY_RATE_MODE_KEY: penalty["mode"],
+                PENALTY_MANUAL_RATES_KEY: encode_manual_rates(
+                    penalty["manual_rates"]
+                ),
+            }
+            for key, value in penalty_values.items():
+                connection.execute(
+                    """INSERT INTO config(key, value, updated_at, updated_by)
+                       VALUES(?, ?, ?, ?)
+                       ON CONFLICT(key) DO UPDATE SET
+                           value = excluded.value,
+                           updated_at = excluded.updated_at,
+                           updated_by = excluded.updated_by""",
+                    (key, value, timestamp, employee_name),
+                )
             connection.execute("DELETE FROM tariffs")
             connection.executemany(
                 """INSERT INTO tariffs(
@@ -808,6 +879,19 @@ def update_admin_settings(
                     if old_config.get(key) != str(value)
                 },
                 "tariffs": {"old": old_tariffs, "new": tariffs},
+                "penalty": {
+                    "old": old_penalty,
+                    "new": {
+                        "mode": penalty["mode"],
+                        "manual_rates": [
+                            {
+                                "height_mm": height,
+                                "price_per_day_minor": penalty["manual_rates"][height],
+                            }
+                            for height in sorted(penalty["manual_rates"])
+                        ],
+                    },
+                },
             }
             connection.execute(
                 """INSERT INTO archive.log(

@@ -19,6 +19,10 @@ from app.db.connections import (
     validate_database_pair,
 )
 from app.services.backups import create_backup_pair
+from app.services.penalty_rates import (
+    PenaltyRateConfigurationError,
+    resolve_penalty_rate,
+)
 from app.services.rental_calculator import parse_iso_date
 
 
@@ -197,22 +201,6 @@ def _single_tariff(
     return rate
 
 
-def _penalty_rate(connection: sqlite3.Connection, *, height_mm: int) -> int:
-    rows = connection.execute(
-        """
-        SELECT price_per_day_minor FROM tariffs
-        WHERE height_mm = ? AND period_from_days = 1 AND period_to_days = 30
-        """,
-        (height_mm,),
-    ).fetchall()
-    if len(rows) != 1:
-        raise RenewalWriteError("Не найден штрафной тариф до 30 дней.")
-    rate = int(rows[0]["price_per_day_minor"])
-    if rate < 0:
-        raise RenewalWriteError("Штрафной тариф не может быть отрицательным.")
-    return rate
-
-
 def calculate_renewal_quote_in_connection(
     connection: sqlite3.Connection,
     *,
@@ -256,7 +244,10 @@ def calculate_renewal_quote_in_connection(
     penalty_days = renewal_penalty_days(
         renewal_date=renewal_date, old_end_date=old_end
     )
-    penalty_rate = _penalty_rate(connection, height_mm=height_mm)
+    try:
+        penalty_rate = resolve_penalty_rate(connection, height_mm=height_mm)
+    except PenaltyRateConfigurationError as exc:
+        raise RenewalWriteError(str(exc)) from exc
     renewal_price = renewal_days * price_per_day
     penalty_amount = penalty_days * penalty_rate
     return RenewalQuote(

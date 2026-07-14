@@ -44,6 +44,12 @@ INITIAL_CONFIG: dict[str, str] = {
     "employees_json": "[]",
     "currency_code": "KGS",
     "currency_scale": "0",
+    "penalty_rate_mode": "linked",
+    "penalty_manual_rates_json": json.dumps(
+        {str(height): rates[0] for height, rates in TARIFF_RATES.items()},
+        sort_keys=True,
+        separators=(",", ":"),
+    ),
 }
 
 DOCUMENT_TEMPLATE_SEEDS: tuple[

@@ -12,7 +12,8 @@
     content: document.getElementById("adminContent"), logout: document.getElementById("adminLogout"), error: document.getElementById("adminError"), success: document.getElementById("adminSuccess"),
     tabs: [...document.querySelectorAll("[data-admin-tab]")], panels: [...document.querySelectorAll("[data-admin-panel]")],
     generalForm: document.getElementById("adminGeneralForm"), tariffsForm: document.getElementById("adminTariffsForm"),
-    expiringDays: document.getElementById("adminExpiringDays"), deposit: document.getElementById("adminDeposit"), tariffRows: document.getElementById("adminTariffRows"), penaltyRows: document.getElementById("adminPenaltyRows"),
+    expiringDays: document.getElementById("adminExpiringDays"), deposit: document.getElementById("adminDeposit"), tariffRows: document.getElementById("adminTariffRows"),
+    penaltyLinked: document.getElementById("adminPenaltyLinked"), penaltyManual: document.getElementById("adminPenaltyManual"), penaltyManualFields: document.getElementById("adminPenaltyManualFields"), penaltyRows: document.getElementById("adminPenaltyRows"),
     generalSubmit: document.getElementById("adminGeneralSubmit"), tariffsSubmit: document.getElementById("adminTariffsSubmit"),
     templateRows: document.getElementById("adminTemplateRows"), templateUploadForm: document.getElementById("adminTemplateUploadForm"), templateTarget: document.getElementById("adminTemplateTarget"),
     templateDisplay: document.getElementById("adminTemplateDisplay"), templateType: document.getElementById("adminTemplateType"), templateFile: document.getElementById("adminTemplateFile"), templateUpload: document.getElementById("adminTemplateUpload"),
@@ -100,18 +101,28 @@
       const period = document.createElement("td"); period.textContent = periodLabel(row);
       const rate = document.createElement("td"); rate.append(input);
       tr.append(height, period, rate); elements.tariffRows.append(tr);
-      if (row.period_from_days === 1 && row.period_to_days === 30) {
-        const label = document.createElement("label"); label.className = "admin-penalty-card";
-        const title = document.createElement("span"); title.textContent = `${row.height_mm} мм`;
-        const penaltyInput = document.createElement("input");
-        penaltyInput.type = "number"; penaltyInput.min = "0"; penaltyInput.max = "10000000"; penaltyInput.required = true; penaltyInput.value = input.value; penaltyInput.dataset.penaltyTariffIndex = String(index);
-        penaltyInput.setAttribute("aria-label", `Штрафная ставка для высоты ${row.height_mm} мм`);
-        const suffix = document.createElement("small"); suffix.textContent = "сом за день";
-        label.append(title, penaltyInput, suffix); elements.penaltyRows.append(label);
-        input.addEventListener("input", () => { penaltyInput.value = input.value; });
-        penaltyInput.addEventListener("input", () => { input.value = penaltyInput.value; });
-      }
     });
+    for (const row of state.snapshot.penalty.manual_rates) {
+      const label = document.createElement("label"); label.className = "admin-penalty-card";
+      const title = document.createElement("span"); title.textContent = `${row.height_mm} мм`;
+      const input = document.createElement("input");
+      input.type = "number"; input.min = "0"; input.max = "10000000"; input.value = String(row.price_per_day_minor); input.dataset.penaltyHeight = String(row.height_mm);
+      input.setAttribute("aria-label", `Ручная штрафная ставка для высоты ${row.height_mm} мм`);
+      const suffix = document.createElement("small"); suffix.textContent = "сом за день";
+      label.append(title, input, suffix); elements.penaltyRows.append(label);
+    }
+    elements.penaltyLinked.checked = state.snapshot.penalty.mode === "linked";
+    elements.penaltyManual.checked = state.snapshot.penalty.mode === "manual";
+    updatePenaltyMode();
+  }
+
+  function updatePenaltyMode() {
+    const manual = elements.penaltyManual.checked;
+    elements.penaltyManualFields.hidden = !manual;
+    for (const input of elements.penaltyRows.querySelectorAll("input")) {
+      input.disabled = !manual;
+      input.required = manual;
+    }
   }
 
   function renderTemplates() {
@@ -221,6 +232,10 @@
       operation_id: operationId(),
       config: {expiring_soon_days: Number(elements.expiringDays.value), deposit_amount_minor: Number(elements.deposit.value)},
       tariffs: state.snapshot.tariffs.map((row, index) => ({...row, price_per_day_minor: Number(elements.tariffRows.querySelector(`[data-tariff-index="${index}"]`).value)})),
+      penalty: {
+        mode: elements.penaltyManual.checked ? "manual" : "linked",
+        manual_rates: state.snapshot.penalty.manual_rates.map(row => ({height_mm: row.height_mm, price_per_day_minor: Number(elements.penaltyRows.querySelector(`[data-penalty-height="${row.height_mm}"]`).value)})),
+      },
     };
   }
 
@@ -348,6 +363,7 @@
   elements.open.addEventListener("click", openAdmin); elements.close.addEventListener("click", () => logout(true));
   elements.dialog.addEventListener("cancel", event => {event.preventDefault(); logout(true);}); elements.authForm.addEventListener("submit", authenticate); elements.logout.addEventListener("click", () => logout(false));
   elements.tabs.forEach(tab => tab.addEventListener("click", () => selectTab(tab.dataset.adminTab)));
+  elements.penaltyLinked.addEventListener("change", updatePenaltyMode); elements.penaltyManual.addEventListener("change", updatePenaltyMode);
   elements.generalForm.addEventListener("submit", event => saveSettings(event, elements.generalSubmit, "Общие параметры сохранены.", "general"));
   elements.tariffsForm.addEventListener("submit", event => saveSettings(event, elements.tariffsSubmit, "Тарифы сохранены.", "tariffs"));
   elements.templateRows.addEventListener("click", templateAction); elements.templateTarget.addEventListener("change", selectTemplateTarget); elements.templateUploadForm.addEventListener("submit", uploadTemplate);
