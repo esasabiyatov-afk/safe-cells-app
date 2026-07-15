@@ -268,7 +268,7 @@ async function saveEmployeeSelection(event) {
 function showError(message) {
   elements.errorMessage.textContent = message;
   elements.errorBanner.hidden = false;
-  setConnection("offline", "Нет связи с базой");
+  setConnection("offline", "Офлайн");
 }
 
 function showSuccess(message) {
@@ -315,7 +315,7 @@ function showOperationResult(summary, payload) {
 function clearError() {
   elements.errorBanner.hidden = true;
   elements.errorMessage.textContent = "";
-  setConnection("online", "Данные доступны");
+  setConnection("online", "Онлайн");
 }
 
 function populateHeightFilter(cells) {
@@ -697,7 +697,7 @@ async function openEditDialog() {
     elements.editAccountNumber.value = payload.account_number;
     elements.editIdCardNumber.value = payload.id_card_number;
     elements.editIdCardIssuer.value = payload.id_card_issuer;
-    elements.editIdCardIssueDate.value = payload.id_card_issue_date;
+    setDateInputIso(elements.editIdCardIssueDate, payload.id_card_issue_date);
     state.editOperationId = createOperationId();
     elements.editDialog.showModal();
   } catch (error) {
@@ -718,7 +718,7 @@ async function submitEdit(event) {
       body: JSON.stringify({operation_id: state.editOperationId, contract_ref: cell.contract_ref,
         cell_number: cell.number, client_full_name: elements.editClientFullName.value,
         account_number: elements.editAccountNumber.value, id_card_number: elements.editIdCardNumber.value,
-        id_card_issuer: elements.editIdCardIssuer.value, id_card_issue_date: elements.editIdCardIssueDate.value}),
+        id_card_issuer: elements.editIdCardIssuer.value, id_card_issue_date: dateInputIso(elements.editIdCardIssueDate)}),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.message || "Не удалось сохранить изменения");
@@ -937,9 +937,15 @@ function setRenewalSubmitting(submitting) {
 
 async function requestRenewalQuote() {
   const cell = state.activeOccupiedCell;
-  const days = Number(elements.renewalDays.value);
-  const endDate = elements.renewalEndDate.value || null;
+  const daysValue = elements.renewalDays.value.trim();
+  const days = Number(daysValue);
+  const endDate = dateInputIso(elements.renewalEndDate) || null;
   const sequence = ++state.renewalQuoteSequence;
+  if (!daysValue && !endDate) {
+    resetRenewalQuote();
+    clearRenewalError();
+    return;
+  }
   if (!cell || !Number.isInteger(days) || days < 1) {
     resetRenewalQuote();
     showRenewalError("Укажите корректный срок продления.");
@@ -968,7 +974,7 @@ async function requestRenewalQuote() {
     state.activeRenewalQuote = payload;
     elements.renewalDate.textContent = formatDate(payload.renewal_date);
     elements.renewalNewStart.textContent = formatDate(payload.new_start_date);
-    elements.renewalEndDate.value = payload.new_end_date;
+    setDateInputIso(elements.renewalEndDate, payload.new_end_date);
     elements.renewalDays.value = String(payload.renewal_days);
     elements.renewalPeriod.textContent = `${formatDate(payload.new_start_date)} — ${formatDate(payload.new_end_date)} · ${payload.renewal_days} дн.`;
     elements.renewalTariff.textContent = `${money(payload.price_per_day)} в день`;
@@ -1010,7 +1016,7 @@ function renewalStartDateValue() {
 
 function syncRenewalDaysFromEnd() {
   const start = parseIsoDateUtc(renewalStartDateValue() || "");
-  const end = parseIsoDateUtc(elements.renewalEndDate.value);
+  const end = parseIsoDateUtc(dateInputIso(elements.renewalEndDate));
   if (!start || !end || end < start) {
     elements.renewalDays.value = "";
     return;
@@ -1022,12 +1028,12 @@ function syncRenewalEndFromDays() {
   const start = parseIsoDateUtc(renewalStartDateValue() || "");
   const days = Number(elements.renewalDays.value);
   if (!start || !Number.isInteger(days) || days < 1) {
-    elements.renewalEndDate.value = "";
+    setDateInputIso(elements.renewalEndDate, "");
     return;
   }
   const end = new Date(start.getTime());
   end.setUTCDate(end.getUTCDate() + days - 1);
-  elements.renewalEndDate.value = isoFromUtcDate(end);
+  setDateInputIso(elements.renewalEndDate, isoFromUtcDate(end));
 }
 
 function openRenewalDialog() {
@@ -1044,13 +1050,12 @@ function openRenewalDialog() {
   elements.renewalCellSummary.textContent = `Высота ${cell.height_mm} мм · договор действует до ${formatDate(cell.end_date)}`;
   elements.renewalOldEnd.textContent = formatDate(cell.end_date);
   elements.renewalDate.textContent = formatDate(state.asOfDate);
-  elements.renewalEndDate.value = "";
-  elements.renewalDays.value = "1";
+  setDateInputIso(elements.renewalEndDate, "");
+  elements.renewalDays.value = "";
   clearRenewalError();
   resetRenewalQuote();
   setRenewalSubmitting(false);
   elements.renewalDialog.showModal();
-  scheduleRenewalQuote();
 }
 
 function closeRenewalDialog(returnToCard = true) {
@@ -1137,32 +1142,126 @@ function parseIsoDateUtc(value) {
   return result;
 }
 
-function parsePastedDate(value) {
+function displayDateFromIso(value) {
+  const parsed = parseIsoDateUtc(value);
+  if (!parsed) {
+    return "";
+  }
+  const [year, month, day] = value.split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function parseDisplayDate(value) {
   if (typeof value !== "string") {
     return null;
   }
-  const normalized = value.trim();
-  if (!/^\d{8}$/.test(normalized) && !/^\d{2}[.\/-]\d{2}[.\/-]\d{4}$/.test(normalized)) {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
+  if (!match) {
     return null;
   }
-  const digits = normalized.replace(/\D/g, "");
-  const day = digits.slice(0, 2);
-  const month = digits.slice(2, 4);
-  const year = digits.slice(4, 8);
+  const [, day, month, year] = match;
   const isoValue = `${year}-${month}-${day}`;
   return parseIsoDateUtc(isoValue) ? isoValue : null;
 }
 
-function normalizePastedDate(event) {
-  const pastedValue = event.clipboardData?.getData("text/plain")
-    || event.clipboardData?.getData("text");
-  const isoValue = parsePastedDate(pastedValue);
-  if (!isoValue) {
+function formatDateDigits(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
+  if (digits.length < 2) {
+    return digits;
+  }
+  if (digits.length === 2) {
+    return `${digits}.`;
+  }
+  if (digits.length < 4) {
+    return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  }
+  if (digits.length === 4) {
+    return `${digits.slice(0, 2)}.${digits.slice(2)}.`;
+  }
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+}
+
+function updateDateInputValidity(input) {
+  const digits = input.value.replace(/\D/g, "");
+  const isoValue = parseDisplayDate(input.value);
+  let message = "";
+  if (digits.length > 0 && digits.length < 8) {
+    message = "Введите дату полностью в формате ДД.ММ.ГГГГ.";
+  } else if (digits.length === 8 && !isoValue) {
+    message = "Укажите существующую дату в формате ДД.ММ.ГГГГ.";
+  } else if (isoValue && input.dataset.maxIso && isoValue > input.dataset.maxIso) {
+    message = "Дата начала не может быть позже текущей даты.";
+  }
+  input.setCustomValidity(message);
+}
+
+function dateInputIso(input) {
+  return parseDisplayDate(input.value) || "";
+}
+
+function setDateInputIso(input, isoValue) {
+  input.value = displayDateFromIso(isoValue);
+  updateDateInputValidity(input);
+}
+
+function putDateDigits(input, digits) {
+  input.value = formatDateDigits(digits);
+  updateDateInputValidity(input);
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function emitDateInput(input) {
+  input.dispatchEvent(new Event("input", {bubbles: true}));
+}
+
+function handleDateKeydown(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) {
+    return;
+  }
+  const input = event.currentTarget;
+  let digits = input.value.replace(/\D/g, "");
+  if (event.key === "Backspace") {
+    event.preventDefault();
+    putDateDigits(input, digits.slice(0, -1));
+    emitDateInput(input);
+    return;
+  }
+  if (!/^\d$/.test(event.key)) {
     return;
   }
   event.preventDefault();
-  event.currentTarget.value = isoValue;
-  event.currentTarget.dispatchEvent(new Event("input", {bubbles: true}));
+  if (input.selectionStart === 0 && input.selectionEnd === input.value.length) {
+    digits = "";
+  }
+  if (digits.length >= 8) {
+    return;
+  }
+  putDateDigits(input, `${digits}${event.key}`);
+  emitDateInput(input);
+}
+
+function handleDatePaste(event) {
+  const pastedValue = event.clipboardData?.getData("text/plain")
+    || event.clipboardData?.getData("text") || "";
+  const isoValue = /^\d{4}-\d{2}-\d{2}$/.test(pastedValue.trim())
+    ? pastedValue.trim()
+    : null;
+  const digits = pastedValue.replace(/\D/g, "");
+  if (!isoValue && !digits) {
+    return;
+  }
+  event.preventDefault();
+  if (isoValue && parseIsoDateUtc(isoValue)) {
+    setDateInputIso(event.currentTarget, isoValue);
+  } else {
+    putDateDigits(event.currentTarget, digits);
+  }
+  emitDateInput(event.currentTarget);
+}
+
+function normalizeDateInput(event) {
+  const input = event.currentTarget;
+  putDateDigits(input, input.value);
 }
 
 function isoFromUtcDate(value) {
@@ -1170,8 +1269,8 @@ function isoFromUtcDate(value) {
 }
 
 function syncDaysFromDates() {
-  const start = parseIsoDateUtc(elements.rentalStartDate.value);
-  const end = parseIsoDateUtc(elements.rentalEndDate.value);
+  const start = parseIsoDateUtc(dateInputIso(elements.rentalStartDate));
+  const end = parseIsoDateUtc(dateInputIso(elements.rentalEndDate));
   if (!start || !end || end < start) {
     elements.rentalDays.value = "";
     return false;
@@ -1181,15 +1280,15 @@ function syncDaysFromDates() {
 }
 
 function syncEndFromDays() {
-  const start = parseIsoDateUtc(elements.rentalStartDate.value);
+  const start = parseIsoDateUtc(dateInputIso(elements.rentalStartDate));
   const days = Number(elements.rentalDays.value);
   if (!start || !Number.isInteger(days) || days < 1) {
-    elements.rentalEndDate.value = "";
+    setDateInputIso(elements.rentalEndDate, "");
     return false;
   }
   const end = new Date(start.getTime());
   end.setUTCDate(end.getUTCDate() + days - 1);
-  elements.rentalEndDate.value = isoFromUtcDate(end);
+  setDateInputIso(elements.rentalEndDate, isoFromUtcDate(end));
   return true;
 }
 
@@ -1218,10 +1317,16 @@ function clearRentalError() {
 
 async function requestRentalQuote() {
   const cell = state.activeRentalCell;
-  const startDate = elements.rentalStartDate.value;
-  const endDate = elements.rentalEndDate.value;
-  const rentDays = Number(elements.rentalDays.value);
+  const startDate = dateInputIso(elements.rentalStartDate);
+  const endDate = dateInputIso(elements.rentalEndDate);
+  const rentDaysValue = elements.rentalDays.value.trim();
+  const rentDays = Number(rentDaysValue);
   const sequence = ++state.quoteSequence;
+  if (!startDate || !endDate || !rentDaysValue) {
+    resetQuote();
+    clearRentalError();
+    return;
+  }
   if (
     !cell
     || !parseIsoDateUtc(startDate)
@@ -1289,9 +1394,9 @@ function openRentalCalculator(cell) {
   elements.rentalDialogTitle.textContent = `Ячейка № ${cell.number}`;
   elements.rentalCellSummary.textContent = `Высота ${cell.height_mm} мм · ${cell.width_mm} × ${cell.depth_mm} мм`;
   const startDate = state.asOfDate || isoFromUtcDate(new Date());
-  elements.rentalStartDate.max = startDate;
-  elements.rentalStartDate.value = startDate;
-  elements.rentalEndDate.value = startDate;
+  elements.rentalStartDate.dataset.maxIso = startDate;
+  setDateInputIso(elements.rentalStartDate, startDate);
+  setDateInputIso(elements.rentalEndDate, startDate);
   elements.rentalDays.value = "";
   resetQuote();
   clearRentalError();
@@ -1345,6 +1450,7 @@ function openContractForm() {
   }
   state.activeOperationId = createOperationId();
   elements.contractForm.reset();
+  setDateInputIso(elements.idCardIssueDate, "");
   elements.contractDialogTitle.textContent = `Занять ячейку № ${cell.number}`;
   elements.contractPeriodSummary.textContent = `${formatDate(quote.start_date)} — ${formatDate(quote.end_date)} · ${quote.rent_days} дн.`;
   elements.contractRentSummary.textContent = `Аренда: ${money(quote.rent_price)}`;
@@ -1399,7 +1505,7 @@ async function submitContract(event) {
         client_full_name: elements.clientFullName.value,
         id_card_number: elements.idCardNumber.value,
         id_card_issuer: elements.idCardIssuer.value,
-        id_card_issue_date: elements.idCardIssueDate.value,
+        id_card_issue_date: dateInputIso(elements.idCardIssueDate),
         account_number: elements.accountNumber.value,
         start_date: quote.start_date,
         end_date: quote.end_date,
@@ -1596,6 +1702,13 @@ elements.closureForm.addEventListener("submit", submitClosure);
 elements.closureBack.addEventListener("click", () => closeClosureDialog(true));
 elements.closureDialogClose.addEventListener("click", () => closeClosureDialog(true));
 elements.closureDialog.addEventListener("cancel", (event) => event.preventDefault());
+document.querySelectorAll("[data-date-input]").forEach((input) => {
+  input.addEventListener("keydown", handleDateKeydown);
+  input.addEventListener("paste", handleDatePaste);
+  input.addEventListener("input", normalizeDateInput);
+  updateDateInputValidity(input);
+});
+
 elements.renewalEndDate.addEventListener("input", () => {
   syncRenewalDaysFromEnd();
   scheduleRenewalQuote();
@@ -1633,10 +1746,6 @@ elements.contractForm.addEventListener("submit", submitContract);
 elements.contractBack.addEventListener("click", backToRentalCalculator);
 elements.contractDialogClose.addEventListener("click", cancelContractWorkflow);
 elements.contractDialog.addEventListener("cancel", (event) => event.preventDefault());
-
-document.querySelectorAll('input[type="date"]').forEach((input) => {
-  input.addEventListener("paste", normalizePastedDate);
-});
 
 window.addEventListener("safe-cells:employees-changed", loadEmployeeDirectory);
 window.addEventListener("safe-cells:refresh", refreshCells);

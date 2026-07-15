@@ -86,6 +86,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Все ячейки" not in html
     assert '<dt>ФИО клиента</dt>' not in html
     assert "Повторно сформировать документ" in html
+    assert html.count("data-date-input") == 5
+    assert 'type="date"' not in html
+    assert html.count('placeholder="ДД.ММ.ГГГГ"') == 5
+    assert html.count('placeholder="Введите дни"') == 2
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Cache-Control"] == "no-store"
@@ -230,15 +234,25 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "operationDocumentList" in script
         assert "Операция сохранена, но документы не сформированы" in script
         assert "Документ по ячейке № ${cell.number} сформирован." in script
-        assert "parsePastedDate" in script
-        assert 'input.addEventListener("paste", normalizePastedDate)' in script
+        assert "parseDisplayDate" in script
+        assert "formatDateDigits" in script
+        assert 'event.key === "Backspace"' in script
+        assert 'input.addEventListener("paste", handleDatePaste)' in script
+        assert 'digits.length >= 8' in script
         assert 'elements.rentalDays.value = ""' in script
+        assert 'elements.renewalDays.value = ""' in script
+        assert 'elements.renewalDays.value = "1"' not in script
         assert 'event.target === elements.rentalDialog' not in script
         assert 'event.target === elements.contractDialog' not in script
         assert 'elements.dialog.addEventListener("cancel", (event) => event.preventDefault())' in script
         assert 'elements.dialog.addEventListener("cancel", event => event.preventDefault())' in admin_script
         assert "refreshButton" not in script
-        assert "@media (max-width: 1600px)" in stylesheet
+        assert "min-width: 1180px" in stylesheet
+        assert "grid-template-columns: 260px 546px minmax(370px, 1fr)" in stylesheet
+        assert "@media (max-width: 1600px)" not in stylesheet
+        assert ".occupied-total strong" in stylesheet
+        assert 'setConnection("online", "Онлайн")' in script
+        assert 'setConnection("offline", "Офлайн")' in script
         assert ".rental-deposit" in stylesheet
         assert ".dialog-actions" in stylesheet
         assert "updatePenaltyMode" in admin_script

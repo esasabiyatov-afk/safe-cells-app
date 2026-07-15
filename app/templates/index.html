@@ -382,7 +382,7 @@
         <label class="contract-field"><span>Номер счёта из АБС *</span><input id="editAccountNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Серия и номер ID-карты *</span><input id="editIdCardNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Орган выдачи *</span><input id="editIdCardIssuer" maxlength="200" required autocomplete="off"></label>
-        <label class="contract-field"><span>Дата выдачи ID-карты *</span><input id="editIdCardIssueDate" type="date" required></label>
+        <label class="contract-field"><span>Дата выдачи ID-карты *</span><input id="editIdCardIssueDate" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" autocomplete="off" data-date-input required></label>
       </div>
       <div class="rental-actions"><button class="secondary-button" id="editBack" type="button">Назад</button><button class="primary-button" id="editSubmit" type="submit">Сохранить изменения</button></div>
     </form>
@@ -438,11 +438,11 @@
       <div class="rental-fields renewal-fields">
         <label class="rental-field">
           <span>Новая дата окончания</span>
-          <input id="renewalEndDate" type="date">
+          <input id="renewalEndDate" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" autocomplete="off" data-date-input>
         </label>
         <label class="rental-field">
           <span>Количество дней продления</span>
-          <input id="renewalDays" type="number" min="1" step="1" inputmode="numeric">
+          <input id="renewalDays" type="number" min="1" step="1" inputmode="numeric" placeholder="Введите дни">
         </label>
       </div>
       <p class="rental-hint">Начало периода определяется автоматически по текущему окончанию и дате оформления.</p>
@@ -479,15 +479,15 @@
       <div class="rental-fields">
         <label class="rental-field">
           <span>Дата начала</span>
-          <input id="rentalStartDate" type="date" required>
+          <input id="rentalStartDate" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" autocomplete="off" data-date-input required>
         </label>
         <label class="rental-field">
           <span>Дата окончания</span>
-          <input id="rentalEndDate" type="date">
+          <input id="rentalEndDate" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" autocomplete="off" data-date-input>
         </label>
         <label class="rental-field">
           <span>Количество дней</span>
-          <input id="rentalDays" type="number" min="1" step="1" inputmode="numeric">
+          <input id="rentalDays" type="number" min="1" step="1" inputmode="numeric" placeholder="Введите дни">
         </label>
       </div>
       <p class="rental-hint">Можно изменить дату окончания или количество дней — второе поле пересчитается автоматически.</p>
@@ -553,7 +553,7 @@
         </label>
         <label class="contract-field">
           <span>Дата выдачи ID-карты *</span>
-          <input id="idCardIssueDate" name="id_card_issue_date" type="date" required>
+          <input id="idCardIssueDate" name="id_card_issue_date" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" autocomplete="off" data-date-input required>
         </label>
       </div>
       <p class="required-note">* Обязательные поля. Данные ещё раз проверяются перед сохранением.</p>
