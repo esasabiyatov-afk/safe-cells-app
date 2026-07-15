@@ -361,7 +361,7 @@
   }
 
   elements.open.addEventListener("click", openAdmin); elements.close.addEventListener("click", () => logout(true));
-  elements.dialog.addEventListener("cancel", event => {event.preventDefault(); logout(true);}); elements.authForm.addEventListener("submit", authenticate); elements.logout.addEventListener("click", () => logout(false));
+  elements.dialog.addEventListener("cancel", event => event.preventDefault()); elements.authForm.addEventListener("submit", authenticate); elements.logout.addEventListener("click", () => logout(false));
   elements.tabs.forEach(tab => tab.addEventListener("click", () => selectTab(tab.dataset.adminTab)));
   elements.penaltyLinked.addEventListener("change", updatePenaltyMode); elements.penaltyManual.addEventListener("change", updatePenaltyMode);
   elements.generalForm.addEventListener("submit", event => saveSettings(event, elements.generalSubmit, "Общие параметры сохранены.", "general"));

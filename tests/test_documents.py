@@ -192,6 +192,8 @@ def test_active_contract_document_and_private_endpoint(
     )
     assert response.status_code == 201
     assert response.get_json()["message"] == "Документ сохранён в папку «Загрузки»."
+    assert response.get_json()["documents"] == [response.get_json()["file_name"]]
+    assert (downloads / response.get_json()["file_name"]).is_file()
     assert not list(settings.database_directory.glob("*.docx"))
 
 

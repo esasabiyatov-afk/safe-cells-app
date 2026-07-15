@@ -289,7 +289,9 @@ function errorMessage(error, fallback) {
 }
 
 function showOperationResult(summary, payload) {
-  const documents = Array.isArray(payload.documents) ? payload.documents : [];
+  const documents = Array.isArray(payload.documents)
+    ? payload.documents
+    : payload.file_name ? [payload.file_name] : [];
   elements.operationResultTitle.textContent = "Операция выполнена";
   elements.operationResultSummary.textContent = summary;
   elements.operationDocumentList.replaceChildren();
@@ -656,7 +658,10 @@ async function submitDocument(event) {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.message || "Не удалось сформировать документ");
     closeDocumentDialog();
-    showSuccess(`${payload.message} Файл: ${payload.file_name}`);
+    showOperationResult(
+      `Документ по ячейке № ${cell.number} сформирован.`,
+      payload,
+    );
   } catch (error) {
     elements.documentError.textContent = errorMessage(error, "Не удалось сформировать документ");
     elements.documentError.hidden = false;
@@ -1132,6 +1137,34 @@ function parseIsoDateUtc(value) {
   return result;
 }
 
+function parsePastedDate(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  if (!/^\d{8}$/.test(normalized) && !/^\d{2}[.\/-]\d{2}[.\/-]\d{4}$/.test(normalized)) {
+    return null;
+  }
+  const digits = normalized.replace(/\D/g, "");
+  const day = digits.slice(0, 2);
+  const month = digits.slice(2, 4);
+  const year = digits.slice(4, 8);
+  const isoValue = `${year}-${month}-${day}`;
+  return parseIsoDateUtc(isoValue) ? isoValue : null;
+}
+
+function normalizePastedDate(event) {
+  const pastedValue = event.clipboardData?.getData("text/plain")
+    || event.clipboardData?.getData("text");
+  const isoValue = parsePastedDate(pastedValue);
+  if (!isoValue) {
+    return;
+  }
+  event.preventDefault();
+  event.currentTarget.value = isoValue;
+  event.currentTarget.dispatchEvent(new Event("input", {bubbles: true}));
+}
+
 function isoFromUtcDate(value) {
   return value.toISOString().slice(0, 10);
 }
@@ -1258,12 +1291,11 @@ function openRentalCalculator(cell) {
   const startDate = state.asOfDate || isoFromUtcDate(new Date());
   elements.rentalStartDate.max = startDate;
   elements.rentalStartDate.value = startDate;
-  elements.rentalDays.value = "1";
-  syncEndFromDays();
+  elements.rentalEndDate.value = startDate;
+  elements.rentalDays.value = "";
   resetQuote();
   clearRentalError();
   elements.rentalDialog.showModal();
-  scheduleRentalQuote();
 }
 
 function closeRentalCalculator() {
@@ -1553,31 +1585,17 @@ elements.documentAction.addEventListener("click", openDocumentDialog);
 elements.documentForm.addEventListener("submit", submitDocument);
 elements.documentDialogClose.addEventListener("click", closeDocumentDialog);
 elements.documentBack.addEventListener("click", closeDocumentDialog);
+elements.documentDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.editDialogClose.addEventListener("click", closeEditDialog);
 elements.editBack.addEventListener("click", closeEditDialog);
 elements.editForm.addEventListener("submit", submitEdit);
-elements.dialog.addEventListener("click", (event) => {
-  if (event.target === elements.dialog) {
-    closeCellDialog();
-  }
-});
-elements.dialog.addEventListener("cancel", (event) => {
-  event.preventDefault();
-  closeCellDialog();
-});
+elements.editDialog.addEventListener("cancel", (event) => event.preventDefault());
+elements.dialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.closureReason.addEventListener("change", requestClosureQuote);
 elements.closureForm.addEventListener("submit", submitClosure);
 elements.closureBack.addEventListener("click", () => closeClosureDialog(true));
 elements.closureDialogClose.addEventListener("click", () => closeClosureDialog(true));
-elements.closureDialog.addEventListener("click", (event) => {
-  if (event.target === elements.closureDialog) {
-    closeClosureDialog(true);
-  }
-});
-elements.closureDialog.addEventListener("cancel", (event) => {
-  event.preventDefault();
-  closeClosureDialog(true);
-});
+elements.closureDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.renewalEndDate.addEventListener("input", () => {
   syncRenewalDaysFromEnd();
   scheduleRenewalQuote();
@@ -1589,15 +1607,7 @@ elements.renewalDays.addEventListener("input", () => {
 elements.renewalForm.addEventListener("submit", submitRenewal);
 elements.renewalBack.addEventListener("click", () => closeRenewalDialog(true));
 elements.renewalDialogClose.addEventListener("click", () => closeRenewalDialog(true));
-elements.renewalDialog.addEventListener("click", (event) => {
-  if (event.target === elements.renewalDialog) {
-    closeRenewalDialog(true);
-  }
-});
-elements.renewalDialog.addEventListener("cancel", (event) => {
-  event.preventDefault();
-  closeRenewalDialog(true);
-});
+elements.renewalDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.rentalStartDate.addEventListener("input", () => {
   if (elements.rentalDays.value) {
     syncEndFromDays();
@@ -1618,22 +1628,14 @@ elements.rentalForm.addEventListener("submit", (event) => event.preventDefault()
 elements.rentalDialogClose.addEventListener("click", closeRentalCalculator);
 elements.rentalBack.addEventListener("click", closeRentalCalculator);
 elements.rentalContinue.addEventListener("click", openContractForm);
-elements.rentalDialog.addEventListener("click", (event) => {
-  if (event.target === elements.rentalDialog) {
-    closeRentalCalculator();
-  }
-});
+elements.rentalDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.contractForm.addEventListener("submit", submitContract);
 elements.contractBack.addEventListener("click", backToRentalCalculator);
 elements.contractDialogClose.addEventListener("click", cancelContractWorkflow);
-elements.contractDialog.addEventListener("click", (event) => {
-  if (event.target === elements.contractDialog) {
-    cancelContractWorkflow();
-  }
-});
-elements.contractDialog.addEventListener("cancel", (event) => {
-  event.preventDefault();
-  cancelContractWorkflow();
+elements.contractDialog.addEventListener("cancel", (event) => event.preventDefault());
+
+document.querySelectorAll('input[type="date"]').forEach((input) => {
+  input.addEventListener("paste", normalizePastedDate);
 });
 
 window.addEventListener("safe-cells:employees-changed", loadEmployeeDirectory);

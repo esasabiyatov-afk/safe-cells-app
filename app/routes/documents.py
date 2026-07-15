@@ -53,4 +53,6 @@ def generate():
         return jsonify({"message": str(exc)}), 503
     except DocumentPublishError as exc:
         return jsonify({"message": str(exc)}), 500
-    return jsonify(result.to_dict()), 201
+    response = result.to_dict()
+    response["documents"] = [result.file_name]
+    return jsonify(response), 201

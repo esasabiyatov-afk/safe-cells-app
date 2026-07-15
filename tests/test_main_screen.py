@@ -229,6 +229,14 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "showOperationResult" in script
         assert "operationDocumentList" in script
         assert "Операция сохранена, но документы не сформированы" in script
+        assert "Документ по ячейке № ${cell.number} сформирован." in script
+        assert "parsePastedDate" in script
+        assert 'input.addEventListener("paste", normalizePastedDate)' in script
+        assert 'elements.rentalDays.value = ""' in script
+        assert 'event.target === elements.rentalDialog' not in script
+        assert 'event.target === elements.contractDialog' not in script
+        assert 'elements.dialog.addEventListener("cancel", (event) => event.preventDefault())' in script
+        assert 'elements.dialog.addEventListener("cancel", event => event.preventDefault())' in admin_script
         assert "refreshButton" not in script
         assert "@media (max-width: 1600px)" in stylesheet
         assert ".rental-deposit" in stylesheet
