@@ -17,6 +17,7 @@ from app.routes import (
     editing_blueprint,
     documents_blueprint,
     employee_blueprint,
+    journal_blueprint,
     main_blueprint,
     rental_blueprint,
     renewals_blueprint,
@@ -61,6 +62,7 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(contracts_blueprint)
     app.register_blueprint(editing_blueprint)
     app.register_blueprint(employee_blueprint)
+    app.register_blueprint(journal_blueprint)
     app.register_blueprint(documents_blueprint)
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(renewals_blueprint)

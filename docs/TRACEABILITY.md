@@ -17,6 +17,7 @@
 | ТЗ 12 | Рабочая и архивная модели | `app/db/schema` | Этап 1 и интеграционные тесты |
 | ТЗ 13–14, D-025, D-028 | На сетке разрешены фамилия и инициалы; полное ФИО загружается при открытии одной карточки; остальные ПДн скрыты | `services/cells.py`, `services/contract_details.py`, private POST routes, templates, JS | Этапы 2, 5; whitelist общего API, токен/API/HTML/XSS/очистка |
 | ТЗ 15, D-030 | Разрешённое редактирование и аудит | `services/editing.py`, `routes/editing.py`, `log`, UI | Этап 8; whitelist/audit/API/browser |
+| ТЗ 12, 15 и D-052 | Общий обезличенный журнал операций по всем ячейкам | `services/journal.py`, `routes/journal.py`, `static/js/journal.js` | Этап 11.5; ПДн/фильтры/пагинация/API/browser |
 | ТЗ 16 | Сетка, поиск, фильтры, счётчики | templates/static/routes | Этап 2; UI и ручное одобрение |
 | ТЗ 17 | Невозможные переходы | service validators + DB constraints | Этапы 4, 6, 7; negative tests |
 | ТЗ 18 | Не добавлять ячейки в этой версии | admin routes | Этап 10; отсутствие endpoint/UI |
