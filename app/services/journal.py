@@ -115,7 +115,7 @@ def _summary(action: str, raw_changes: object) -> str:
         if start and end:
             parts.append(f"Срок: {start} — {end}")
         if days is not None:
-            parts.append(f"Дней: {days}")
+            parts.append(f"Дней: {days} дн.")
         return "; ".join(parts) or "Открыт новый договор аренды."
 
     if action == "contract.renewed":
@@ -127,13 +127,12 @@ def _summary(action: str, raw_changes: object) -> str:
         if new_start and new_end:
             parts.append(f"Период продления: {new_start} — {new_end}")
         if days is not None:
-            parts.append(f"Продление: {days} дн.")
+            parts.append(f"Срок: {days} дн.")
         if penalty_days:
             parts.append(f"Просрочка: {penalty_days} дн.")
         return "; ".join(parts) or "Срок договора продлён."
 
     if action == "contract.closed":
-        close_date = _display_date(changes.get("close_date"))
         penalty_days = _safe_nonnegative_integer(changes.get("penalty_days"))
         reason = changes.get("close_reason")
         allowed_reasons = {
@@ -143,8 +142,6 @@ def _summary(action: str, raw_changes: object) -> str:
             "Потеря ключа",
         }
         parts = []
-        if close_date:
-            parts.append(f"Дата закрытия: {close_date}")
         if reason in allowed_reasons:
             parts.append(f"Причина: {reason}")
         if penalty_days:

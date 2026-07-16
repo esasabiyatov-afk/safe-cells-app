@@ -94,7 +94,12 @@
     const time = document.createElement("time");
     time.dateTime = entry.occurred_at;
     time.textContent = formatOccurredAt(entry.occurred_at);
-    heading.append(cell, action, time);
+    if (entry.action === "contract.closed") {
+      heading.classList.add("journal-entry-heading-without-action");
+      heading.append(cell, time);
+    } else {
+      heading.append(cell, action, time);
+    }
 
     const summary = document.createElement("p");
     summary.className = "journal-summary";

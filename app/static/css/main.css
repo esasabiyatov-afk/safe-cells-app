@@ -429,6 +429,10 @@ main {
   align-items: center;
 }
 
+.journal-entry-heading-without-action {
+  grid-template-columns: minmax(130px, 1fr) auto;
+}
+
 .journal-cell-number {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 17px;

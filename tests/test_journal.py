@@ -161,8 +161,10 @@ def test_journal_includes_client_but_excludes_edits_and_secret_fields(
     assert "admin.settings.updated" not in serialized
     assert "СЕКРЕТНОЕ" not in serialized
     assert "SECRET-" not in serialized
-    assert "Период продления: 31.07.2026 — 30.08.2026" in serialized
+    assert "Период продления: 31.07.2026 — 30.08.2026; Срок: 31 дн." in serialized
     assert "Срок: 01.07.2026 — 30.07.2026" in serialized
+    assert "Дней: 30 дн." in serialized
+    assert "Дата закрытия:" not in serialized
 
 
 def test_journal_resolves_client_from_archive_after_real_closure(
@@ -372,4 +374,5 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert "textContent" in script
     assert "URLSearchParams" in script
     assert "URL.createObjectURL" in script
+    assert "journal-entry-heading-without-action" in script
     assert "event.preventDefault()" in script
