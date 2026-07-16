@@ -372,6 +372,7 @@ def test_journal_interface_uses_text_content_and_local_assets(
     page_response = client.get("/journal")
     html = page_response.get_data(as_text=True)
     script = client.get("/static/js/journal.js").get_data(as_text=True)
+    styles = client.get("/static/css/main.css").get_data(as_text=True)
 
     assert 'id="journalOpen" href="/journal" target="_blank" rel="noopener"' in main_html
     assert 'src="/static/js/journal.js"' not in main_html
@@ -398,3 +399,5 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert "event.preventDefault()" in script
     assert "showModal" not in script
     assert "loadJournal();" in script
+    assert ".journal-dialog.journal-page-panel" in styles
+    assert "width: min(1460px, calc(100% - 48px));" in styles

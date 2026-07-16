@@ -368,15 +368,9 @@ main {
 }
 
 .journal-page-main {
-  width: min(1180px, calc(100% - 32px));
+  width: min(1460px, calc(100% - 48px));
   margin: 0 auto;
   padding: 28px 0 48px;
-}
-
-.journal-page-panel {
-  width: 100%;
-  max-height: none;
-  overflow: visible;
 }
 
 .journal-selection-required {
@@ -412,6 +406,12 @@ main {
 
 .journal-dialog::backdrop {
   background: rgba(28, 41, 56, 0.58);
+}
+
+.journal-dialog.journal-page-panel {
+  width: 100%;
+  max-height: none;
+  overflow: visible;
 }
 
 .journal-dialog h2 {
