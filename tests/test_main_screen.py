@@ -88,8 +88,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Повторно сформировать документ" in html
     assert html.count("data-date-input") == 5
     assert 'type="date"' not in html
-    assert html.count('placeholder="ДД.ММ.ГГГГ"') == 7
-    assert html.count("data-journal-date") == 2
+    assert html.count('placeholder="ДД.ММ.ГГГГ"') == 5
+    assert "data-journal-date" not in html
+    assert 'id="journalOpen" href="/journal" target="_blank" rel="noopener"' in html
+    assert 'src="/static/js/journal.js"' not in html
     assert html.count('placeholder="Введите дни"') == 2
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["X-Content-Type-Options"] == "nosniff"

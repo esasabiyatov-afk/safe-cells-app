@@ -83,7 +83,7 @@ def create_app(settings: Settings) -> Flask:
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        if request.path == "/" or request.path.startswith(("/api/", "/health")):
+        if request.path in {"/", "/journal"} or request.path.startswith(("/api/", "/health")):
             response.headers["Cache-Control"] = "no-store"
         return response
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from flask import Blueprint, current_app, jsonify, request, send_file
+from flask import Blueprint, current_app, jsonify, render_template, request, send_file
 
 from app.config import Settings
 from app.services.journal import (
@@ -17,14 +17,21 @@ from app.services.journal import (
 from app.services.journal_reports import REPORT_MIMETYPE, build_journal_report
 
 
-journal_blueprint = Blueprint("journal", __name__, url_prefix="/api/journal")
+journal_blueprint = Blueprint("journal", __name__)
 
 
 def _settings() -> Settings:
     return current_app.extensions["safe_cells_settings"]
 
 
-@journal_blueprint.get("")
+@journal_blueprint.get("/journal")
+def journal_page():
+    """Show the journal in its own browser tab without reading databases."""
+
+    return render_template("journal.html")
+
+
+@journal_blueprint.get("/api/journal")
 def journal_list():
     # The ordinary journal is available after the mandatory employee selection.
     current_app.config["EMPLOYEE_PROVIDER"]()
@@ -45,7 +52,7 @@ def journal_list():
     return jsonify(payload)
 
 
-@journal_blueprint.get("/report")
+@journal_blueprint.get("/api/journal/report")
 def journal_report():
     """Download the current journal selection as a real XLSX workbook."""
 

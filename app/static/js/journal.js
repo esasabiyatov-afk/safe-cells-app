@@ -3,9 +3,7 @@
 (() => {
   const elements = {
     body: document.body,
-    open: document.getElementById("journalOpen"),
-    dialog: document.getElementById("journalDialog"),
-    close: document.getElementById("journalClose"),
+    container: document.getElementById("journalPage"),
     filters: document.getElementById("journalFilters"),
     cell: document.getElementById("journalCell"),
     action: document.getElementById("journalAction"),
@@ -18,20 +16,19 @@
     empty: document.getElementById("journalEmpty"),
     previous: document.getElementById("journalPrevious"),
     next: document.getElementById("journalNext"),
-    page: document.getElementById("journalPage"),
-    employee: document.getElementById("employeeSelect"),
-    employeeDialog: document.getElementById("employeeDialog"),
+    page: document.getElementById("journalPageNumber"),
+    selectionRequired: document.getElementById("journalSelectionRequired"),
   };
 
-  const state = { page: 1, busy: false, pageCount: 1 };
+  const state = { page: 1, busy: false, pageCount: 1, selectionRequired: false };
 
   function setBusy(busy) {
     state.busy = busy;
     elements.list.setAttribute("aria-busy", busy ? "true" : "false");
     elements.filters.querySelectorAll("button, input, select").forEach((control) => {
-      control.disabled = busy;
+      control.disabled = busy || state.selectionRequired;
     });
-    elements.report.disabled = busy;
+    elements.report.disabled = busy || state.selectionRequired;
     if (busy) {
       elements.message.textContent = "Загрузка журнала…";
     }
@@ -166,11 +163,13 @@
       const payload = await response.json();
       if (!response.ok) {
         if (payload.selection_required) {
-          elements.dialog.close();
-          if (!elements.employeeDialog.open) elements.employeeDialog.showModal();
+          state.selectionRequired = true;
+          elements.selectionRequired.hidden = false;
         }
         throw new Error(payload.message || "Не удалось получить журнал");
       }
+      state.selectionRequired = false;
+      elements.selectionRequired.hidden = true;
       render(payload);
     } catch (error) {
       elements.list.replaceChildren();
@@ -196,6 +195,10 @@
       );
       if (!response.ok) {
         const payload = await response.json();
+        if (payload.selection_required) {
+          state.selectionRequired = true;
+          elements.selectionRequired.hidden = false;
+        }
         throw new Error(payload.message || "Не удалось сформировать отчёт");
       }
       const report = await response.blob();
@@ -217,19 +220,7 @@
     }
   }
 
-  elements.open.addEventListener("click", () => {
-    if (!elements.employee.value) {
-      if (!elements.employeeDialog.open) elements.employeeDialog.showModal();
-      return;
-    }
-    state.page = 1;
-    elements.dialog.showModal();
-    loadJournal();
-  });
-
-  elements.close.addEventListener("click", () => elements.dialog.close());
   elements.report.addEventListener("click", downloadReport);
-  elements.dialog.addEventListener("cancel", (event) => event.preventDefault());
   elements.filters.addEventListener("submit", (event) => {
     event.preventDefault();
     state.page = 1;
@@ -252,7 +243,7 @@
       loadJournal();
     }
   });
-  elements.dialog.querySelectorAll("[data-journal-date]").forEach((input) => {
+  elements.container.querySelectorAll("[data-journal-date]").forEach((input) => {
     input.addEventListener("input", () => {
       input.value = formatDateDigits(input.value);
     });
@@ -261,4 +252,6 @@
       input.value = formatDateDigits(event.clipboardData.getData("text"));
     });
   });
+
+  loadJournal();
 })();

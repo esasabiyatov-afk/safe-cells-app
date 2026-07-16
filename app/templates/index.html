@@ -6,7 +6,6 @@
   <title>Депозитарий</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
   <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
-  <script defer src="{{ url_for('static', filename='js/journal.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </head>
 <body
@@ -25,8 +24,6 @@
   data-document-generate-url="{{ url_for('documents.generate') }}"
   data-employee-directory-url="{{ url_for('employee.directory') }}"
   data-employee-select-url="{{ url_for('employee.select') }}"
-  data-journal-url="{{ url_for('journal.journal_list') }}"
-  data-journal-report-url="{{ url_for('journal.journal_report') }}"
   data-private-token="{{ private_token }}"
   data-admin-status-url="{{ url_for('admin.status') }}"
   data-admin-setup-url="{{ url_for('admin.setup') }}"
@@ -113,9 +110,9 @@
           </select>
         </label>
 
-        <button class="secondary-button journal-open-button" id="journalOpen" type="button">
+        <a class="secondary-button journal-open-button" id="journalOpen" href="{{ url_for('journal.journal_page') }}" target="_blank" rel="noopener">
           Журнал ячеек
-        </button>
+        </a>
 
       </div>
 
@@ -152,54 +149,6 @@
     <span>Рабочий режим</span>
     <span>Данные автоматически обновляются каждые 15 секунд</span>
   </footer>
-
-  <dialog class="journal-dialog" id="journalDialog" aria-labelledby="journalTitle">
-    <button class="dialog-close" id="journalClose" type="button" aria-label="Закрыть журнал">×</button>
-    <p class="section-kicker">История операций</p>
-    <h2 id="journalTitle">Общий журнал ячеек</h2>
-    <p class="dialog-note">Журнал показывает ФИО клиента, но не показывает исправления, ID-карту и номер счёта.</p>
-
-    <form class="journal-filters" id="journalFilters">
-      <label>
-        <span>Номер ячейки</span>
-        <input id="journalCell" type="text" maxlength="50" autocomplete="off" placeholder="Любой номер">
-      </label>
-      <label>
-        <span>Действие</span>
-        <select id="journalAction">
-          <option value="">Все действия</option>
-          <option value="contract.created">Открытие</option>
-          <option value="contract.renewed">Продление</option>
-          <option value="contract.closed">Закрытие</option>
-          <option value="overdue">Просрочка</option>
-        </select>
-      </label>
-      <label>
-        <span>С даты</span>
-        <input id="journalDateFrom" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="ДД.ММ.ГГГГ" data-journal-date>
-      </label>
-      <label>
-        <span>По дату</span>
-        <input id="journalDateTo" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="ДД.ММ.ГГГГ" data-journal-date>
-      </label>
-      <div class="journal-filter-actions">
-        <button class="secondary-button" id="journalReset" type="button">Сбросить</button>
-        <button class="primary-button" type="submit">Показать</button>
-      </div>
-    </form>
-
-    <div class="journal-results-heading">
-      <div class="journal-message" id="journalMessage" role="status">Загрузка журнала…</div>
-      <button class="secondary-button" id="journalReport" type="button">Скачать отчёт Excel</button>
-    </div>
-    <div class="journal-list" id="journalList" aria-live="polite" aria-busy="false"></div>
-    <div class="journal-empty" id="journalEmpty" hidden>По выбранным условиям операций не найдено.</div>
-    <div class="journal-pagination">
-      <button class="secondary-button" id="journalPrevious" type="button">Назад</button>
-      <span id="journalPage">Страница 1 из 1</span>
-      <button class="secondary-button" id="journalNext" type="button">Далее</button>
-    </div>
-  </dialog>
 
   <dialog class="cell-dialog occupied-card" id="cellDialog" aria-labelledby="dialogTitle">
     <button class="dialog-close" id="dialogClose" type="button" aria-label="Закрыть карточку">×</button>

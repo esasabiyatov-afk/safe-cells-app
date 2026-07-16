@@ -368,19 +368,27 @@ def test_journal_interface_uses_text_content_and_local_assets(
     app = create_app(settings)
     client = app.test_client()
 
-    html = client.get("/").get_data(as_text=True)
+    main_html = client.get("/").get_data(as_text=True)
+    page_response = client.get("/journal")
+    html = page_response.get_data(as_text=True)
     script = client.get("/static/js/journal.js").get_data(as_text=True)
 
+    assert 'id="journalOpen" href="/journal" target="_blank" rel="noopener"' in main_html
+    assert 'src="/static/js/journal.js"' not in main_html
     assert 'data-journal-url="/api/journal"' in html
     assert 'data-journal-report-url="/api/journal/report"' in html
     assert 'src="/static/js/journal.js"' in html
-    assert 'id="journalOpen"' in html
-    assert 'id="journalDialog"' in html
+    assert 'id="journalPage"' in html
     assert 'id="journalReport"' in html
+    assert 'id="journalSelectionRequired"' in html
+    assert 'href="/"' in html
     assert "Общий журнал ячеек" in html
     assert "Скачать отчёт Excel" in html
     assert "ID-карту и номер счёта" in html
     assert '<option value="contract.edited">' not in html
+    assert '<option value="overdue">Просрочка</option>' in html
+    assert html.count("data-journal-date") == 2
+    assert page_response.headers["Cache-Control"] == "no-store"
     assert "innerHTML" not in script
     assert "textContent" in script
     assert "URLSearchParams" in script
@@ -388,3 +396,5 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert "journal-action-group" in script
     assert "journal-action-overdue" in script
     assert "event.preventDefault()" in script
+    assert "showModal" not in script
+    assert "loadJournal();" in script

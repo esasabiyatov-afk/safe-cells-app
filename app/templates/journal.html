@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Журнал ячеек — Депозитарий</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <script defer src="{{ url_for('static', filename='js/journal.js') }}"></script>
+</head>
+<body
+  class="journal-page-body"
+  data-journal-url="{{ url_for('journal.journal_list') }}"
+  data-journal-report-url="{{ url_for('journal.journal_report') }}"
+>
+  <header class="journal-page-header">
+    <div class="brand-block">
+      <p class="eyebrow">ЗАО АКБ «Толубай»</p>
+      <h1>Журнал ячеек</h1>
+    </div>
+    <a class="secondary-button journal-back-link" href="{{ url_for('main.index') }}">Вернуться к ячейкам</a>
+  </header>
+
+  <main class="journal-page-main">
+    <section class="journal-dialog journal-page-panel" id="journalPage" aria-labelledby="journalTitle">
+      <p class="section-kicker">История операций</p>
+      <h2 id="journalTitle">Общий журнал ячеек</h2>
+      <p class="dialog-note">Журнал показывает ФИО клиента, но не показывает исправления, ID-карту и номер счёта.</p>
+
+      <form class="journal-filters" id="journalFilters">
+        <label>
+          <span>Номер ячейки</span>
+          <input id="journalCell" type="text" maxlength="50" autocomplete="off" placeholder="Любой номер">
+        </label>
+        <label>
+          <span>Действие</span>
+          <select id="journalAction">
+            <option value="">Все действия</option>
+            <option value="contract.created">Открытие</option>
+            <option value="contract.renewed">Продление</option>
+            <option value="contract.closed">Закрытие</option>
+            <option value="overdue">Просрочка</option>
+          </select>
+        </label>
+        <label>
+          <span>С даты</span>
+          <input id="journalDateFrom" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="ДД.ММ.ГГГГ" data-journal-date>
+        </label>
+        <label>
+          <span>По дату</span>
+          <input id="journalDateTo" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="ДД.ММ.ГГГГ" data-journal-date>
+        </label>
+        <div class="journal-filter-actions">
+          <button class="secondary-button" id="journalReset" type="button">Сбросить</button>
+          <button class="primary-button" type="submit">Показать</button>
+        </div>
+      </form>
+
+      <div class="journal-selection-required" id="journalSelectionRequired" role="alert" hidden>
+        <strong>Сначала выберите сотрудника</strong>
+        <span>Вернитесь на главный экран, выберите своё имя и снова откройте журнал.</span>
+        <a class="secondary-button" href="{{ url_for('main.index') }}">Открыть главный экран</a>
+      </div>
+
+      <div class="journal-results-heading">
+        <div class="journal-message" id="journalMessage" role="status">Загрузка журнала…</div>
+        <button class="secondary-button" id="journalReport" type="button">Скачать отчёт Excel</button>
+      </div>
+      <div class="journal-list" id="journalList" aria-live="polite" aria-busy="false"></div>
+      <div class="journal-empty" id="journalEmpty" hidden>По выбранным условиям операций не найдено.</div>
+      <div class="journal-pagination">
+        <button class="secondary-button" id="journalPrevious" type="button">Назад</button>
+        <span id="journalPageNumber">Страница 1 из 1</span>
+        <button class="secondary-button" id="journalNext" type="button">Далее</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

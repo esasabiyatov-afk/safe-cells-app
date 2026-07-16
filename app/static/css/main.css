@@ -328,9 +328,75 @@ main {
 }
 
 .journal-open-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 42px;
+  text-decoration: none;
   white-space: nowrap;
 }
+
+.journal-page-body {
+  min-width: 0;
+  min-height: 100vh;
+  background: var(--paper-deep);
+}
+
+.journal-page-header {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px clamp(20px, 4vw, 58px);
+  border-bottom: 1px solid var(--line-dark);
+  background: var(--paper);
+  box-shadow: 0 4px 14px rgba(28, 41, 56, 0.08);
+}
+
+.journal-page-header h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(24px, 3vw, 34px);
+}
+
+.journal-back-link {
+  flex: none;
+  text-decoration: none;
+}
+
+.journal-page-main {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+
+.journal-page-panel {
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+}
+
+.journal-selection-required {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 18px;
+  align-items: center;
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--expiring-border);
+  border-left: 5px solid var(--expiring);
+  border-radius: 5px;
+  background: var(--expiring-bg);
+}
+
+.journal-selection-required[hidden] { display: none; }
+.journal-selection-required strong,
+.journal-selection-required span { grid-column: 1; }
+.journal-selection-required span { color: var(--ink-soft); font-size: 12px; }
+.journal-selection-required a { grid-column: 2; grid-row: 1 / span 2; text-decoration: none; }
 
 .journal-dialog {
   width: min(980px, calc(100vw - 32px));
@@ -1490,6 +1556,30 @@ main {
 }
 
 @media (max-width: 540px) {
+  .journal-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .journal-back-link {
+    width: 100%;
+  }
+
+  .journal-page-panel {
+    padding: 20px;
+  }
+
+  .journal-selection-required {
+    grid-template-columns: 1fr;
+  }
+
+  .journal-selection-required a {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 6px;
+  }
+
   .toolbar {
     grid-template-columns: 1fr;
   }
