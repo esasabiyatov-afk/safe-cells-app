@@ -2,6 +2,7 @@
 
 from app.routes.admin import admin_blueprint
 from app.routes.cells import cells_blueprint
+from app.routes.cell_blocks import cell_blocks_blueprint
 from app.routes.closures import closures_blueprint
 from app.routes.contracts import contracts_blueprint
 from app.routes.editing import editing_blueprint
@@ -16,6 +17,7 @@ from app.routes.system import system_blueprint
 __all__ = [
     "admin_blueprint",
     "cells_blueprint",
+    "cell_blocks_blueprint",
     "closures_blueprint",
     "contracts_blueprint",
     "editing_blueprint",

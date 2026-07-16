@@ -5,13 +5,15 @@ const STATUS_LABELS = {
   normal: "В норме",
   expiring: "Истекает",
   overdue: "Просрочена",
+  lost_key: "Ключ утерян",
+  bank: "Занята банком",
 };
 
 const NETWORK_ERROR_MESSAGE = "Не удалось получить данные с сетевого диска. Проверьте подключение к сети";
 
 const state = {
   cells: [],
-  counts: { free: 0, normal: 0, expiring: 0, overdue: 0 },
+  counts: { free: 0, normal: 0, expiring: 0, overdue: 0, lost_key: 0, bank: 0 },
   privateMatches: null,
   searchSequence: 0,
   asOfDate: null,
@@ -36,6 +38,9 @@ const state = {
   editSubmitting: false,
   documentSubmitting: false,
   employeeSubmitting: false,
+  bankOperationId: null,
+  blockOperationId: null,
+  blockSubmitting: false,
 };
 
 const elements = {
@@ -57,6 +62,8 @@ const elements = {
   statNormal: document.getElementById("statNormal"),
   statExpiring: document.getElementById("statExpiring"),
   statOverdue: document.getElementById("statOverdue"),
+  statLostKey: document.getElementById("statLostKey"),
+  statBank: document.getElementById("statBank"),
   dialog: document.getElementById("cellDialog"),
   dialogClose: document.getElementById("dialogClose"),
   dialogTitle: document.getElementById("dialogTitle"),
@@ -67,6 +74,12 @@ const elements = {
   dialogEndDate: document.getElementById("dialogEndDate"),
   dialogRentDays: document.getElementById("dialogRentDays"),
   dialogDays: document.getElementById("dialogDays"),
+  cellDialogKicker: document.getElementById("cellDialogKicker"),
+  privateCardSection: document.getElementById("privateCardSection"),
+  contractCardActions: document.getElementById("contractCardActions"),
+  blockedCardActions: document.getElementById("blockedCardActions"),
+  blockedActionError: document.getElementById("blockedActionError"),
+  blockReleaseAction: document.getElementById("blockReleaseAction"),
   privateToggle: document.getElementById("privateToggle"),
   privateError: document.getElementById("privateError"),
   privateDetails: document.getElementById("privateDetails"),
@@ -127,11 +140,10 @@ const elements = {
   employeeSelect: document.getElementById("employeeSelect"),
   employeeDialog: document.getElementById("employeeDialog"),
   employeeForm: document.getElementById("employeeForm"),
-  employeeDialogSelect: document.getElementById("employeeDialogSelect"),
+  employeeChoices: document.getElementById("employeeChoices"),
   employeeDialogNote: document.getElementById("employeeDialogNote"),
   employeeOpenSettings: document.getElementById("employeeOpenSettings"),
   employeeError: document.getElementById("employeeError"),
-  employeeSubmit: document.getElementById("employeeSubmit"),
   operationResultDialog: document.getElementById("operationResultDialog"),
   operationResultTitle: document.getElementById("operationResultTitle"),
   operationResultSummary: document.getElementById("operationResultSummary"),
@@ -171,6 +183,7 @@ const elements = {
   quoteDeposit: document.getElementById("quoteDeposit"),
   rentalBack: document.getElementById("rentalBack"),
   rentalContinue: document.getElementById("rentalContinue"),
+  bankOccupy: document.getElementById("bankOccupy"),
   contractDialog: document.getElementById("contractDialog"),
   contractDialogClose: document.getElementById("contractDialogClose"),
   contractDialogTitle: document.getElementById("contractDialogTitle"),
@@ -204,13 +217,29 @@ function fillEmployeeSelect(select, employees, selectedId) {
   select.value = selectedId || "";
 }
 
+function renderEmployeeChoices(employees, selectedId) {
+  const fragment = document.createDocumentFragment();
+  for (const employee of employees) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "employee-choice-card";
+    button.dataset.employeeId = employee.employee_id;
+    button.textContent = employee.full_name;
+    if (employee.employee_id === selectedId) {
+      button.classList.add("is-selected");
+    }
+    button.addEventListener("click", () => selectEmployee(employee.employee_id));
+    fragment.append(button);
+  }
+  elements.employeeChoices.replaceChildren(fragment);
+}
+
 function renderEmployeeDirectory(payload) {
   const employees = Array.isArray(payload.employees) ? payload.employees : [];
   fillEmployeeSelect(elements.employeeSelect, employees, payload.selected_employee_id);
-  fillEmployeeSelect(elements.employeeDialogSelect, employees, payload.selected_employee_id);
+  renderEmployeeChoices(employees, payload.selected_employee_id);
   elements.employeeError.hidden = true;
   const isEmpty = employees.length === 0;
-  elements.employeeSubmit.disabled = isEmpty;
   elements.employeeOpenSettings.hidden = !isEmpty;
   elements.employeeDialogNote.textContent = isEmpty
     ? "Список сотрудников пока пуст. Добавьте первого сотрудника в настройках."
@@ -237,7 +266,9 @@ async function loadEmployeeDirectory() {
 async function selectEmployee(employeeId) {
   if (!employeeId || state.employeeSubmitting) return;
   state.employeeSubmitting = true;
-  elements.employeeSubmit.disabled = true;
+  elements.employeeChoices.querySelectorAll("button").forEach((button) => {
+    button.disabled = true;
+  });
   elements.employeeError.hidden = true;
   try {
     const response = await fetch(elements.body.dataset.employeeSelectUrl, {
@@ -248,7 +279,6 @@ async function selectEmployee(employeeId) {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.message || "Не удалось выбрать сотрудника");
     elements.employeeSelect.value = payload.employee_id;
-    elements.employeeDialogSelect.value = payload.employee_id;
     if (elements.employeeDialog.open) elements.employeeDialog.close();
   } catch (error) {
     elements.employeeError.textContent = errorMessage(error, "Не удалось выбрать сотрудника");
@@ -256,13 +286,14 @@ async function selectEmployee(employeeId) {
     await loadEmployeeDirectory();
   } finally {
     state.employeeSubmitting = false;
-    elements.employeeSubmit.disabled = elements.employeeDialogSelect.options.length <= 1;
+    elements.employeeChoices.querySelectorAll("button").forEach((button) => {
+      button.disabled = false;
+    });
   }
 }
 
 async function saveEmployeeSelection(event) {
   event.preventDefault();
-  await selectEmployee(elements.employeeDialogSelect.value);
 }
 
 function showError(message) {
@@ -342,10 +373,13 @@ function populateHeightFilter(cells) {
 
 function renderStats() {
   elements.statFree.textContent = state.counts.free;
-  elements.statOccupied.textContent = state.counts.normal + state.counts.expiring + state.counts.overdue;
+  elements.statOccupied.textContent = state.counts.normal + state.counts.expiring
+    + state.counts.overdue + state.counts.lost_key + state.counts.bank;
   elements.statNormal.textContent = state.counts.normal;
   elements.statExpiring.textContent = state.counts.expiring;
   elements.statOverdue.textContent = state.counts.overdue;
+  elements.statLostKey.textContent = state.counts.lost_key;
+  elements.statBank.textContent = state.counts.bank;
 }
 
 function clearDisplayedData() {
@@ -359,7 +393,7 @@ function clearDisplayedData() {
     closeCellDialog();
   }
   state.cells = [];
-  state.counts = { free: 0, normal: 0, expiring: 0, overdue: 0 };
+  state.counts = { free: 0, normal: 0, expiring: 0, overdue: 0, lost_key: 0, bank: 0 };
   state.privateMatches = null;
   state.asOfDate = null;
   elements.statFree.textContent = "—";
@@ -367,6 +401,8 @@ function clearDisplayedData() {
   elements.statNormal.textContent = "—";
   elements.statExpiring.textContent = "—";
   elements.statOverdue.textContent = "—";
+  elements.statLostKey.textContent = "—";
+  elements.statBank.textContent = "—";
   elements.grid.replaceChildren();
   elements.empty.hidden = true;
   elements.resultCount.textContent = "Данные недоступны";
@@ -423,11 +459,34 @@ function renderOccupiedOperationalDetails(cell) {
   elements.dialogStatus.textContent = STATUS_LABELS[cell.status];
   elements.dialogStatus.className = `status-badge ${cell.status}`;
   elements.dialogSize.textContent = `${cell.height_mm}×${cell.width_mm}×${cell.depth_mm}`;
+  if (cell.block_kind) {
+    elements.cellDialogKicker.textContent = "Состояние ячейки";
+    elements.dialogClient.textContent = cell.block_kind === "bank"
+      ? "Банк"
+      : "Получение данных…";
+    elements.dialogStartDate.textContent = "Не применяется";
+    elements.dialogEndDate.textContent = "Не применяется";
+    elements.dialogRentDays.textContent = "Без срока";
+    elements.dialogDays.textContent = "Не применяется";
+    elements.privateCardSection.hidden = true;
+    elements.contractCardActions.hidden = true;
+    elements.blockedCardActions.hidden = false;
+    elements.blockedActionError.hidden = true;
+    elements.blockedActionError.textContent = "";
+    elements.blockReleaseAction.textContent = cell.block_kind === "lost_key"
+      ? "Ключ восстановлен"
+      : "Освободить ячейку";
+    return;
+  }
+  elements.cellDialogKicker.textContent = "Карточка занятой ячейки";
   elements.dialogClient.textContent = "Получение данных…";
   elements.dialogStartDate.textContent = formatDate(cell.start_date);
   elements.dialogEndDate.textContent = formatDate(cell.end_date);
   elements.dialogRentDays.textContent = `${cell.total_days} дн.`;
   elements.dialogDays.textContent = daysLabel(cell);
+  elements.privateCardSection.hidden = false;
+  elements.contractCardActions.hidden = false;
+  elements.blockedCardActions.hidden = true;
 }
 
 async function loadOpenedClientName(cell) {
@@ -462,16 +521,51 @@ async function loadOpenedClientName(cell) {
   }
 }
 
+async function loadBlockedClientName(cell) {
+  const sequence = ++state.clientNameRequestSequence;
+  try {
+    const response = await fetch(elements.body.dataset.lostKeyClientUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Safe-Cells-Token": elements.body.dataset.privateToken,
+      },
+      body: JSON.stringify({cell_number: cell.number}),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось получить ФИО клиента");
+    }
+    if (
+      sequence === state.clientNameRequestSequence
+      && elements.dialog.open
+      && state.activeOccupiedCell?.block_kind === "lost_key"
+      && String(state.activeOccupiedCell.number) === String(cell.number)
+    ) {
+      elements.dialogClient.textContent = `${payload.client_full_name} — ключ утерян`;
+    }
+  } catch (error) {
+    if (sequence === state.clientNameRequestSequence && elements.dialog.open) {
+      elements.dialogClient.textContent = `${cell.client_display_name || "Клиент"} — ключ утерян`;
+    }
+  }
+}
+
 function openCellDialog(cell) {
   if (cell.status === "free") {
     openRentalCalculator(cell);
     return;
   }
   state.activeOccupiedCell = cell;
+  state.blockOperationId = cell.block_kind ? createOperationId() : null;
   hidePrivateDetails();
   renderOccupiedOperationalDetails(cell);
   elements.dialog.showModal();
-  loadOpenedClientName(cell);
+  if (cell.block_kind === "lost_key") {
+    loadBlockedClientName(cell);
+  } else if (!cell.block_kind) {
+    loadOpenedClientName(cell);
+  }
 }
 
 function formatDateTime(value) {
@@ -735,7 +829,51 @@ function closeCellDialog() {
   state.clientNameRequestSequence += 1;
   hidePrivateDetails();
   state.activeOccupiedCell = null;
+  state.blockOperationId = null;
   elements.dialog.close();
+}
+
+async function releaseBlockedCell() {
+  const cell = state.activeOccupiedCell;
+  if (!cell?.block_kind || !state.blockOperationId || state.blockSubmitting) return;
+  const confirmation = cell.block_kind === "lost_key"
+    ? `Подтвердите, что ключ от ячейки № ${cell.number} восстановлен.`
+    : `Освободить занятую банком ячейку № ${cell.number}?`;
+  if (!window.confirm(confirmation)) return;
+  state.blockSubmitting = true;
+  elements.blockReleaseAction.disabled = true;
+  try {
+    const url = elements.body.dataset.cellBlockReleaseUrl.replace(
+      "__BLOCK_KIND__", cell.block_kind,
+    );
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        operation_id: state.blockOperationId,
+        cell_number: cell.number,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось освободить ячейку");
+    }
+    const message = cell.block_kind === "lost_key"
+      ? `Ключ от ячейки № ${cell.number} восстановлен. Ячейка свободна.`
+      : `Ячейка № ${cell.number} освобождена банком.`;
+    state.blockSubmitting = false;
+    closeCellDialog();
+    await refreshCells();
+    showSuccess(payload.warning ? `${message} ${payload.warning}` : message);
+  } catch (error) {
+    elements.blockedActionError.textContent = errorMessage(
+      error, "Не удалось освободить ячейку",
+    );
+    elements.blockedActionError.hidden = false;
+  } finally {
+    state.blockSubmitting = false;
+    elements.blockReleaseAction.disabled = false;
+  }
 }
 
 const CLOSURE_KIND_LABELS = {
@@ -896,7 +1034,13 @@ async function submitClosure(event) {
     state.closureOperationId = null;
     state.activeOccupiedCell = null;
     await refreshCells();
-    showOperationResult(`Договор по ячейке № ${payload.cell_number} закрыт. Ячейка свободна.${warning}`, payload);
+    const cellState = payload.cell_blocked
+      ? "Ячейка остаётся занятой: ключ утерян."
+      : "Ячейка свободна.";
+    showOperationResult(
+      `Договор по ячейке № ${payload.cell_number} закрыт. ${cellState}${warning}`,
+      payload,
+    );
   } catch (error) {
     showClosureError(errorMessage(error, "Не удалось закрыть договор"));
   } finally {
@@ -1390,6 +1534,7 @@ function openRentalCalculator(cell) {
   state.activeRentalCell = cell;
   state.activeQuote = null;
   state.activeOperationId = null;
+  state.bankOperationId = createOperationId();
   clearSuccess();
   elements.rentalDialogTitle.textContent = `Ячейка № ${cell.number}`;
   elements.rentalCellSummary.textContent = `Высота ${cell.height_mm} мм · ${cell.width_mm} × ${cell.depth_mm} мм`;
@@ -1409,7 +1554,43 @@ function closeRentalCalculator() {
   state.activeRentalCell = null;
   state.activeQuote = null;
   state.activeOperationId = null;
+  state.bankOperationId = null;
   elements.rentalDialog.close();
+}
+
+async function occupyBankCell() {
+  const cell = state.activeRentalCell;
+  if (!cell || !state.bankOperationId || state.blockSubmitting) return;
+  if (!window.confirm(
+    `Занять ячейку № ${cell.number} банком без клиента и срока?`,
+  )) return;
+  state.blockSubmitting = true;
+  elements.bankOccupy.disabled = true;
+  try {
+    const response = await fetch(elements.body.dataset.cellBlockBankUrl, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        operation_id: state.bankOperationId,
+        cell_number: cell.number,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось занять ячейку банком");
+    }
+    const cellNumber = cell.number;
+    state.blockSubmitting = false;
+    closeRentalCalculator();
+    await refreshCells();
+    const message = `Ячейка № ${cellNumber} занята банком без срока.`;
+    showSuccess(payload.warning ? `${message} ${payload.warning}` : message);
+  } catch (error) {
+    showRentalError(errorMessage(error, "Не удалось занять ячейку банком"));
+  } finally {
+    state.blockSubmitting = false;
+    elements.bankOccupy.disabled = false;
+  }
 }
 
 function createOperationId() {
@@ -1477,6 +1658,7 @@ function cancelContractWorkflow() {
   state.activeRentalCell = null;
   state.activeQuote = null;
   state.activeOperationId = null;
+  state.bankOperationId = null;
 }
 
 async function submitContract(event) {
@@ -1629,16 +1811,25 @@ async function refreshCells() {
       const updatedCell = state.cells.find(
         (cell) => String(cell.number) === String(state.activeOccupiedCell.number),
       );
+      const activeCell = state.activeOccupiedCell;
+      const identityChanged = activeCell.block_kind
+        ? updatedCell?.block_kind !== activeCell.block_kind
+          || updatedCell?.source_contract_ref !== activeCell.source_contract_ref
+        : updatedCell?.contract_ref !== activeCell.contract_ref;
       if (
         !updatedCell
         || updatedCell.status === "free"
-        || updatedCell.contract_ref !== state.activeOccupiedCell.contract_ref
+        || identityChanged
       ) {
         closeCellDialog();
       } else {
         state.activeOccupiedCell = updatedCell;
         renderOccupiedOperationalDetails(updatedCell);
-        loadOpenedClientName(updatedCell);
+        if (updatedCell.block_kind === "lost_key") {
+          loadBlockedClientName(updatedCell);
+        } else if (!updatedCell.block_kind) {
+          loadOpenedClientName(updatedCell);
+        }
       }
     }
     populateHeightFilter(state.cells);
@@ -1682,6 +1873,7 @@ elements.operationResultDialog.addEventListener("cancel", (event) => {
 elements.status.addEventListener("change", renderGrid);
 elements.height.addEventListener("change", renderGrid);
 elements.dialogClose.addEventListener("click", closeCellDialog);
+elements.blockReleaseAction.addEventListener("click", releaseBlockedCell);
 elements.privateToggle.addEventListener("click", togglePrivateDetails);
 elements.historyToggle.addEventListener("click", toggleRenewalHistory);
 elements.renewAction.addEventListener("click", openRenewalDialog);
@@ -1741,6 +1933,7 @@ elements.rentalForm.addEventListener("submit", (event) => event.preventDefault()
 elements.rentalDialogClose.addEventListener("click", closeRentalCalculator);
 elements.rentalBack.addEventListener("click", closeRentalCalculator);
 elements.rentalContinue.addEventListener("click", openContractForm);
+elements.bankOccupy.addEventListener("click", occupyBankCell);
 elements.rentalDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.contractForm.addEventListener("submit", submitContract);
 elements.contractBack.addEventListener("click", backToRentalCalculator);

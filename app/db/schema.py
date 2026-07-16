@@ -19,7 +19,7 @@ from app.db.connections import (
 from app.db.seed import load_cell_seed, seed_working_database
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class DatabaseInitializationError(RuntimeError):
@@ -57,6 +57,19 @@ WORKING_SCHEMA: tuple[str, ...] = (
         height_mm INTEGER NOT NULL CHECK(height_mm > 0),
         width_mm INTEGER CHECK(width_mm IS NULL OR width_mm > 0),
         depth_mm INTEGER CHECK(depth_mm IS NULL OR depth_mm > 0)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS main.cell_blocks(
+        cell_number TEXT PRIMARY KEY REFERENCES cells(number),
+        block_kind TEXT NOT NULL CHECK(block_kind IN ('lost_key', 'bank')),
+        source_contract_id TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        CHECK(
+            (block_kind = 'lost_key' AND source_contract_id IS NOT NULL)
+            OR (block_kind = 'bank' AND source_contract_id IS NULL)
+        )
     )
     """,
     """
@@ -103,6 +116,26 @@ WORKING_SCHEMA: tuple[str, ...] = (
         updated_at TEXT NOT NULL,
         updated_by TEXT NOT NULL
     )
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS main.prevent_contract_on_blocked_cell
+    BEFORE INSERT ON contracts
+    WHEN EXISTS(
+        SELECT 1 FROM cell_blocks WHERE cell_number = NEW.cell_number
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'cell is blocked');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS main.prevent_block_on_contracted_cell
+    BEFORE INSERT ON cell_blocks
+    WHEN EXISTS(
+        SELECT 1 FROM contracts WHERE cell_number = NEW.cell_number
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'cell has active contract');
+    END
     """,
     """
     CREATE TABLE IF NOT EXISTS main.admin_credentials(

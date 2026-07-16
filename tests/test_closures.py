@@ -82,6 +82,45 @@ def test_lost_key_retains_deposit_without_general_deduction_function(
     assert not hasattr(quote, "deduction_amount")
 
 
+def test_lost_key_close_archives_contract_and_keeps_cell_blocked(
+    settings, initialized_databases, insert_test_contract
+):
+    insert_test_contract(
+        cell_number="1",
+        end_date="2026-07-12",
+        client_name="Вымышленный Клиент Ключа",
+    )
+
+    result = close_contract(
+        settings,
+        payload=payload(reason_code="lost_key"),
+        employee="Тестовый Сотрудник",
+        close_date=TODAY,
+        occurred_at=OCCURRED,
+    )
+
+    assert result.cell_blocked is True
+    with open_write(settings, attach_archive=True) as connection:
+        active = connection.execute(
+            "SELECT 1 FROM main.contracts WHERE cell_number='1'"
+        ).fetchone()
+        block = connection.execute(
+            "SELECT * FROM main.cell_blocks WHERE cell_number='1'"
+        ).fetchone()
+        archived = connection.execute(
+            "SELECT client_full_name FROM archive.contracts_archive WHERE cell_number='1'"
+        ).fetchone()
+    assert active is None
+    assert dict(block) == {
+        "cell_number": "1",
+        "block_kind": "lost_key",
+        "source_contract_id": "contract-test-1",
+        "created_at": OCCURRED.isoformat(timespec="seconds"),
+        "created_by": "Тестовый Сотрудник",
+    }
+    assert archived["client_full_name"] == "Вымышленный Клиент Ключа"
+
+
 def test_overdue_quote_uses_1_to_30_penalty_rate(
     settings, initialized_databases, insert_test_contract
 ):
@@ -160,6 +199,7 @@ def test_close_atomically_archives_audits_deletes_active_and_preserves_renewals(
         occurred_at=OCCURRED,
     )
     assert result.close_kind == "on_time"
+    assert result.cell_blocked is False
     assert result.backup_created is True
     with open_readonly(settings.database_directory / "vault_cells.sqlite3") as con:
         assert con.execute("SELECT COUNT(*) FROM contracts").fetchone()[0] == 0

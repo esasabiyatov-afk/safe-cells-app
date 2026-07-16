@@ -97,3 +97,28 @@ def test_migration_cli_requires_confirmation_and_updates_both_versions(
         "migrate-v3", "--config", str(config_path), "--confirm", "MIGRATE-TO-3"
     ]) == 0
     assert "Версия схемы: 3" in capsys.readouterr().out
+
+
+def test_v4_migration_cli_requires_confirmation_and_updates_both_versions(
+    settings: Settings, initialized_databases, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "config-v4.json"
+    config_path.write_text(
+        json.dumps({"database_directory": str(settings.database_directory)}),
+        encoding="utf-8",
+    )
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DROP TABLE main.cell_blocks")
+        connection.execute("UPDATE main.schema_version SET version=3")
+        connection.execute("UPDATE archive.schema_version SET version=3")
+        connection.commit()
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["migrate-v4", "--config", str(config_path), "--confirm", "WRONG"])
+    assert exc_info.value.code == 2
+    assert main([
+        "migrate-v4", "--config", str(config_path), "--confirm", "MIGRATE-TO-4"
+    ]) == 0
+    assert "Версия схемы: 4" in capsys.readouterr().out

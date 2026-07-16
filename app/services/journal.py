@@ -22,6 +22,9 @@ ACTION_LABELS = {
     "contract.created": "Открытие",
     "contract.renewed": "Продление",
     "contract.closed": "Закрытие",
+    "cell.bank_occupied": "Занятие банком",
+    "cell.bank_released": "Освобождение банком",
+    "cell.key_restored": "Ключ восстановлен",
 }
 FILTER_LABELS = {**ACTION_LABELS, "overdue": "Просрочка"}
 DEFAULT_PAGE_SIZE = 50
@@ -149,6 +152,13 @@ def _summary(action: str, raw_changes: object) -> str:
             parts.append(f"Просрочка: {penalty_days} дн.")
         return "; ".join(parts) or "Договор закрыт, ячейка освобождена."
 
+    if action == "cell.bank_occupied":
+        return "Ячейка занята банком без договора и срока."
+    if action == "cell.bank_released":
+        return "Банковская блокировка снята, ячейка свободна."
+    if action == "cell.key_restored":
+        return "Ключ восстановлен, ячейка свободна."
+
     return "Операция по договору."
 
 
@@ -158,7 +168,16 @@ def _validated_filters(
     action: object = None,
     date_from: object = None,
     date_to: object = None,
-) -> tuple[str | None, str | None, date | None, date | None]:
+    client_name: object = None,
+    employee: object = None,
+) -> tuple[
+    str | None,
+    str | None,
+    date | None,
+    date | None,
+    str | None,
+    str | None,
+]:
     cell = _optional_text(cell_number, maximum=50, label="Номер ячейки")
     action_code = _optional_text(action, maximum=40, label="Действие")
     if action_code is not None and action_code not in FILTER_LABELS:
@@ -167,7 +186,9 @@ def _validated_filters(
     end = _optional_date(date_to, label="Дату окончания")
     if start is not None and end is not None and end < start:
         raise JournalValidationError("Дата окончания фильтра раньше даты начала.")
-    return cell, action_code, start, end
+    client = _optional_text(client_name, maximum=200, label="ФИО клиента")
+    employee_name = _optional_text(employee, maximum=128, label="Сотрудник")
+    return cell, action_code, start, end, client, employee_name
 
 
 def _where_clause(
@@ -175,6 +196,8 @@ def _where_clause(
     action_code: str | None,
     start: date | None,
     end: date | None,
+    client_name: str | None,
+    employee: str | None,
 ) -> tuple[str, list[object]]:
     clauses = [
         "log.cell_number IS NOT NULL",
@@ -185,6 +208,7 @@ def _where_clause(
         clauses.append("log.cell_number = ?")
         parameters.append(cell)
     if action_code == "overdue":
+        clauses.append("log.action IN ('contract.renewed', 'contract.closed')")
         clauses.append(
             "CASE WHEN json_valid(log.changes_json) "
             "THEN COALESCE(CAST(json_extract(log.changes_json, ?) AS INTEGER), 0) "
@@ -200,6 +224,15 @@ def _where_clause(
     if end is not None:
         clauses.append("substr(log.occurred_at, 1, 10) <= ?")
         parameters.append(end.isoformat())
+    if client_name is not None:
+        clauses.append(
+            "instr(casefold(COALESCE(active.client_full_name, "
+            "archived.client_full_name, '')), casefold(?)) > 0"
+        )
+        parameters.append(client_name)
+    if employee is not None:
+        clauses.append("log.employee = ?")
+        parameters.append(employee)
     return " AND ".join(clauses), parameters
 
 
@@ -212,13 +245,18 @@ def _entry(row: sqlite3.Row) -> dict[str, Any]:
     action = str(row["action"])
     changes = _safe_changes(row["changes_json"])
     penalty_days = _safe_nonnegative_integer(changes.get("penalty_days"))
-    is_overdue = bool(penalty_days)
+    is_overdue = action in {"contract.renewed", "contract.closed"} and bool(
+        penalty_days
+    )
     action_label = ACTION_LABELS[action]
     return {
         "occurred_at": str(row["occurred_at"]),
         "employee": str(row["employee"]),
         "cell_number": str(row["cell_number"]),
-        "client_full_name": client_name or "Клиент не найден",
+        "client_full_name": (
+            client_name
+            or ("Банк" if action.startswith("cell.bank_") else "Клиент не найден")
+        ),
         "action": action,
         "action_label": action_label,
         "report_action_label": (
@@ -236,11 +274,14 @@ def _read_entries(
     parameters: list[object],
     limit: int,
     offset: int = 0,
-) -> tuple[int, list[dict[str, Any]]]:
+) -> tuple[int, list[dict[str, Any]], list[str]]:
     paths = validate_database_pair(settings)
     with open_readonly(
         paths.archive, busy_timeout_ms=settings.busy_timeout_ms
     ) as connection:
+        connection.create_function(
+            "casefold", 1, lambda value: str(value or "").casefold()
+        )
         connection.execute(
             "ATTACH DATABASE ? AS working", (_readonly_uri(paths.working),)
         )
@@ -268,11 +309,32 @@ def _read_entries(
         ).fetchall()
         total = int(
             connection.execute(
-                f"SELECT COUNT(*) FROM log WHERE {where_sql}", parameters
+                f"""
+                SELECT COUNT(*)
+                FROM log
+                LEFT JOIN working.contracts AS active
+                    ON active.contract_id = log.contract_id
+                LEFT JOIN contracts_archive AS archived
+                    ON archived.contract_id = log.contract_id
+                WHERE {where_sql}
+                """,
+                parameters,
             ).fetchone()[0]
         )
+        employees = [
+            str(row["employee"])
+            for row in connection.execute(
+                f"""
+                SELECT DISTINCT employee FROM log
+                WHERE cell_number IS NOT NULL
+                  AND action IN ({','.join('?' for _ in ACTION_LABELS)})
+                ORDER BY casefold(employee), employee
+                """,
+                tuple(ACTION_LABELS),
+            ).fetchall()
+        ]
         connection.rollback()
-    return total, [_entry(row) for row in rows]
+    return total, [_entry(row) for row in rows], employees
 
 
 def list_journal_entries(
@@ -284,23 +346,29 @@ def list_journal_entries(
     date_to: object = None,
     page: object = 1,
     page_size: object = DEFAULT_PAGE_SIZE,
+    client_name: object = None,
+    employee: object = None,
 ) -> dict[str, Any]:
     """Return one filtered page of cell events with the client's full name."""
 
-    cell, action_code, start, end = _validated_filters(
+    cell, action_code, start, end, client, employee_name = _validated_filters(
         cell_number=cell_number,
         action=action,
         date_from=date_from,
         date_to=date_to,
+        client_name=client_name,
+        employee=employee,
     )
     page_number = _positive_integer(page, default=1, maximum=1_000_000, label="Страница")
     size = _positive_integer(
         page_size, default=DEFAULT_PAGE_SIZE, maximum=MAX_PAGE_SIZE, label="Размер страницы"
     )
-    where_sql, parameters = _where_clause(cell, action_code, start, end)
+    where_sql, parameters = _where_clause(
+        cell, action_code, start, end, client, employee_name
+    )
 
     try:
-        total, entries = _read_entries(
+        total, entries, employees = _read_entries(
             settings,
             where_sql=where_sql,
             parameters=parameters,
@@ -313,6 +381,7 @@ def list_journal_entries(
     page_count = max(1, math.ceil(total / size))
     return {
         "entries": entries,
+        "filters": {"employees": employees},
         "pagination": {
             "page": page_number,
             "page_size": size,
@@ -331,18 +400,24 @@ def list_journal_report_entries(
     action: object = None,
     date_from: object = None,
     date_to: object = None,
+    client_name: object = None,
+    employee: object = None,
 ) -> list[dict[str, Any]]:
     """Return the complete filtered selection for one controlled XLSX report."""
 
-    cell, action_code, start, end = _validated_filters(
+    cell, action_code, start, end, client, employee_name = _validated_filters(
         cell_number=cell_number,
         action=action,
         date_from=date_from,
         date_to=date_to,
+        client_name=client_name,
+        employee=employee,
     )
-    where_sql, parameters = _where_clause(cell, action_code, start, end)
+    where_sql, parameters = _where_clause(
+        cell, action_code, start, end, client, employee_name
+    )
     try:
-        total, entries = _read_entries(
+        total, entries, _employees = _read_entries(
             settings,
             where_sql=where_sql,
             parameters=parameters,

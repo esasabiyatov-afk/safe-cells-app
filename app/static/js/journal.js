@@ -7,6 +7,8 @@
     filters: document.getElementById("journalFilters"),
     cell: document.getElementById("journalCell"),
     action: document.getElementById("journalAction"),
+    client: document.getElementById("journalClient"),
+    employee: document.getElementById("journalEmployee"),
     dateFrom: document.getElementById("journalDateFrom"),
     dateTo: document.getElementById("journalDateTo"),
     reset: document.getElementById("journalReset"),
@@ -134,6 +136,17 @@
     elements.page.textContent = `Страница ${state.page} из ${state.pageCount}`;
     elements.previous.disabled = !pagination.has_previous;
     elements.next.disabled = !pagination.has_next;
+    const selectedEmployee = elements.employee.value;
+    const employees = Array.isArray(payload.filters?.employees)
+      ? payload.filters.employees
+      : [];
+    elements.employee.replaceChildren(new Option("Все сотрудники", ""));
+    employees.forEach((employee) => {
+      elements.employee.append(new Option(employee, employee));
+    });
+    if (employees.includes(selectedEmployee)) {
+      elements.employee.value = selectedEmployee;
+    }
   }
 
   function queryUrl(baseUrl, includePage) {
@@ -145,6 +158,8 @@
     const filters = {
       cell_number: elements.cell.value.trim(),
       action: elements.action.value,
+      client_name: elements.client.value.trim(),
+      employee: elements.employee.value,
       date_from: dateFilterValue(elements.dateFrom),
       date_to: dateFilterValue(elements.dateTo),
     };

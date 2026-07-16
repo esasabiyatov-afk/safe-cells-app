@@ -85,6 +85,7 @@ def test_initialization_creates_two_complete_databases(
             "schema_version",
             "vault_defaults",
             "cells",
+            "cell_blocks",
             "tariffs",
             "config",
             "contracts",

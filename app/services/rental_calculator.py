@@ -157,16 +157,21 @@ def calculate_rental_quote_in_connection(
         )
     cell = connection.execute(
         """
-        SELECT cells.number, cells.height_mm, contracts.contract_id
+        SELECT
+            cells.number,
+            cells.height_mm,
+            contracts.contract_id,
+            cell_blocks.block_kind
         FROM cells
         LEFT JOIN contracts ON contracts.cell_number = cells.number
+        LEFT JOIN cell_blocks ON cell_blocks.cell_number = cells.number
         WHERE cells.number = ?
         """,
         (normalized_number,),
     ).fetchone()
     if cell is None:
         raise CellUnavailableError("Ячейка не найдена.")
-    if cell["contract_id"] is not None:
+    if cell["contract_id"] is not None or cell["block_kind"] is not None:
         raise CellUnavailableError(
             "Ячейка уже занята. Обновите главный экран и выберите свободную ячейку."
         )

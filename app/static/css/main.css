@@ -18,6 +18,12 @@
   --overdue: #7d291e;
   --overdue-border: #a34536;
   --overdue-bg: #e8b6ab;
+  --lost-key: #7b4513;
+  --lost-key-border: #a66526;
+  --lost-key-bg: #ead0ae;
+  --bank: #51436c;
+  --bank-border: #74658f;
+  --bank-bg: #ddd8ea;
   --shadow: 0 16px 42px rgba(31, 42, 58, 0.09);
 }
 
@@ -216,14 +222,16 @@ main {
 .occupied-breakdown {
   display: grid;
   flex: 1;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
 }
 
 .occupied-breakdown span { padding-left: 10px; border-left: 3px solid currentcolor; }
 .occupied-breakdown .normal { color: var(--normal); }
 .occupied-breakdown .expiring { color: var(--expiring); }
 .occupied-breakdown .overdue { color: var(--overdue); }
+.occupied-breakdown .lost-key { color: var(--lost-key); }
+.occupied-breakdown .bank { color: var(--bank); }
 .occupied-breakdown small { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .occupied-breakdown b { display: block; margin-top: 3px; font-size: 20px; }
 
@@ -422,7 +430,7 @@ main {
 
 .journal-filters {
   display: grid;
-  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1.2fr) minmax(145px, 1fr) minmax(145px, 1fr) auto;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 10px;
   align-items: end;
   margin-top: 18px;
@@ -459,6 +467,8 @@ main {
 .journal-filter-actions {
   display: flex;
   gap: 8px;
+  grid-column: 3 / 5;
+  justify-content: flex-end;
 }
 
 .journal-results-heading {
@@ -521,6 +531,9 @@ main {
 .journal-action-closed { background: var(--overdue-bg); color: var(--overdue); }
 .journal-action-edited { background: var(--expiring-bg); color: var(--expiring); }
 .journal-action-overdue { background: var(--overdue-bg); color: var(--overdue); }
+.journal-action-bank_occupied,
+.journal-action-bank_released { background: #ddd8ea; color: #51436c; }
+.journal-action-key_restored { background: var(--free-bg); color: var(--free); }
 .journal-entry time { color: var(--ink-soft); font-size: 12px; }
 .journal-client { margin: 9px 0 0; font-size: 13px; font-weight: 700; line-height: 1.45; }
 .journal-summary { margin: 5px 0 0; font-size: 13px; line-height: 1.45; }
@@ -677,6 +690,8 @@ main {
 .legend-dot.normal { background: #2476a8; }
 .legend-dot.expiring { background: #e5a900; }
 .legend-dot.overdue { background: #c83b2d; }
+.legend-dot.lost-key { background: var(--lost-key-border); }
+.legend-dot.bank { background: var(--bank-border); }
 
 .update-meta { display: flex; align-items: center; gap: 14px; }
 .result-count { padding-right: 14px; border-right: 1px solid var(--line); }
@@ -748,6 +763,8 @@ main {
 .cell.normal { --cell-accent: var(--normal-border); background: var(--normal-bg); }
 .cell.expiring { --cell-accent: var(--expiring-border); background: var(--expiring-bg); }
 .cell.overdue { --cell-accent: var(--overdue-border); background: var(--overdue-bg); }
+.cell.lost_key { --cell-accent: var(--lost-key-border); background: var(--lost-key-bg); }
+.cell.bank { --cell-accent: var(--bank-border); background: var(--bank-bg); }
 
 .cell.overdue::after {
   position: absolute;
@@ -1341,6 +1358,42 @@ main {
 .status-badge.normal { background: var(--normal-bg); color: var(--normal); }
 .status-badge.expiring { background: var(--expiring-bg); color: var(--expiring); }
 .status-badge.overdue { background: var(--overdue-bg); color: var(--overdue); }
+.status-badge.lost_key { background: var(--lost-key-bg); color: var(--lost-key); }
+.status-badge.bank { background: var(--bank-bg); color: var(--bank); }
+
+.blocked-card-actions {
+  grid-template-columns: 1fr;
+}
+
+.blocked-card-actions .calculation-error {
+  margin: 0;
+}
+
+.employee-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.employee-choice-card {
+  min-height: 68px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-dark);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  text-align: left;
+}
+
+.employee-choice-card:hover,
+.employee-choice-card:focus-visible,
+.employee-choice-card.is-selected {
+  border-color: var(--normal-border);
+  background: var(--normal-bg);
+  box-shadow: inset 0 0 0 1px var(--normal-border);
+}
 
 .cell-details {
   display: grid;
@@ -1556,6 +1609,10 @@ main {
 }
 
 @media (max-width: 540px) {
+  .employee-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
   .journal-page-header {
     align-items: flex-start;
     flex-direction: column;

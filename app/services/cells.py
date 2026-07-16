@@ -59,6 +59,26 @@ def client_display_name(full_name: str | None) -> str | None:
     return f"{parts[0]} {initials}".strip()
 
 
+def _archived_client_names(
+    settings: Settings, paths: DatabasePaths, contract_ids: set[str]
+) -> dict[str, str]:
+    if not contract_ids:
+        return {}
+    placeholders = ",".join("?" for _ in contract_ids)
+    with open_readonly(
+        paths.archive, busy_timeout_ms=settings.busy_timeout_ms
+    ) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT contract_id, client_full_name
+            FROM contracts_archive
+            WHERE contract_id IN ({placeholders})
+            """,
+            tuple(sorted(contract_ids)),
+        ).fetchall()
+    return {str(row["contract_id"]): str(row["client_full_name"]) for row in rows}
+
+
 def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
     """Return operational fields plus the explicitly approved abbreviated name."""
 
@@ -79,22 +99,49 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                     contracts.start_date,
                     contracts.end_date,
                     contracts.rent_days,
-                    contracts.client_full_name
+                    contracts.client_full_name,
+                    cell_blocks.block_kind,
+                    cell_blocks.source_contract_id
                 FROM cells
                 CROSS JOIN vault_defaults
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
+                LEFT JOIN cell_blocks ON cell_blocks.cell_number = cells.number
                 WHERE vault_defaults.id = 1
                 ORDER BY CAST(cells.number AS INTEGER), cells.number
                 """
             ).fetchall()
+        archived_names = _archived_client_names(
+            settings,
+            paths,
+            {
+                str(row["source_contract_id"])
+                for row in rows
+                if row["block_kind"] == "lost_key"
+                and row["source_contract_id"] is not None
+            },
+        )
     except InvalidStoredDataError:
         raise
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise CellsReadError(NETWORK_ERROR_MESSAGE) from exc
 
     cells: list[dict[str, Any]] = []
-    counts = {"free": 0, "normal": 0, "expiring": 0, "overdue": 0}
+    counts = {
+        "free": 0,
+        "normal": 0,
+        "expiring": 0,
+        "overdue": 0,
+        "lost_key": 0,
+        "bank": 0,
+    }
     for row in rows:
+        block_kind = row["block_kind"]
+        if block_kind not in {None, "lost_key", "bank"}:
+            raise InvalidStoredDataError("Некорректная блокировка ячейки.")
+        if block_kind is not None and row["contract_id"] is not None:
+            raise InvalidStoredDataError(
+                "Ячейка одновременно содержит договор и отдельную блокировку."
+            )
         start_date = _parse_date(row["start_date"])
         end_date = _parse_date(row["end_date"])
         rent_days = int(row["rent_days"]) if row["rent_days"] is not None else None
@@ -112,26 +159,46 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
             total_days = (end_date - start_date).days + 1
         else:
             total_days = None
-        status = calculate_status(
-            end_date=end_date,
-            as_of_date=as_of_date,
-            expiring_soon_days=threshold,
-        )
-        counts[status.status.value] += 1
+        if block_kind == "lost_key":
+            source_contract_id = str(row["source_contract_id"] or "")
+            lost_client_name = archived_names.get(source_contract_id)
+            if not lost_client_name:
+                raise InvalidStoredDataError(
+                    "Для утерянного ключа не найден закрытый договор."
+                )
+            status_value = "lost_key"
+            days_remaining = None
+            display_name = client_display_name(lost_client_name)
+        elif block_kind == "bank":
+            status_value = "bank"
+            days_remaining = None
+            display_name = "Банк"
+        else:
+            status = calculate_status(
+                end_date=end_date,
+                as_of_date=as_of_date,
+                expiring_soon_days=threshold,
+            )
+            status_value = status.status.value
+            days_remaining = status.days_remaining
+            display_name = client_display_name(row["client_full_name"])
+        counts[status_value] += 1
         cells.append(
             {
                 "number": row["number"],
                 "height_mm": int(row["height_mm"]),
                 "width_mm": int(row["width_mm"]),
                 "depth_mm": int(row["depth_mm"]),
-                "status": status.status.value,
+                "status": status_value,
                 "contract_ref": row["contract_id"],
+                "block_kind": block_kind,
+                "source_contract_ref": row["source_contract_id"],
                 "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat() if end_date else None,
                 "rent_days": rent_days,
                 "total_days": total_days,
-                "client_display_name": client_display_name(row["client_full_name"]),
-                "days_remaining": status.days_remaining,
+                "client_display_name": display_name,
+                "days_remaining": days_remaining,
             }
         )
 
@@ -157,12 +224,28 @@ def search_cell_numbers(settings: Settings, *, query: str) -> list[str]:
         ) as connection:
             rows = connection.execute(
                 """
-                SELECT cells.number, contracts.client_full_name, contracts.account_number
+                SELECT
+                    cells.number,
+                    contracts.client_full_name,
+                    contracts.account_number,
+                    cell_blocks.block_kind,
+                    cell_blocks.source_contract_id
                 FROM cells
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
+                LEFT JOIN cell_blocks ON cell_blocks.cell_number = cells.number
                 ORDER BY CAST(cells.number AS INTEGER), cells.number
                 """
             ).fetchall()
+        archived_names = _archived_client_names(
+            settings,
+            paths,
+            {
+                str(row["source_contract_id"])
+                for row in rows
+                if row["block_kind"] == "lost_key"
+                and row["source_contract_id"] is not None
+            },
+        )
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise CellsReadError(NETWORK_ERROR_MESSAGE) from exc
 
@@ -172,6 +255,8 @@ def search_cell_numbers(settings: Settings, *, query: str) -> list[str]:
             str(row["number"]),
             row["client_full_name"] or "",
             row["account_number"] or "",
+            archived_names.get(str(row["source_contract_id"] or ""), ""),
+            "Банк" if row["block_kind"] == "bank" else "",
         )
         if any(normalized_query in value.casefold() for value in searchable_values):
             matches.append(str(row["number"]))

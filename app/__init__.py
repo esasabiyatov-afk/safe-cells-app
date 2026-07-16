@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from secrets import token_urlsafe
 
@@ -12,6 +12,7 @@ from app.config import Settings
 from app.routes import (
     admin_blueprint,
     cells_blueprint,
+    cell_blocks_blueprint,
     closures_blueprint,
     contracts_blueprint,
     editing_blueprint,
@@ -44,6 +45,7 @@ def create_app(settings: Settings) -> Flask:
         BUSY_TIMEOUT_MS=settings.busy_timeout_ms,
         TESTING=settings.testing,
         TODAY_PROVIDER=date.today,
+        NOW_PROVIDER=lambda: datetime.now().astimezone(),
         DOWNLOADS_DIRECTORY_PROVIDER=lambda: Path.home() / "Downloads",
     )
     app.extensions["safe_cells_settings"] = settings
@@ -58,6 +60,7 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(admin_blueprint)
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
+    app.register_blueprint(cell_blocks_blueprint)
     app.register_blueprint(closures_blueprint)
     app.register_blueprint(contracts_blueprint)
     app.register_blueprint(editing_blueprint)

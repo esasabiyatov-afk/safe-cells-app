@@ -99,6 +99,7 @@ class ClosureResult:
     penalty_rate: int
     penalty_amount: int
     deposit_refund: int
+    cell_blocked: bool
     repeated: bool
     backup_created: bool
     warning: str | None = None
@@ -244,6 +245,7 @@ def calculate_closure_quote(
 def _result_from_row(
     row: sqlite3.Row,
     *,
+    cell_blocked: bool,
     repeated: bool,
     backup_created: bool,
     warning: str | None = None,
@@ -259,6 +261,7 @@ def _result_from_row(
         penalty_rate=int(row["penalty_rate_minor"]),
         penalty_amount=int(row["penalty_amount_minor"]),
         deposit_refund=int(row["deposit_refund_minor"]),
+        cell_blocked=cell_blocked,
         repeated=repeated,
         backup_created=backup_created,
         warning=warning,
@@ -279,12 +282,23 @@ def _existing_result(
     if row["cell_number"] != cell_number or row["contract_id"] != contract_ref:
         raise ClosureConflictError("Этот идентификатор операции уже использован.")
     backed_up = has_valid_backup_for_operation(settings, operation_id)
+    block = connection.execute(
+        """
+        SELECT 1 FROM main.cell_blocks
+        WHERE cell_number=? AND block_kind='lost_key' AND source_contract_id=?
+        """,
+        (cell_number, contract_ref),
+    ).fetchone()
     warning = None if backed_up else (
         "Закрытие уже сохранено, но комплект резервной копии не найден. "
         "Сообщите администратору."
     )
     return _result_from_row(
-        row, repeated=True, backup_created=backed_up, warning=warning
+        row,
+        cell_blocked=block is not None,
+        repeated=True,
+        backup_created=backed_up,
+        warning=warning,
     )
 
 
@@ -352,7 +366,13 @@ def close_contract(
                 connection.rollback()
                 return existing
             current = connection.execute(
-                "SELECT end_date FROM main.contracts WHERE contract_id=? AND cell_number=?",
+                """
+                SELECT contracts.end_date, cell_blocks.block_kind
+                FROM main.contracts
+                LEFT JOIN main.cell_blocks
+                    ON cell_blocks.cell_number=contracts.cell_number
+                WHERE contracts.contract_id=? AND contracts.cell_number=?
+                """,
                 (ref, cell),
             ).fetchone()
             if current is None:
@@ -362,6 +382,10 @@ def close_contract(
             if str(current["end_date"]) != expected_end:
                 raise ClosureConflictError(
                     "Дата окончания уже изменилась. Обновите карточку и повторите расчёт."
+                )
+            if current["block_kind"] is not None:
+                raise ClosureConflictError(
+                    "Состояние ячейки изменилось. Обновите главный экран."
                 )
             quote, contract = calculate_closure_quote_in_connection(
                 connection, cell_number=cell, contract_ref=ref,
@@ -413,6 +437,15 @@ def close_contract(
             )
             if deleted.rowcount != 1:
                 raise ClosureConflictError("Договор уже изменился. Обновите главный экран.")
+            if reason == "lost_key":
+                connection.execute(
+                    """
+                    INSERT INTO main.cell_blocks(
+                        cell_number, block_kind, source_contract_id, created_at, created_by
+                    ) VALUES(?, 'lost_key', ?, ?, ?)
+                    """,
+                    (cell, ref, timestamp, employee_name),
+                )
             phase = "committing"
             connection.commit()
             phase = "verifying"
@@ -423,7 +456,15 @@ def close_contract(
             active = connection.execute(
                 "SELECT 1 FROM main.contracts WHERE contract_id=?", (ref,)
             ).fetchone()
-            if saved is None or active is not None:
+            block = connection.execute(
+                """
+                SELECT 1 FROM main.cell_blocks
+                WHERE cell_number=? AND block_kind='lost_key' AND source_contract_id=?
+                """,
+                (cell, ref),
+            ).fetchone()
+            expected_block = reason == "lost_key"
+            if saved is None or active is not None or (block is not None) != expected_block:
                 raise ClosureWriteUncertainError(UNCERTAIN_MESSAGE)
             phase = "backup"
             backed_up = True
@@ -439,7 +480,11 @@ def close_contract(
                     "Сообщите администратору."
                 )
             return _result_from_row(
-                saved, repeated=False, backup_created=backed_up, warning=warning
+                saved,
+                cell_blocked=expected_block,
+                repeated=False,
+                backup_created=backed_up,
+                warning=warning,
             )
     except (ClosureValidationError, ClosureConflictError, ClosureWriteUncertainError):
         raise

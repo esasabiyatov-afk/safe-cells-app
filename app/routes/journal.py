@@ -42,6 +42,8 @@ def journal_list():
             action=request.args.get("action"),
             date_from=request.args.get("date_from"),
             date_to=request.args.get("date_to"),
+            client_name=request.args.get("client_name"),
+            employee=request.args.get("employee"),
             page=request.args.get("page"),
             page_size=request.args.get("page_size"),
         )
@@ -62,6 +64,8 @@ def journal_report():
         "action": request.args.get("action"),
         "date_from": request.args.get("date_from"),
         "date_to": request.args.get("date_to"),
+        "client_name": request.args.get("client_name"),
+        "employee": request.args.get("employee"),
     }
     try:
         entries = list_journal_report_entries(_settings(), **filters)

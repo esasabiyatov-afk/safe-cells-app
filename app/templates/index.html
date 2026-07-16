@@ -20,6 +20,9 @@
   data-renewal-url="{{ url_for('renewals.confirm') }}"
   data-closure-quote-url="{{ url_for('closures.calculate') }}"
   data-closure-url="{{ url_for('closures.confirm') }}"
+  data-cell-block-bank-url="{{ url_for('cell_blocks.occupy_bank') }}"
+  data-cell-block-release-url="{{ url_for('cell_blocks.release', block_kind='__BLOCK_KIND__') }}"
+  data-lost-key-client-url="{{ url_for('cell_blocks.lost_key_client') }}"
   data-document-templates-url="{{ url_for('documents.templates') }}"
   data-document-generate-url="{{ url_for('documents.generate') }}"
   data-employee-directory-url="{{ url_for('employee.directory') }}"
@@ -57,6 +60,8 @@
           <span class="normal"><small>В норме</small><b id="statNormal">—</b></span>
           <span class="expiring"><small>Истекает</small><b id="statExpiring">—</b></span>
           <span class="overdue"><small>Просрочено</small><b id="statOverdue">—</b></span>
+          <span class="lost-key"><small>Ключ утерян</small><b id="statLostKey">—</b></span>
+          <span class="bank"><small>Банк</small><b id="statBank">—</b></span>
         </div>
       </article>
     </section>
@@ -100,6 +105,8 @@
             <option value="normal">В норме</option>
             <option value="expiring">Истекает</option>
             <option value="overdue">Просрочена</option>
+            <option value="lost_key">Ключ утерян</option>
+            <option value="bank">Занята банком</option>
           </select>
         </label>
 
@@ -122,6 +129,8 @@
           <span><i class="legend-dot normal"></i>В норме</span>
           <span><i class="legend-dot expiring"></i>Истекает</span>
           <span><i class="legend-dot overdue"></i>Просрочена</span>
+          <span><i class="legend-dot lost-key"></i>Ключ утерян</span>
+          <span><i class="legend-dot bank"></i>Занята банком</span>
         </div>
         <div class="update-meta"><p class="result-count" id="resultCount">Загрузка…</p><p class="updated-at" id="updatedAt">Данные ещё не получены</p></div>
       </div>
@@ -152,7 +161,7 @@
 
   <dialog class="cell-dialog occupied-card" id="cellDialog" aria-labelledby="dialogTitle">
     <button class="dialog-close" id="dialogClose" type="button" aria-label="Закрыть карточку">×</button>
-    <p class="section-kicker">Карточка занятой ячейки</p>
+    <p class="section-kicker" id="cellDialogKicker">Карточка занятой ячейки</p>
     <div class="occupied-card-heading">
       <div><h2 id="dialogTitle">—</h2><p class="dialog-dimensions" id="dialogSize">—</p></div>
       <span class="status-badge" id="dialogStatus">—</span>
@@ -180,7 +189,7 @@
       </div>
     </dl>
 
-    <section class="private-card-section" aria-labelledby="privateSectionTitle">
+    <section class="private-card-section" id="privateCardSection" aria-labelledby="privateSectionTitle">
       <div class="private-card-heading">
         <div>
           <h3 id="privateSectionTitle">Данные клиента и договора</h3>
@@ -206,11 +215,15 @@
       </section>
     </section>
 
-    <div class="card-actions" aria-label="Действия с договором">
+    <div class="card-actions" id="contractCardActions" aria-label="Действия с договором">
       <button class="primary-button" id="renewAction" type="button">Продлить</button>
       <button id="closeAction" type="button">Закрыть договор</button>
       <button id="editAction" type="button">Редактировать данные</button>
       <button id="documentAction" type="button">Повторно сформировать документ</button>
+    </div>
+    <div class="card-actions blocked-card-actions" id="blockedCardActions" hidden>
+      <div class="calculation-error" id="blockedActionError" role="alert" hidden></div>
+      <button class="primary-button" id="blockReleaseAction" type="button">Освободить ячейку</button>
     </div>
   </dialog>
 
@@ -232,10 +245,9 @@
     <p class="dialog-note" id="employeeDialogNote">Выберите своё имя. Оно будет записано в операции и подставлено в документы.</p>
     <form id="employeeForm">
       <div class="calculation-error" id="employeeError" role="alert" hidden></div>
-      <label class="contract-field contract-field--wide"><span>Сотрудник *</span><select id="employeeDialogSelect" required><option value="">Выберите сотрудника</option></select></label>
+      <div class="employee-choice-grid" id="employeeChoices" role="group" aria-label="Выбор сотрудника"></div>
       <div class="dialog-actions">
         <button class="secondary-button" id="employeeOpenSettings" type="button" hidden>Открыть настройки</button>
-        <button class="primary-button" id="employeeSubmit" type="submit">Начать работу</button>
       </div>
     </form>
   </dialog>
@@ -538,6 +550,7 @@
 
       <div class="rental-actions">
         <button class="secondary-button" id="rentalBack" type="button">Назад</button>
+        <button class="secondary-button bank-occupy-button" id="bankOccupy" type="button">Занять банком</button>
         <button class="primary-button" id="rentalContinue" type="button" disabled>Продолжить оформление</button>
       </div>
       <p class="dialog-note">До окончательного подтверждения данные в базу не записываются.</p>

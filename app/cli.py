@@ -7,13 +7,18 @@ from datetime import datetime
 from pathlib import Path
 
 from app.config import ConfigError, load_settings
-from app.db.migrations import DatabaseMigrationError, migrate_v2_to_v3
+from app.db.migrations import (
+    DatabaseMigrationError,
+    migrate_v2_to_v3,
+    migrate_v3_to_v4,
+)
 from app.db.schema import DatabaseInitializationError, initialize_databases
 from app.db.seed import SeedDataError
 
 
 CONFIRMATION_TEXT = "INITIALIZE"
 MIGRATION_CONFIRMATION_TEXT = "MIGRATE-TO-3"
+MIGRATION_V4_CONFIRMATION_TEXT = "MIGRATE-TO-4"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,6 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_parser.add_argument("--config", type=Path, required=True)
     migrate_parser.add_argument("--confirm", required=True)
+    migrate_v4_parser = subparsers.add_parser(
+        "migrate-v4", description="Явно обновить обе базы со схемы 3 до схемы 4."
+    )
+    migrate_v4_parser.add_argument("--config", type=Path, required=True)
+    migrate_v4_parser.add_argument("--confirm", required=True)
     return parser
 
 
@@ -69,6 +79,21 @@ def main(argv: list[str] | None = None) -> int:
         except (ConfigError, DatabaseMigrationError) as exc:
             parser.error(str(exc))
         action = "обновлены" if result.changed else "уже соответствуют версии 3"
+        print(f"Базы {action}. Версия схемы: {result.to_version}.")
+        return 0
+    if args.command == "migrate-v4":
+        if args.confirm != MIGRATION_V4_CONFIRMATION_TEXT:
+            parser.error(
+                f"Для миграции укажите --confirm {MIGRATION_V4_CONFIRMATION_TEXT}."
+            )
+        try:
+            settings = load_settings(args.config)
+            result = migrate_v3_to_v4(
+                settings, occurred_at=datetime.now().astimezone()
+            )
+        except (ConfigError, DatabaseMigrationError) as exc:
+            parser.error(str(exc))
+        action = "обновлены" if result.changed else "уже соответствуют версии 4"
         print(f"Базы {action}. Версия схемы: {result.to_version}.")
         return 0
     parser.error("Неизвестная команда.")

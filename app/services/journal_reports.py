@@ -41,6 +41,10 @@ def _filter_text(filters: Mapping[str, object]) -> str:
         parts.append(f"ячейка № {filters['cell_number']}")
     if filters.get("action_label"):
         parts.append(f"действие: {filters['action_label']}")
+    if filters.get("client_name"):
+        parts.append(f"клиент: {filters['client_name']}")
+    if filters.get("employee"):
+        parts.append(f"сотрудник: {filters['employee']}")
     if filters.get("date_from"):
         parts.append(f"с {_display_filter_date(filters['date_from'])}")
     if filters.get("date_to"):
