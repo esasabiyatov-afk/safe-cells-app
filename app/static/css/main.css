@@ -395,8 +395,16 @@ main {
   gap: 8px;
 }
 
-.journal-message {
+.journal-results-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   margin: 16px 0 10px;
+}
+
+.journal-message {
+  margin: 0;
   color: var(--ink-soft);
   font-size: 13px;
 }
@@ -440,7 +448,8 @@ main {
 .journal-action-closed { background: var(--overdue-bg); color: var(--overdue); }
 .journal-action-edited { background: var(--expiring-bg); color: var(--expiring); }
 .journal-entry time { color: var(--ink-soft); font-size: 12px; }
-.journal-summary { margin: 9px 0 0; font-size: 13px; line-height: 1.45; }
+.journal-client { margin: 9px 0 0; font-size: 13px; font-weight: 700; line-height: 1.45; }
+.journal-summary { margin: 5px 0 0; font-size: 13px; line-height: 1.45; }
 .journal-employee { margin: 5px 0 0; color: var(--ink-soft); font-size: 12px; }
 .journal-empty { padding: 28px; border: 1px dashed var(--line-dark); text-align: center; color: var(--ink-soft); }
 

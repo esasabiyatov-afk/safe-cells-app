@@ -26,6 +26,7 @@
   data-employee-directory-url="{{ url_for('employee.directory') }}"
   data-employee-select-url="{{ url_for('employee.select') }}"
   data-journal-url="{{ url_for('journal.journal_list') }}"
+  data-journal-report-url="{{ url_for('journal.journal_report') }}"
   data-private-token="{{ private_token }}"
   data-admin-status-url="{{ url_for('admin.status') }}"
   data-admin-setup-url="{{ url_for('admin.setup') }}"
@@ -156,7 +157,7 @@
     <button class="dialog-close" id="journalClose" type="button" aria-label="Закрыть журнал">×</button>
     <p class="section-kicker">История операций</p>
     <h2 id="journalTitle">Общий журнал ячеек</h2>
-    <p class="dialog-note">Журнал показывает операции по всем ячейкам без персональных данных клиентов.</p>
+    <p class="dialog-note">Журнал показывает ФИО клиента, но не показывает исправления, ID-карту и номер счёта.</p>
 
     <form class="journal-filters" id="journalFilters">
       <label>
@@ -169,7 +170,6 @@
           <option value="">Все действия</option>
           <option value="contract.created">Занятие</option>
           <option value="contract.renewed">Продление</option>
-          <option value="contract.edited">Исправление данных</option>
           <option value="contract.closed">Закрытие</option>
         </select>
       </label>
@@ -187,7 +187,10 @@
       </div>
     </form>
 
-    <div class="journal-message" id="journalMessage" role="status">Загрузка журнала…</div>
+    <div class="journal-results-heading">
+      <div class="journal-message" id="journalMessage" role="status">Загрузка журнала…</div>
+      <button class="secondary-button" id="journalReport" type="button">Скачать отчёт Excel</button>
+    </div>
     <div class="journal-list" id="journalList" aria-live="polite" aria-busy="false"></div>
     <div class="journal-empty" id="journalEmpty" hidden>По выбранным условиям операций не найдено.</div>
     <div class="journal-pagination">

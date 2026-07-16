@@ -12,6 +12,7 @@
     dateFrom: document.getElementById("journalDateFrom"),
     dateTo: document.getElementById("journalDateTo"),
     reset: document.getElementById("journalReset"),
+    report: document.getElementById("journalReport"),
     message: document.getElementById("journalMessage"),
     list: document.getElementById("journalList"),
     empty: document.getElementById("journalEmpty"),
@@ -30,6 +31,7 @@
     elements.filters.querySelectorAll("button, input, select").forEach((control) => {
       control.disabled = busy;
     });
+    elements.report.disabled = busy;
     if (busy) {
       elements.message.textContent = "Загрузка журнала…";
     }
@@ -98,11 +100,15 @@
     summary.className = "journal-summary";
     summary.textContent = entry.summary;
 
+    const client = document.createElement("p");
+    client.className = "journal-client";
+    client.textContent = `Клиент: ${entry.client_full_name}`;
+
     const employee = document.createElement("p");
     employee.className = "journal-employee";
     employee.textContent = `Сотрудник: ${entry.employee}`;
 
-    article.append(heading, summary, employee);
+    article.append(heading, client, summary, employee);
     return article;
   }
 
@@ -123,8 +129,12 @@
     elements.next.disabled = !pagination.has_next;
   }
 
-  function queryUrl() {
-    const parameters = new URLSearchParams({ page: String(state.page), page_size: "50" });
+  function queryUrl(baseUrl, includePage) {
+    const parameters = new URLSearchParams();
+    if (includePage) {
+      parameters.set("page", String(state.page));
+      parameters.set("page_size", "50");
+    }
     const filters = {
       cell_number: elements.cell.value.trim(),
       action: elements.action.value,
@@ -134,14 +144,15 @@
     Object.entries(filters).forEach(([key, value]) => {
       if (value) parameters.set(key, value);
     });
-    return `${elements.body.dataset.journalUrl}?${parameters.toString()}`;
+    const query = parameters.toString();
+    return query ? `${baseUrl}?${query}` : baseUrl;
   }
 
   async function loadJournal() {
     if (state.busy) return;
     setBusy(true);
     try {
-      const response = await fetch(queryUrl(), { cache: "no-store" });
+      const response = await fetch(queryUrl(elements.body.dataset.journalUrl, true), { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) {
         if (payload.selection_required) {
@@ -164,6 +175,38 @@
     }
   }
 
+  async function downloadReport() {
+    if (state.busy) return;
+    setBusy(true);
+    elements.message.textContent = "Формирование отчёта Excel…";
+    try {
+      const response = await fetch(
+        queryUrl(elements.body.dataset.journalReportUrl, false),
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.message || "Не удалось сформировать отчёт");
+      }
+      const report = await response.blob();
+      const downloadUrl = URL.createObjectURL(report);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = "Выписка_по_ячейкам.xlsx";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      elements.message.textContent = "Отчёт Excel сформирован по выбранным условиям.";
+    } catch (error) {
+      elements.message.textContent = error instanceof Error
+        ? error.message
+        : "Не удалось сформировать отчёт";
+    } finally {
+      setBusy(false);
+    }
+  }
+
   elements.open.addEventListener("click", () => {
     if (!elements.employee.value) {
       if (!elements.employeeDialog.open) elements.employeeDialog.showModal();
@@ -175,6 +218,7 @@
   });
 
   elements.close.addEventListener("click", () => elements.dialog.close());
+  elements.report.addEventListener("click", downloadReport);
   elements.dialog.addEventListener("cancel", (event) => event.preventDefault());
   elements.filters.addEventListener("submit", (event) => {
     event.preventDefault();

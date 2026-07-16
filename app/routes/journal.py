@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, request
+from io import BytesIO
+
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from app.config import Settings
 from app.services.journal import (
     JournalReadError,
     JournalValidationError,
+    ACTION_LABELS,
     list_journal_entries,
+    list_journal_report_entries,
 )
+from app.services.journal_reports import REPORT_MIMETYPE, build_journal_report
 
 
 journal_blueprint = Blueprint("journal", __name__, url_prefix="/api/journal")
@@ -38,3 +43,41 @@ def journal_list():
     except JournalReadError as exc:
         return jsonify({"message": str(exc)}), 503
     return jsonify(payload)
+
+
+@journal_blueprint.get("/report")
+def journal_report():
+    """Download the current journal selection as a real XLSX workbook."""
+
+    current_app.config["EMPLOYEE_PROVIDER"]()
+    filters = {
+        "cell_number": request.args.get("cell_number"),
+        "action": request.args.get("action"),
+        "date_from": request.args.get("date_from"),
+        "date_to": request.args.get("date_to"),
+    }
+    try:
+        entries = list_journal_report_entries(_settings(), **filters)
+        action = filters["action"]
+        report_filters = {
+            **filters,
+            "action_label": ACTION_LABELS.get(action, "") if action else "",
+        }
+        generated_on = current_app.config["TODAY_PROVIDER"]()
+        report = build_journal_report(
+            entries,
+            generated_on=generated_on,
+            filters=report_filters,
+        )
+    except JournalValidationError as exc:
+        return jsonify({"message": str(exc)}), 400
+    except JournalReadError as exc:
+        return jsonify({"message": str(exc)}), 503
+
+    return send_file(
+        BytesIO(report),
+        mimetype=REPORT_MIMETYPE,
+        as_attachment=True,
+        download_name=f"Выписка_по_ячейкам_{generated_on.isoformat()}.xlsx",
+        max_age=0,
+    )

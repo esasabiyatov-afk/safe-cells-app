@@ -1,10 +1,11 @@
-"""Read-only, privacy-safe view of the shared cell operation journal."""
+"""Read-only view of the shared cell operation journal."""
 
 from __future__ import annotations
 
 from datetime import date
 import json
 import math
+from pathlib import Path
 import sqlite3
 from typing import Any
 
@@ -18,13 +19,13 @@ from app.db.connections import (
 
 
 ACTION_LABELS = {
-    "contract.created": "Ячейка занята",
+    "contract.created": "Занятие ячейки",
     "contract.renewed": "Договор продлён",
-    "contract.edited": "Данные исправлены",
     "contract.closed": "Договор закрыт",
 }
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
+MAX_REPORT_ROWS = 20_000
 
 
 class JournalValidationError(ValueError):
@@ -32,7 +33,7 @@ class JournalValidationError(ValueError):
 
 
 class JournalReadError(RuntimeError):
-    """The archive database could not be read."""
+    """The journal databases could not be read."""
 
 
 def _optional_text(value: object, *, maximum: int, label: str) -> str | None:
@@ -118,13 +119,13 @@ def _summary(action: str, raw_changes: object) -> str:
         return "; ".join(parts) or "Открыт новый договор аренды."
 
     if action == "contract.renewed":
-        old_end = _display_date(changes.get("old_end_date"))
+        new_start = _display_date(changes.get("new_start_date"))
         new_end = _display_date(changes.get("new_end_date"))
         days = _safe_nonnegative_integer(changes.get("renewal_days"))
         penalty_days = _safe_nonnegative_integer(changes.get("penalty_days"))
         parts = []
-        if old_end and new_end:
-            parts.append(f"Окончание: {old_end} → {new_end}")
+        if new_start and new_end:
+            parts.append(f"Период продления: {new_start} — {new_end}")
         if days is not None:
             parts.append(f"Продление: {days} дн.")
         if penalty_days:
@@ -150,7 +151,114 @@ def _summary(action: str, raw_changes: object) -> str:
             parts.append(f"Просрочка: {penalty_days} дн.")
         return "; ".join(parts) or "Договор закрыт, ячейка освобождена."
 
-    return "Исправлены данные активного договора без изменения срока и сумм."
+    return "Операция по договору."
+
+
+def _validated_filters(
+    *,
+    cell_number: object = None,
+    action: object = None,
+    date_from: object = None,
+    date_to: object = None,
+) -> tuple[str | None, str | None, date | None, date | None]:
+    cell = _optional_text(cell_number, maximum=50, label="Номер ячейки")
+    action_code = _optional_text(action, maximum=40, label="Действие")
+    if action_code is not None and action_code not in ACTION_LABELS:
+        raise JournalValidationError("Выберите допустимое действие журнала.")
+    start = _optional_date(date_from, label="Дату начала")
+    end = _optional_date(date_to, label="Дату окончания")
+    if start is not None and end is not None and end < start:
+        raise JournalValidationError("Дата окончания фильтра раньше даты начала.")
+    return cell, action_code, start, end
+
+
+def _where_clause(
+    cell: str | None,
+    action_code: str | None,
+    start: date | None,
+    end: date | None,
+) -> tuple[str, list[object]]:
+    clauses = [
+        "log.cell_number IS NOT NULL",
+        f"log.action IN ({','.join('?' for _ in ACTION_LABELS)})",
+    ]
+    parameters: list[object] = list(ACTION_LABELS)
+    if cell is not None:
+        clauses.append("log.cell_number = ?")
+        parameters.append(cell)
+    if action_code is not None:
+        clauses.append("log.action = ?")
+        parameters.append(action_code)
+    if start is not None:
+        clauses.append("substr(log.occurred_at, 1, 10) >= ?")
+        parameters.append(start.isoformat())
+    if end is not None:
+        clauses.append("substr(log.occurred_at, 1, 10) <= ?")
+        parameters.append(end.isoformat())
+    return " AND ".join(clauses), parameters
+
+
+def _readonly_uri(path: Path) -> str:
+    return f"{path.absolute().as_uri()}?mode=ro"
+
+
+def _entry(row: sqlite3.Row) -> dict[str, str]:
+    client_name = str(row["client_full_name"] or "").strip()
+    return {
+        "occurred_at": str(row["occurred_at"]),
+        "employee": str(row["employee"]),
+        "cell_number": str(row["cell_number"]),
+        "client_full_name": client_name or "Клиент не найден",
+        "action": str(row["action"]),
+        "action_label": ACTION_LABELS[str(row["action"])],
+        "summary": _summary(str(row["action"]), row["changes_json"]),
+    }
+
+
+def _read_entries(
+    settings: Settings,
+    *,
+    where_sql: str,
+    parameters: list[object],
+    limit: int,
+    offset: int = 0,
+) -> tuple[int, list[dict[str, str]]]:
+    paths = validate_database_pair(settings)
+    with open_readonly(
+        paths.archive, busy_timeout_ms=settings.busy_timeout_ms
+    ) as connection:
+        connection.execute(
+            "ATTACH DATABASE ? AS working", (_readonly_uri(paths.working),)
+        )
+        connection.execute("BEGIN")
+        rows = connection.execute(
+            f"""
+            SELECT
+                log.occurred_at,
+                log.employee,
+                log.action,
+                log.cell_number,
+                log.changes_json,
+                COALESCE(active.client_full_name, archived.client_full_name)
+                    AS client_full_name
+            FROM log
+            LEFT JOIN working.contracts AS active
+                ON active.contract_id = log.contract_id
+            LEFT JOIN contracts_archive AS archived
+                ON archived.contract_id = log.contract_id
+            WHERE {where_sql}
+            ORDER BY log.occurred_at DESC, log.rowid DESC
+            LIMIT ? OFFSET ?
+            """,
+            (*parameters, limit, offset),
+        ).fetchall()
+        total = int(
+            connection.execute(
+                f"SELECT COUNT(*) FROM log WHERE {where_sql}", parameters
+            ).fetchone()[0]
+        )
+        connection.rollback()
+    return total, [_entry(row) for row in rows]
 
 
 def list_journal_entries(
@@ -163,73 +271,31 @@ def list_journal_entries(
     page: object = 1,
     page_size: object = DEFAULT_PAGE_SIZE,
 ) -> dict[str, Any]:
-    """Return one filtered page of cell-related audit entries without client data."""
+    """Return one filtered page of cell events with the client's full name."""
 
-    cell = _optional_text(cell_number, maximum=50, label="Номер ячейки")
-    action_code = _optional_text(action, maximum=40, label="Действие")
-    if action_code is not None and action_code not in ACTION_LABELS:
-        raise JournalValidationError("Выберите допустимое действие журнала.")
-    start = _optional_date(date_from, label="Дату начала")
-    end = _optional_date(date_to, label="Дату окончания")
-    if start is not None and end is not None and end < start:
-        raise JournalValidationError("Дата окончания фильтра раньше даты начала.")
+    cell, action_code, start, end = _validated_filters(
+        cell_number=cell_number,
+        action=action,
+        date_from=date_from,
+        date_to=date_to,
+    )
     page_number = _positive_integer(page, default=1, maximum=1_000_000, label="Страница")
     size = _positive_integer(
         page_size, default=DEFAULT_PAGE_SIZE, maximum=MAX_PAGE_SIZE, label="Размер страницы"
     )
-
-    clauses = ["cell_number IS NOT NULL", f"action IN ({','.join('?' for _ in ACTION_LABELS)})"]
-    parameters: list[object] = list(ACTION_LABELS)
-    if cell is not None:
-        clauses.append("cell_number = ?")
-        parameters.append(cell)
-    if action_code is not None:
-        clauses.append("action = ?")
-        parameters.append(action_code)
-    if start is not None:
-        clauses.append("substr(occurred_at, 1, 10) >= ?")
-        parameters.append(start.isoformat())
-    if end is not None:
-        clauses.append("substr(occurred_at, 1, 10) <= ?")
-        parameters.append(end.isoformat())
-    where_sql = " AND ".join(clauses)
+    where_sql, parameters = _where_clause(cell, action_code, start, end)
 
     try:
-        paths = validate_database_pair(settings)
-        with open_readonly(
-            paths.archive, busy_timeout_ms=settings.busy_timeout_ms
-        ) as connection:
-            total = int(
-                connection.execute(
-                    f"SELECT COUNT(*) FROM log WHERE {where_sql}", parameters
-                ).fetchone()[0]
-            )
-            rows = connection.execute(
-                f"""
-                SELECT occurred_at, employee, action, cell_number, changes_json
-                FROM log
-                WHERE {where_sql}
-                ORDER BY occurred_at DESC, rowid DESC
-                LIMIT ? OFFSET ?
-                """,
-                (*parameters, size, (page_number - 1) * size),
-            ).fetchall()
-    except JournalValidationError:
-        raise
+        total, entries = _read_entries(
+            settings,
+            where_sql=where_sql,
+            parameters=parameters,
+            limit=size,
+            offset=(page_number - 1) * size,
+        )
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise JournalReadError(NETWORK_ERROR_MESSAGE) from exc
 
-    entries = [
-        {
-            "occurred_at": str(row["occurred_at"]),
-            "employee": str(row["employee"]),
-            "cell_number": str(row["cell_number"]),
-            "action": str(row["action"]),
-            "action_label": ACTION_LABELS[str(row["action"])],
-            "summary": _summary(str(row["action"]), row["changes_json"]),
-        }
-        for row in rows
-    ]
     page_count = max(1, math.ceil(total / size))
     return {
         "entries": entries,
@@ -242,3 +308,36 @@ def list_journal_entries(
             "has_next": page_number < page_count,
         },
     }
+
+
+def list_journal_report_entries(
+    settings: Settings,
+    *,
+    cell_number: object = None,
+    action: object = None,
+    date_from: object = None,
+    date_to: object = None,
+) -> list[dict[str, str]]:
+    """Return the complete filtered selection for one controlled XLSX report."""
+
+    cell, action_code, start, end = _validated_filters(
+        cell_number=cell_number,
+        action=action,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    where_sql, parameters = _where_clause(cell, action_code, start, end)
+    try:
+        total, entries = _read_entries(
+            settings,
+            where_sql=where_sql,
+            parameters=parameters,
+            limit=MAX_REPORT_ROWS + 1,
+        )
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise JournalReadError(NETWORK_ERROR_MESSAGE) from exc
+    if total > MAX_REPORT_ROWS:
+        raise JournalValidationError(
+            "В отчёте слишком много записей. Уточните период или номер ячейки."
+        )
+    return entries
