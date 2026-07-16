@@ -12,13 +12,14 @@ from uuid import UUID, uuid4
 
 from app.config import Settings
 from app.db.connections import (
+    DatabaseCorruptionError,
     DatabaseUnavailableError,
     NETWORK_ERROR_MESSAGE,
     open_readonly,
     open_write,
     validate_database_pair,
 )
-from app.services.backups import create_backup_pair
+from app.services.backups import create_backup_pair, has_valid_backup_for_operation
 from app.services.penalty_rates import (
     PenaltyRateConfigurationError,
     resolve_penalty_rate,
@@ -277,11 +278,7 @@ def _existing_result(
         return None
     if row["cell_number"] != cell_number or row["contract_id"] != contract_ref:
         raise ClosureConflictError("Этот идентификатор операции уже использован.")
-    directory = settings.database_directory / "backups"
-    backed_up = (
-        any(directory.glob(f"*_{operation_id}.working.sqlite3"))
-        and any(directory.glob(f"*_{operation_id}.archive.sqlite3"))
-    )
+    backed_up = has_valid_backup_for_operation(settings, operation_id)
     warning = None if backed_up else (
         "Закрытие уже сохранено, но комплект резервной копии не найден. "
         "Сообщите администратору."
@@ -446,6 +443,8 @@ def close_contract(
             )
     except (ClosureValidationError, ClosureConflictError, ClosureWriteUncertainError):
         raise
+    except DatabaseCorruptionError as exc:
+        raise ClosureNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise ClosureNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.IntegrityError as exc:

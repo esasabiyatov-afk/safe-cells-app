@@ -12,11 +12,12 @@ from uuid import UUID, uuid4
 
 from app.config import Settings
 from app.db.connections import (
+    DatabaseCorruptionError,
     DatabaseUnavailableError,
     NETWORK_ERROR_MESSAGE,
     open_write,
 )
-from app.services.backups import create_backup_pair
+from app.services.backups import create_backup_pair, has_valid_backup_for_operation
 from app.services.rental_calculator import (
     CellUnavailableError,
     RentalDataError,
@@ -226,14 +227,7 @@ def _existing_operation_result(
     ).fetchone()
     if row is None:
         raise ContractWriteUncertainError(UNCERTAIN_MESSAGE)
-    backup_directory = settings.database_directory / "backups"
-    working_backup = any(
-        backup_directory.glob(f"*_{data.operation_id}.working.sqlite3")
-    )
-    archive_backup = any(
-        backup_directory.glob(f"*_{data.operation_id}.archive.sqlite3")
-    )
-    backup_created = working_backup and archive_backup
+    backup_created = has_valid_backup_for_operation(settings, data.operation_id)
     warning = None
     if not backup_created:
         warning = (
@@ -405,6 +399,8 @@ def create_contract(
         raise
     except ContractWriteUncertainError:
         raise
+    except DatabaseCorruptionError as exc:
+        raise ContractNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise ContractNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.IntegrityError as exc:

@@ -2,7 +2,7 @@
 
 (() => {
   const body = document.body;
-  const state = {configured: null, accessMode: "password", token: null, snapshot: null, busy: false};
+  const state = {configured: null, accessMode: "password", recoveryMode: false, token: null, snapshot: null, backups: null, busy: false};
   const elements = {
     open: document.getElementById("adminOpen"), dialog: document.getElementById("adminDialog"), close: document.getElementById("adminDialogClose"),
     authForm: document.getElementById("adminAuthForm"), authNote: document.getElementById("adminAuthNote"), authError: document.getElementById("adminAuthError"),
@@ -21,6 +21,7 @@
     employeeName: document.getElementById("adminEmployeeName"), employeeAdd: document.getElementById("adminEmployeeAdd"),
     accessForm: document.getElementById("adminAccessForm"), accessPassword: document.getElementById("adminAccessPassword"), accessAcknowledgement: document.getElementById("adminAccessAcknowledgement"), accessSubmit: document.getElementById("adminAccessSubmit"),
     passwordForm: document.getElementById("adminPasswordForm"), currentPassword: document.getElementById("adminCurrentPassword"), newPassword: document.getElementById("adminNewPassword"), newPasswordConfirm: document.getElementById("adminNewPasswordConfirm"), passwordSubmit: document.getElementById("adminPasswordSubmit"),
+    backupStatus: document.getElementById("adminBackupStatus"), backupRows: document.getElementById("adminBackupRows"), backupCheck: document.getElementById("adminBackupCheck"),
   };
 
   const operationId = () => crypto.randomUUID();
@@ -52,6 +53,12 @@
     for (const panel of elements.panels) panel.hidden = panel.dataset.adminPanel !== name;
   }
 
+  function updateTabAvailability() {
+    for (const tab of elements.tabs) {
+      tab.disabled = state.recoveryMode && tab.dataset.adminTab !== "backups";
+    }
+  }
+
   function setAuthMode() {
     const acknowledgement = state.accessMode === "acknowledgement";
     const setup = !acknowledgement && state.configured === false;
@@ -63,7 +70,12 @@
     elements.passwordConfirm.required = setup;
     elements.acknowledgementField.hidden = !acknowledgement;
     elements.acknowledgement.required = acknowledgement;
-    if (acknowledgement) {
+    if (state.recoveryMode) {
+      elements.authNote.textContent = acknowledgement
+        ? "База недоступна. Подтвердите вход в контролируемый режим восстановления по последнему проверенному комплекту."
+        : "База недоступна. Введите общий пароль для контролируемого восстановления из последнего проверенного комплекта.";
+      elements.authSubmit.textContent = "Открыть режим восстановления";
+    } else if (acknowledgement) {
       elements.authNote.textContent = "Пароль не требуется. Подтвердите, что административные параметры меняет руководитель отдела.";
       elements.authSubmit.textContent = "Принять и открыть настройки";
     } else if (setup) {
@@ -196,6 +208,46 @@
     renderTariffs(); renderTemplates(); renderEmployees();
   }
 
+  function formatBytes(value) {
+    if (!Number.isFinite(value)) return "—";
+    if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} КБ`;
+    return `${(value / 1024 / 1024).toFixed(1)} МБ`;
+  }
+
+  function renderBackups() {
+    const snapshot = state.backups;
+    elements.backupRows.replaceChildren();
+    elements.backupStatus.replaceChildren();
+    const integrity = document.createElement("strong");
+    integrity.textContent = snapshot.integrity.write_blocked
+      ? "Запись заблокирована: обнаружено повреждение базы"
+      : snapshot.integrity.working === "ok" && snapshot.integrity.archive === "ok"
+        ? "Обе активные базы прошли quick_check"
+        : "Проверка активных баз не завершена";
+    const details = document.createElement("span");
+    const other = snapshot.instances.other_active;
+    details.textContent = `Рабочая: ${snapshot.integrity.working}; архивная: ${snapshot.integrity.archive}; проверенных комплектов: ${snapshot.valid_count}; других активных экземпляров: ${other === null ? "не удалось проверить" : other}.`;
+    elements.backupStatus.append(integrity, details);
+    if (!snapshot.sets.length) {
+      const empty = document.createElement("p"); empty.className = "dialog-note"; empty.textContent = "Завершённых резервных комплектов пока нет."; elements.backupRows.append(empty); return;
+    }
+    for (const item of snapshot.sets) {
+      const row = document.createElement("article"); row.className = `admin-backup-row ${item.valid ? "is-valid" : "is-invalid"}`;
+      const summary = document.createElement("div");
+      const title = document.createElement("strong"); title.textContent = item.valid ? new Date(item.created_at).toLocaleString("ru-RU") : "Непроверенный комплект";
+      const status = document.createElement("span"); status.textContent = item.valid ? "Проверен: quick_check и SHA-256 совпадают" : item.error;
+      summary.append(title, status);
+      const sizes = document.createElement("span"); sizes.textContent = item.valid ? `Рабочая ${formatBytes(item.files.working.size)}, архивная ${formatBytes(item.files.archive.size)}` : "Восстановление запрещено";
+      const restore = document.createElement("button"); restore.type = "button"; restore.className = "secondary-button"; restore.dataset.action = "restore-backup"; restore.dataset.setId = item.set_id; restore.textContent = "Восстановить комплект"; restore.disabled = !item.valid || !snapshot.restore_allowed;
+      row.append(summary, sizes, restore); elements.backupRows.append(row);
+    }
+  }
+
+  async function loadBackups() {
+    state.backups = await jsonRequest(body.dataset.adminBackupsUrl);
+    renderBackups();
+  }
+
   async function loadSettings() {
     state.snapshot = await jsonRequest(body.dataset.adminSettingsUrl);
     renderSettings(); elements.authForm.hidden = true; elements.content.hidden = false; selectTab("general");
@@ -206,7 +258,7 @@
     clearMessages(); elements.authForm.hidden = true; elements.content.hidden = true;
     try {
       const status = await jsonRequest(body.dataset.adminStatusUrl);
-      state.configured = status.configured; state.accessMode = status.access_mode; setAuthMode();
+      state.configured = status.configured; state.accessMode = status.access_mode; state.recoveryMode = status.recovery_mode === true; updateTabAvailability(); setAuthMode();
       (state.accessMode === "acknowledgement" ? elements.acknowledgement : elements.password).focus();
     } catch (error) { elements.authForm.hidden = false; showError(elements.authError, error.message); }
   }
@@ -222,7 +274,10 @@
       } else {
         payload = await jsonRequest(body.dataset.adminSetupUrl, {method: "POST", body: JSON.stringify({operation_id: operationId(), password: elements.password.value, password_confirmation: elements.passwordConfirm.value})}); state.configured = true;
       }
-      state.token = payload.token; elements.authForm.reset(); await loadSettings();
+      state.token = payload.token; elements.authForm.reset();
+      if (state.recoveryMode) {
+        elements.authForm.hidden = true; elements.content.hidden = false; await loadBackups(); selectTab("backups");
+      } else await loadSettings();
     } catch (error) { showError(elements.authError, error.message); }
     finally { state.busy = false; elements.authSubmit.disabled = false; }
   }
@@ -350,6 +405,31 @@
     finally { state.busy = false; elements.passwordSubmit.disabled = false; }
   }
 
+  async function checkBackups() {
+    if (state.busy) return; state.busy = true; elements.backupCheck.disabled = true; clearMessages();
+    try {
+      await jsonRequest(body.dataset.adminBackupsCheckUrl, {method: "POST"}); await loadBackups(); showSuccess("Проверка целостности завершена.");
+    } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
+    finally { state.busy = false; elements.backupCheck.disabled = false; }
+  }
+
+  async function restoreBackup(button) {
+    if (state.busy || !state.backups?.restore_allowed) return;
+    const accepted = window.confirm("Закройте приложение на других компьютерах. Повреждённые текущие файлы будут сохранены отдельно. Продолжить восстановление обеих баз?");
+    if (!accepted) return;
+    state.busy = true; button.disabled = true; clearMessages();
+    try {
+      const payload = await jsonRequest(body.dataset.adminBackupsRestoreUrl, {method: "POST", body: JSON.stringify({operation_id: operationId(), set_id: button.dataset.setId, confirmation: state.backups.restore_confirmation})});
+      state.recoveryMode = false; updateTabAvailability(); await loadSettings(); await loadBackups(); selectTab("backups"); showSuccess(payload.warning || "Обе базы восстановлены. Повреждённые исходные файлы сохранены отдельно."); window.dispatchEvent(new Event("safe-cells:refresh"));
+    } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
+    finally { state.busy = false; button.disabled = false; }
+  }
+
+  function backupAction(event) {
+    const button = event.target.closest("[data-action='restore-backup']");
+    if (button) restoreBackup(button);
+  }
+
   function sessionEnded(error) { state.token = null; setAuthMode(); showError(elements.authError, error.message); }
   async function logout(closeDialog = false) {
     const token = state.token; state.token = null; state.snapshot = null;
@@ -362,11 +442,17 @@
 
   elements.open.addEventListener("click", openAdmin); elements.close.addEventListener("click", () => logout(true));
   elements.dialog.addEventListener("cancel", event => event.preventDefault()); elements.authForm.addEventListener("submit", authenticate); elements.logout.addEventListener("click", () => logout(false));
-  elements.tabs.forEach(tab => tab.addEventListener("click", () => selectTab(tab.dataset.adminTab)));
+  elements.tabs.forEach(tab => tab.addEventListener("click", async () => {
+    selectTab(tab.dataset.adminTab);
+    if (tab.dataset.adminTab === "backups" && state.token) {
+      try { await loadBackups(); } catch (error) { showError(elements.error, error.message); }
+    }
+  }));
   elements.penaltyLinked.addEventListener("change", updatePenaltyMode); elements.penaltyManual.addEventListener("change", updatePenaltyMode);
   elements.generalForm.addEventListener("submit", event => saveSettings(event, elements.generalSubmit, "Общие параметры сохранены.", "general"));
   elements.tariffsForm.addEventListener("submit", event => saveSettings(event, elements.tariffsSubmit, "Тарифы сохранены.", "tariffs"));
   elements.templateRows.addEventListener("click", templateAction); elements.templateTarget.addEventListener("change", selectTemplateTarget); elements.templateUploadForm.addEventListener("submit", uploadTemplate);
   elements.employeeRows.addEventListener("click", employeeAction); elements.employeeAddForm.addEventListener("submit", addEmployee);
   elements.accessForm.addEventListener("submit", saveAccess); elements.passwordForm.addEventListener("submit", changePassword);
+  elements.backupCheck.addEventListener("click", checkBackups); elements.backupRows.addEventListener("click", backupAction);
 })();

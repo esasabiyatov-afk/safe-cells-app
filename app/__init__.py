@@ -29,6 +29,7 @@ from app.services.employee import (
     EmployeeSelectionRequiredError,
     get_selected_employee,
 )
+from app.services.instances import attach_instance_coordinator
 
 
 def create_app(settings: Settings) -> Flask:
@@ -47,6 +48,7 @@ def create_app(settings: Settings) -> Flask:
     app.extensions["safe_cells_settings"] = settings
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
     app.extensions["safe_cells_admin_access"] = AdminAccessManager()
+    instance_coordinator = attach_instance_coordinator(app, settings)
     employee_selection = EmployeeSelectionManager()
     app.extensions["safe_cells_employee_selection"] = employee_selection
     app.config["EMPLOYEE_PROVIDER"] = lambda: get_selected_employee(
@@ -63,6 +65,12 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(renewals_blueprint)
     app.register_blueprint(system_blueprint)
+
+    @app.before_request
+    def refresh_instance_registration():
+        # A process that started during a short restore retries registration
+        # before handling later requests instead of remaining invisible.
+        instance_coordinator.start()
 
     @app.after_request
     def add_security_headers(response):

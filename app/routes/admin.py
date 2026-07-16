@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import sqlite3
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
@@ -34,6 +35,18 @@ from app.services.admin_templates import (
     get_document_template_path,
     save_document_template,
     update_document_template,
+)
+from app.services.backups import (
+    BackupError,
+    BackupValidationError,
+    RESTORE_CONFIRMATION,
+    RestoreError,
+    RestoreInstancesActiveError,
+    RestoreValidationError,
+    check_active_integrity,
+    list_backup_sets,
+    read_recovery_auth,
+    restore_backup_set,
 )
 from app.services.employee import (
     EmployeeDirectoryReadError,
@@ -106,8 +119,20 @@ def status():
         configured = is_admin_configured(_settings())
         access_mode = get_admin_access_mode(_settings())
     except (AdminNetworkError, AdminWriteError) as exc:
-        return jsonify({"message": str(exc)}), 503
-    return jsonify({"configured": configured, "access_mode": access_mode})
+        try:
+            recovery = read_recovery_auth(_settings())
+        except BackupError:
+            return jsonify({"message": str(exc)}), 503
+        return jsonify({
+            "configured": recovery["password_hash"] is not None,
+            "access_mode": recovery["access_mode"],
+            "recovery_mode": True,
+        })
+    return jsonify({
+        "configured": configured,
+        "access_mode": access_mode,
+        "recovery_mode": False,
+    })
 
 
 @admin_blueprint.post("/setup")
@@ -150,9 +175,15 @@ def login():
     if not isinstance(payload, dict) or set(payload) != {"password"}:
         return jsonify({"message": "Введите административный пароль."}), 400
     try:
-        if get_admin_access_mode(_settings()) != ACCESS_MODE_PASSWORD:
+        try:
+            access_mode = get_admin_access_mode(_settings())
+            stored_hash = get_admin_password_hash(_settings())
+        except (AdminNetworkError, AdminWriteError):
+            recovery = read_recovery_auth(_settings())
+            access_mode = recovery["access_mode"]
+            stored_hash = recovery["password_hash"]
+        if access_mode != ACCESS_MODE_PASSWORD:
             raise AdminConflictError("Для настроек выбран вход без пароля.")
-        stored_hash = get_admin_password_hash(_settings())
         if stored_hash is None:
             raise AdminConflictError("Административный пароль ещё не создан.")
         session = _manager().authenticate(payload["password"], stored_hash)
@@ -160,7 +191,7 @@ def login():
         return jsonify({"message": str(exc)}), 401
     except AdminConflictError as exc:
         return jsonify({"message": str(exc)}), 409
-    except AdminNetworkError as exc:
+    except (AdminNetworkError, BackupError) as exc:
         return jsonify({"message": str(exc)}), 503
     return jsonify(_session_payload(session))
 
@@ -171,11 +202,15 @@ def acknowledge():
     if not isinstance(payload, dict) or set(payload) != {"accepted"} or payload["accepted"] is not True:
         return jsonify({"message": "Подтвердите, что настройки меняет руководитель отдела."}), 400
     try:
-        if get_admin_access_mode(_settings()) != ACCESS_MODE_ACKNOWLEDGEMENT:
+        try:
+            access_mode = get_admin_access_mode(_settings())
+        except (AdminNetworkError, AdminWriteError):
+            access_mode = read_recovery_auth(_settings())["access_mode"]
+        if access_mode != ACCESS_MODE_ACKNOWLEDGEMENT:
             raise AdminConflictError("Для настроек выбран вход по общему паролю.")
     except AdminConflictError as exc:
         return jsonify({"message": str(exc)}), 409
-    except (AdminNetworkError, AdminWriteError) as exc:
+    except (AdminNetworkError, AdminWriteError, BackupError) as exc:
         return jsonify({"message": str(exc)}), 503
     return jsonify(_session_payload(_manager().issue_session()))
 
@@ -393,3 +428,74 @@ def template_file(template_id: str):
     except (AdminValidationError, AdminConflictError, AdminNetworkError, AdminWriteError) as exc:
         return _write_error(exc)
     return send_file(path, as_attachment=True, download_name=path.name)
+
+
+@admin_blueprint.get("/backups")
+def backups_view():
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        integrity = check_active_integrity(_settings(), detected_at=_occurred_at())
+        backup_sets = list_backup_sets(_settings())
+        coordinator = current_app.extensions["safe_cells_instance_coordinator"]
+        instances = coordinator.state()
+    except Exception as exc:
+        if isinstance(exc, (BackupError, OSError)):
+            return jsonify({"message": str(exc)}), 503
+        return jsonify({"message": str(exc)}), 500
+    valid_count = sum(item.valid for item in backup_sets)
+    return jsonify({
+        "integrity": integrity.to_dict(),
+        "sets": [item.to_dict() for item in backup_sets],
+        "instances": instances.to_dict(),
+        "valid_count": valid_count,
+        "restore_confirmation": RESTORE_CONFIRMATION,
+        "restore_allowed": (
+            integrity.write_blocked
+            and valid_count > 0
+            and instances.registered
+            and instances.other_active == 0
+        ),
+    })
+
+
+@admin_blueprint.post("/backups/check")
+def backups_check():
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        integrity = check_active_integrity(_settings(), detected_at=_occurred_at())
+    except Exception as exc:
+        return jsonify({"message": str(exc)}), 503
+    return jsonify({"integrity": integrity.to_dict()})
+
+
+@admin_blueprint.post("/backups/restore")
+def backups_restore():
+    denied = _require_admin()
+    if denied:
+        return denied
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or set(payload) != {
+        "operation_id", "set_id", "confirmation"
+    }:
+        return jsonify({"message": "Переданы неверные данные восстановления."}), 400
+    coordinator = current_app.extensions["safe_cells_instance_coordinator"]
+    try:
+        result = restore_backup_set(
+            _settings(),
+            set_id=payload["set_id"],
+            operation_id=payload["operation_id"],
+            confirmation=payload["confirmation"],
+            occurred_at=_occurred_at(),
+            ensure_no_other_instances=coordinator.other_active_count,
+        )
+    except RestoreValidationError as exc:
+        return jsonify({"message": str(exc)}), 400
+    except RestoreInstancesActiveError as exc:
+        return jsonify({"message": str(exc)}), 409
+    except (RestoreError, BackupValidationError, BackupError, OSError, sqlite3.Error) as exc:
+        return jsonify({"message": str(exc)}), 503
+    return jsonify(result.to_dict())

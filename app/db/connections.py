@@ -20,6 +20,14 @@ class DatabaseUnavailableError(RuntimeError):
     """Raised when the configured database pair cannot be safely used."""
 
 
+class DatabaseCorruptionError(DatabaseUnavailableError):
+    """Raised when integrity checks have blocked all write operations."""
+
+
+class DatabaseMaintenanceError(DatabaseUnavailableError):
+    """Raised while a controlled restore owns the shared maintenance lock."""
+
+
 @dataclass(frozen=True, slots=True)
 class DatabasePaths:
     directory: Path
@@ -103,11 +111,41 @@ def _configure_write_connection(
 
 @contextmanager
 def open_write(
-    settings: Settings, *, attach_archive: bool = False
+    settings: Settings,
+    *,
+    attach_archive: bool = False,
+    bypass_integrity_guard: bool = False,
+    bypass_maintenance_guard: bool = False,
 ) -> Iterator[sqlite3.Connection]:
     """Open a short write-capable connection without starting a transaction."""
 
+    if not bypass_maintenance_guard:
+        from app.services.instances import MaintenanceActiveError, ensure_maintenance_inactive
+
+        try:
+            ensure_maintenance_inactive(settings)
+        except MaintenanceActiveError as exc:
+            raise DatabaseMaintenanceError(str(exc)) from exc
+    if not bypass_integrity_guard:
+        from app.services.backups import (
+            DatabaseCorruptionError as BackupDatabaseCorruptionError,
+            assert_writes_allowed,
+        )
+
+        try:
+            assert_writes_allowed(settings)
+        except BackupDatabaseCorruptionError as exc:
+            raise DatabaseCorruptionError(str(exc)) from exc
+    from app.services.instances import InstanceCoordinationError, application_write_lock
+
     paths = validate_database_pair(settings)
+    write_guard = application_write_lock(settings)
+    try:
+        write_guard.__enter__()
+    except InstanceCoordinationError as exc:
+        if "занята" in str(exc).lower():
+            raise sqlite3.OperationalError("database is locked") from exc
+        raise DatabaseUnavailableError(str(exc)) from exc
     connection: sqlite3.Connection | None = None
     try:
         connection = sqlite3.connect(
@@ -130,6 +168,7 @@ def open_write(
             if connection.in_transaction:
                 connection.rollback()
             connection.close()
+        write_guard.__exit__(None, None, None)
 
 
 def check_database_pair(settings: Settings) -> dict[str, int]:

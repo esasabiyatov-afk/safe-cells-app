@@ -13,6 +13,7 @@ import pytest
 from app import create_app
 from app.config import Settings
 from app.db.connections import open_readonly, open_write
+from app.services.backups import list_backup_sets
 from app.services.contract_details import get_private_contract_details
 from app.services.renewals import (
     RenewalBusyError,
@@ -182,8 +183,10 @@ def test_confirmed_renewal_updates_end_and_writes_history_audit_and_backups(
     changes = json.loads(audit["changes_json"])
     assert "client" not in audit["changes_json"].lower()
     assert changes["penalty_amount"] == 15
-    backup_dir = settings.database_directory / "backups"
-    assert len(list(backup_dir.glob(f"*_{request['operation_id']}.*.sqlite3"))) == 2
+    assert any(
+        item.operation_id == request["operation_id"]
+        for item in list_backup_sets(settings)
+    )
 
 
 def test_tariff_changes_do_not_reprice_contract_or_saved_renewal(

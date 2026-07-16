@@ -20,6 +20,7 @@ from app.services.admin_auth import (
 )
 from app.services.admin_settings import AdminValidationError, update_admin_settings
 from app.services.admin_templates import save_document_template
+from app.services.backups import list_backup_sets
 
 
 PASSWORD = "TestAdmin-2026"
@@ -100,6 +101,7 @@ def test_initial_password_is_hashed_audited_and_required_for_settings(
     assert client.get("/api/admin/status").get_json() == {
         "configured": False,
         "access_mode": "password",
+        "recovery_mode": False,
     }
     assert client.get("/api/admin/settings").status_code == 401
 
@@ -107,6 +109,7 @@ def test_initial_password_is_hashed_audited_and_required_for_settings(
     assert client.get("/api/admin/status").get_json() == {
         "configured": True,
         "access_mode": "password",
+        "recovery_mode": False,
     }
     initial_snapshot = _snapshot(client, token)
     assert initial_snapshot["config"]["deposit_amount_minor"] == 1500
@@ -193,7 +196,7 @@ def test_update_tariffs_and_config_is_atomic_audited_and_backed_up(
         ).fetchone()
     assert row["employee"] == "test-admin"
     assert "password" not in row["changes_json"].lower()
-    assert len(list((settings.database_directory / "backups").glob("*.sqlite3"))) >= 4
+    assert len(list_backup_sets(settings)) >= 2
 
 
 def test_repeated_settings_operation_does_not_duplicate_audit(

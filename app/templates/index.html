@@ -36,6 +36,9 @@
   data-admin-templates-url="{{ url_for('admin.template_upload') }}"
   data-admin-template-file-url="{{ url_for('admin.template_file', template_id='__TEMPLATE_ID__') }}"
   data-admin-employees-url="{{ url_for('admin.employee_update') }}"
+  data-admin-backups-url="{{ url_for('admin.backups_view') }}"
+  data-admin-backups-check-url="{{ url_for('admin.backups_check') }}"
+  data-admin-backups-restore-url="{{ url_for('admin.backups_restore') }}"
 >
   <header class="page-header">
     <div class="brand-block">
@@ -282,6 +285,7 @@
         <button type="button" class="admin-tab" data-admin-tab="tariffs" aria-selected="false">Тарифы</button>
         <button type="button" class="admin-tab" data-admin-tab="templates" aria-selected="false">Шаблоны</button>
         <button type="button" class="admin-tab" data-admin-tab="employees" aria-selected="false">Сотрудники</button>
+        <button type="button" class="admin-tab" data-admin-tab="backups" aria-selected="false">Резервные копии</button>
         <button type="button" class="admin-tab" data-admin-tab="access" aria-selected="false">Доступ</button>
       </nav>
 
@@ -365,6 +369,20 @@
             <label class="contract-field"><span>Фамилия и имя нового сотрудника</span><input id="adminEmployeeName" maxlength="128" required autocomplete="off"></label>
             <div class="dialog-actions"><button class="secondary-button" id="adminEmployeeAdd" type="submit">Добавить сотрудника</button></div>
           </form>
+        </div>
+      </section>
+
+      <section class="admin-panel" data-admin-panel="backups" hidden>
+        <div class="admin-section">
+          <div class="admin-backup-heading">
+            <div>
+              <h3>Резервные копии и целостность</h3>
+              <p class="dialog-note">Приложение не восстанавливает базы автоматически. Восстановление доступно только при подтверждённом повреждении и после закрытия других экземпляров.</p>
+            </div>
+            <button class="secondary-button" id="adminBackupCheck" type="button">Проверить сейчас</button>
+          </div>
+          <div class="admin-backup-status" id="adminBackupStatus" role="status"></div>
+          <div class="admin-backup-list" id="adminBackupRows"></div>
         </div>
       </section>
     </div>

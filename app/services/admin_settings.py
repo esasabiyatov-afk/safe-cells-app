@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 from app.config import Settings
 from app.db.connections import (
+    DatabaseCorruptionError,
     DatabaseUnavailableError,
     NETWORK_ERROR_MESSAGE,
     open_readonly,
@@ -277,6 +278,8 @@ def _write_password(
             return AdminWriteResult(False, backup_created, warning)
     except (AdminValidationError, AdminConflictError, AdminWriteUncertainError):
         raise
+    except DatabaseCorruptionError as exc:
+        raise AdminNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.OperationalError as exc:
@@ -504,6 +507,8 @@ def update_admin_access_mode(
             return AdminWriteResult(False, backup_created, warning)
     except (AdminValidationError, AdminConflictError, AdminWriteUncertainError):
         raise
+    except DatabaseCorruptionError as exc:
+        raise AdminNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.OperationalError as exc:
@@ -651,6 +656,8 @@ def update_admin_employee(
         AdminWriteUncertainError,
     ):
         raise
+    except DatabaseCorruptionError as exc:
+        raise AdminNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.OperationalError as exc:
@@ -924,6 +931,8 @@ def update_admin_settings(
             return AdminWriteResult(False, backup_created, warning)
     except (AdminValidationError, AdminConflictError, AdminWriteUncertainError):
         raise
+    except DatabaseCorruptionError as exc:
+        raise AdminNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.OperationalError as exc:

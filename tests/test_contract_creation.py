@@ -13,6 +13,7 @@ import pytest
 from app import create_app
 from app.config import Settings
 from app.db.connections import DatabasePaths, open_readonly, open_write
+from app.services.backups import list_backup_sets
 from app.services.contracts import (
     BUSY_MESSAGE,
     ContractBusyError,
@@ -129,10 +130,11 @@ def test_create_contract_saves_active_row_audit_and_verified_backups(
         assert "id_card_number" not in changes
         assert "account_number" not in changes
 
-    backup_directory = settings.database_directory / "backups"
-    working_backups = list(backup_directory.glob("*.working.sqlite3"))
-    archive_backups = list(backup_directory.glob("*.archive.sqlite3"))
-    assert len(working_backups) == len(archive_backups) == 1
+    backup_sets = list_backup_sets(settings)
+    assert len(backup_sets) == 1
+    backup_set = backup_sets[0]
+    working_backups = [backup_set.directory / backup_set.working.name]
+    archive_backups = [backup_set.directory / backup_set.archive.name]
     for path in working_backups + archive_backups:
         connection = sqlite3.connect(path)
         try:
@@ -166,7 +168,7 @@ def test_repeated_operation_returns_existing_contract_without_duplicate(
     assert second.contract_id == first.contract_id
     assert second.repeated is True
     assert _counts(settings) == (1, 1)
-    assert len(list((settings.database_directory / "backups").glob("*.working.sqlite3"))) == 1
+    assert len(list_backup_sets(settings)) == 1
 
     with pytest.raises(ContractConflictError, match="уже использован"):
         create_contract(

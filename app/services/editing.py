@@ -10,7 +10,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import Settings
-from app.db.connections import DatabaseUnavailableError, NETWORK_ERROR_MESSAGE, open_write
+from app.db.connections import (
+    DatabaseCorruptionError,
+    DatabaseUnavailableError,
+    NETWORK_ERROR_MESSAGE,
+    open_write,
+)
 from app.services.backups import create_backup_pair
 
 
@@ -135,6 +140,7 @@ def edit_contract(settings: Settings, *, payload: object, employee: str, occurre
                 backup_created = False; warning = "Данные сохранены, но резервную копию создать не удалось. Сообщите администратору."
             return EditingResult(data.contract_ref, data.cell_number, False, backup_created, warning)
     except (EditingValidationError, EditingConflictError, EditingWriteUncertainError): raise
+    except DatabaseCorruptionError as exc: raise EditingNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc: raise EditingNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.OperationalError as exc:
         if "locked" in str(exc).lower() and phase in {"opening", "begin", "transaction"}: raise EditingBusyError(BUSY_MESSAGE) from exc

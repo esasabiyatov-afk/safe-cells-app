@@ -16,6 +16,7 @@ from docx import Document
 
 from app.config import Settings
 from app.db.connections import (
+    DatabaseCorruptionError,
     DatabaseUnavailableError,
     NETWORK_ERROR_MESSAGE,
     open_readonly,
@@ -155,6 +156,8 @@ def save_document_template(
     timestamp = _timestamp(occurred_at)
     try:
         paths = validate_database_pair(settings)
+    except DatabaseCorruptionError as exc:
+        raise AdminNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     template_directory = paths.directory / "templates"
@@ -253,6 +256,8 @@ def save_document_template(
             return AdminWriteResult(False, backup_created, warning), normalized_id
     except (AdminValidationError, AdminConflictError, AdminWriteUncertainError):
         raise
+    except DatabaseCorruptionError as exc:
+        raise AdminNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.OperationalError as exc:
@@ -373,6 +378,8 @@ def update_document_template(
             return AdminWriteResult(False, backup_created, warning)
     except (AdminValidationError, AdminConflictError, AdminWriteUncertainError):
         raise
+    except DatabaseCorruptionError as exc:
+        raise AdminNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.OperationalError as exc:

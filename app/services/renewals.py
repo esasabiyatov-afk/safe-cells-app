@@ -12,13 +12,14 @@ from uuid import UUID, uuid4
 
 from app.config import Settings
 from app.db.connections import (
+    DatabaseCorruptionError,
     DatabaseUnavailableError,
     NETWORK_ERROR_MESSAGE,
     open_readonly,
     open_write,
     validate_database_pair,
 )
-from app.services.backups import create_backup_pair
+from app.services.backups import create_backup_pair, has_valid_backup_for_operation
 from app.services.penalty_rates import (
     PenaltyRateConfigurationError,
     resolve_penalty_rate,
@@ -343,11 +344,7 @@ def _existing_result(
         raise RenewalConflictError(
             "Этот идентификатор операции уже использован. Обновите форму."
         )
-    backup_dir = settings.database_directory / "backups"
-    backup_created = (
-        any(backup_dir.glob(f"*_{operation_id}.working.sqlite3"))
-        and any(backup_dir.glob(f"*_{operation_id}.archive.sqlite3"))
-    )
+    backup_created = has_valid_backup_for_operation(settings, operation_id)
     warning = None if backup_created else (
         "Продление уже сохранено, но комплект резервной копии не найден. "
         "Сообщите администратору."
@@ -527,6 +524,8 @@ def renew_contract(
             )
     except (RenewalValidationError, RenewalConflictError, RenewalWriteUncertainError):
         raise
+    except DatabaseCorruptionError as exc:
+        raise RenewalNetworkError(str(exc)) from exc
     except DatabaseUnavailableError as exc:
         raise RenewalNetworkError(NETWORK_ERROR_MESSAGE) from exc
     except sqlite3.IntegrityError as exc:
