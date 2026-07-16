@@ -10,7 +10,7 @@ from app.config import Settings
 from app.services.journal import (
     JournalReadError,
     JournalValidationError,
-    ACTION_LABELS,
+    FILTER_LABELS,
     list_journal_entries,
     list_journal_report_entries,
 )
@@ -61,7 +61,7 @@ def journal_report():
         action = filters["action"]
         report_filters = {
             **filters,
-            "action_label": ACTION_LABELS.get(action, "") if action else "",
+            "action_label": FILTER_LABELS.get(action, "") if action else "",
         }
         generated_on = current_app.config["TODAY_PROVIDER"]()
         report = build_journal_report(

@@ -91,15 +91,20 @@
     action.className = `journal-action journal-action-${entry.action.split(".").pop()}`;
     action.textContent = entry.action_label;
 
+    const actionGroup = document.createElement("div");
+    actionGroup.className = "journal-action-group";
+    actionGroup.append(action);
+    if (entry.is_overdue) {
+      const overdue = document.createElement("span");
+      overdue.className = "journal-action journal-action-overdue";
+      overdue.textContent = "Просрочка";
+      actionGroup.append(overdue);
+    }
+
     const time = document.createElement("time");
     time.dateTime = entry.occurred_at;
     time.textContent = formatOccurredAt(entry.occurred_at);
-    if (entry.action === "contract.closed") {
-      heading.classList.add("journal-entry-heading-without-action");
-      heading.append(cell, time);
-    } else {
-      heading.append(cell, action, time);
-    }
+    heading.append(cell, actionGroup, time);
 
     const summary = document.createElement("p");
     summary.className = "journal-summary";

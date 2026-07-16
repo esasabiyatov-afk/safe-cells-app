@@ -97,7 +97,7 @@ def _insert_sample_entries(
             "new_start_date": "2026-07-31",
             "new_end_date": "2026-08-30",
             "renewal_days": 31,
-            "penalty_days": 0,
+            "penalty_days": 2,
             "account_number": "SECRET-ACCOUNT",
         },
         employee="Второй тестовый сотрудник",
@@ -156,15 +156,18 @@ def test_journal_includes_client_but_excludes_edits_and_secret_fields(
         entry["client_full_name"] == "Тестовый Клиент Семь"
         for entry in payload["entries"]
     )
-    assert payload["entries"][-1]["action_label"] == "Занятие ячейки"
+    assert payload["entries"][-1]["action_label"] == "Открытие"
+    assert payload["entries"][1]["action_label"] == "Продление"
+    assert payload["entries"][1]["is_overdue"] is True
+    assert payload["entries"][1]["report_action_label"] == "Продление / Просрочка"
     assert "contract.edited" not in serialized
     assert "admin.settings.updated" not in serialized
     assert "СЕКРЕТНОЕ" not in serialized
     assert "SECRET-" not in serialized
     assert "Период продления: 31.07.2026 — 30.08.2026; Срок: 31 дн." in serialized
-    assert "Срок: 01.07.2026 — 30.07.2026" in serialized
-    assert "Дней: 30 дн." in serialized
+    assert "Период аренды: 01.07.2026 — 30.07.2026; Срок: 30 дн." in serialized
     assert "Дата закрытия:" not in serialized
+    assert "Причина:" not in serialized
 
 
 def test_journal_resolves_client_from_archive_after_real_closure(
@@ -211,6 +214,7 @@ def test_journal_filters_and_paginates_with_parameterized_values(
         date_from="2026-07-10",
         date_to="2026-07-10",
     )
+    overdue = list_journal_entries(settings, action="overdue")
     injection = list_journal_entries(settings, cell_number="7' OR 1=1 --")
 
     assert first["pagination"] == {
@@ -224,6 +228,9 @@ def test_journal_filters_and_paginates_with_parameterized_values(
     assert len(first["entries"]) == 2
     assert len(second["entries"]) == 1
     assert [entry["action"] for entry in filtered["entries"]] == [
+        "contract.renewed"
+    ]
+    assert [entry["action"] for entry in overdue["entries"]] == [
         "contract.renewed"
     ]
     assert injection["entries"] == []
@@ -276,7 +283,7 @@ def test_journal_api_requires_employee_and_returns_client_safely(
 
     assert response.status_code == 200
     assert response.get_json()["pagination"]["total"] == 1
-    assert response.get_json()["entries"][0]["action_label"] == "Договор закрыт"
+    assert response.get_json()["entries"][0]["action_label"] == "Закрытие"
     assert response.get_json()["entries"][0]["client_full_name"] == "Тестовый Клиент Семь"
     assert "SECRET-ID" not in serialized
     assert client.get("/api/journal?action=unknown").status_code == 400
@@ -309,7 +316,11 @@ def test_journal_report_downloads_real_filtered_xlsx_without_edits_or_secrets(
     serialized = json.dumps(rows, ensure_ascii=False)
     assert len(rows) == 3
     assert serialized.count("Тестовый Клиент Семь") == 3
-    assert "Занятие ячейки" in serialized
+    assert "Открытие" in serialized
+    assert "Продление / Просрочка" in serialized
+    assert "Закрытие" in serialized
+    assert "Период аренды: 01.07.2026 — 30.07.2026; Срок: 30 дн." in serialized
+    assert "Причина:" not in serialized
     assert "contract.edited" not in serialized
     assert "СЕКРЕТНОЕ" not in serialized
     assert "SECRET-" not in serialized
@@ -334,7 +345,7 @@ def test_journal_report_neutralizes_excel_formula_values() -> None:
             {
                 "occurred_at": "2026-07-01T09:00:00+06:00",
                 "cell_number": "=1+1",
-                "action_label": "Занятие ячейки",
+                "action_label": "Открытие",
                 "client_full_name": "=HYPERLINK(\"unsafe\")",
                 "employee": "+Тест",
                 "summary": "@Тест",
@@ -374,5 +385,6 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert "textContent" in script
     assert "URLSearchParams" in script
     assert "URL.createObjectURL" in script
-    assert "journal-entry-heading-without-action" in script
+    assert "journal-action-group" in script
+    assert "journal-action-overdue" in script
     assert "event.preventDefault()" in script

@@ -101,7 +101,9 @@ def build_journal_report(
         values = (
             _occurred_at(entry.get("occurred_at")),
             _safe_excel_text(entry.get("cell_number")),
-            _safe_excel_text(entry.get("action_label")),
+            _safe_excel_text(
+                entry.get("report_action_label") or entry.get("action_label")
+            ),
             _safe_excel_text(entry.get("client_full_name")),
             _safe_excel_text(entry.get("employee")),
             _safe_excel_text(entry.get("summary")),

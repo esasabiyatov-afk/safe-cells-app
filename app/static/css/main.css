@@ -429,8 +429,11 @@ main {
   align-items: center;
 }
 
-.journal-entry-heading-without-action {
-  grid-template-columns: minmax(130px, 1fr) auto;
+.journal-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-self: start;
 }
 
 .journal-cell-number {
@@ -451,6 +454,7 @@ main {
 .journal-action-created { background: var(--free-bg); color: var(--free); }
 .journal-action-closed { background: var(--overdue-bg); color: var(--overdue); }
 .journal-action-edited { background: var(--expiring-bg); color: var(--expiring); }
+.journal-action-overdue { background: var(--overdue-bg); color: var(--overdue); }
 .journal-entry time { color: var(--ink-soft); font-size: 12px; }
 .journal-client { margin: 9px 0 0; font-size: 13px; font-weight: 700; line-height: 1.45; }
 .journal-summary { margin: 5px 0 0; font-size: 13px; line-height: 1.45; }

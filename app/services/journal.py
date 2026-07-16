@@ -19,10 +19,11 @@ from app.db.connections import (
 
 
 ACTION_LABELS = {
-    "contract.created": "Занятие ячейки",
-    "contract.renewed": "Договор продлён",
-    "contract.closed": "Договор закрыт",
+    "contract.created": "Открытие",
+    "contract.renewed": "Продление",
+    "contract.closed": "Закрытие",
 }
+FILTER_LABELS = {**ACTION_LABELS, "overdue": "Просрочка"}
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
 MAX_REPORT_ROWS = 20_000
@@ -113,9 +114,9 @@ def _summary(action: str, raw_changes: object) -> str:
         days = _safe_nonnegative_integer(changes.get("rent_days"))
         parts = []
         if start and end:
-            parts.append(f"Срок: {start} — {end}")
+            parts.append(f"Период аренды: {start} — {end}")
         if days is not None:
-            parts.append(f"Дней: {days} дн.")
+            parts.append(f"Срок: {days} дн.")
         return "; ".join(parts) or "Открыт новый договор аренды."
 
     if action == "contract.renewed":
@@ -143,7 +144,7 @@ def _summary(action: str, raw_changes: object) -> str:
         }
         parts = []
         if reason in allowed_reasons:
-            parts.append(f"Причина: {reason}")
+            parts.append(str(reason))
         if penalty_days:
             parts.append(f"Просрочка: {penalty_days} дн.")
         return "; ".join(parts) or "Договор закрыт, ячейка освобождена."
@@ -160,7 +161,7 @@ def _validated_filters(
 ) -> tuple[str | None, str | None, date | None, date | None]:
     cell = _optional_text(cell_number, maximum=50, label="Номер ячейки")
     action_code = _optional_text(action, maximum=40, label="Действие")
-    if action_code is not None and action_code not in ACTION_LABELS:
+    if action_code is not None and action_code not in FILTER_LABELS:
         raise JournalValidationError("Выберите допустимое действие журнала.")
     start = _optional_date(date_from, label="Дату начала")
     end = _optional_date(date_to, label="Дату окончания")
@@ -183,7 +184,14 @@ def _where_clause(
     if cell is not None:
         clauses.append("log.cell_number = ?")
         parameters.append(cell)
-    if action_code is not None:
+    if action_code == "overdue":
+        clauses.append(
+            "CASE WHEN json_valid(log.changes_json) "
+            "THEN COALESCE(CAST(json_extract(log.changes_json, ?) AS INTEGER), 0) "
+            "ELSE 0 END > 0"
+        )
+        parameters.append("$.penalty_days")
+    elif action_code is not None:
         clauses.append("log.action = ?")
         parameters.append(action_code)
     if start is not None:
@@ -199,16 +207,25 @@ def _readonly_uri(path: Path) -> str:
     return f"{path.absolute().as_uri()}?mode=ro"
 
 
-def _entry(row: sqlite3.Row) -> dict[str, str]:
+def _entry(row: sqlite3.Row) -> dict[str, Any]:
     client_name = str(row["client_full_name"] or "").strip()
+    action = str(row["action"])
+    changes = _safe_changes(row["changes_json"])
+    penalty_days = _safe_nonnegative_integer(changes.get("penalty_days"))
+    is_overdue = bool(penalty_days)
+    action_label = ACTION_LABELS[action]
     return {
         "occurred_at": str(row["occurred_at"]),
         "employee": str(row["employee"]),
         "cell_number": str(row["cell_number"]),
         "client_full_name": client_name or "Клиент не найден",
-        "action": str(row["action"]),
-        "action_label": ACTION_LABELS[str(row["action"])],
-        "summary": _summary(str(row["action"]), row["changes_json"]),
+        "action": action,
+        "action_label": action_label,
+        "report_action_label": (
+            f"{action_label} / Просрочка" if is_overdue else action_label
+        ),
+        "is_overdue": is_overdue,
+        "summary": _summary(action, row["changes_json"]),
     }
 
 
@@ -219,7 +236,7 @@ def _read_entries(
     parameters: list[object],
     limit: int,
     offset: int = 0,
-) -> tuple[int, list[dict[str, str]]]:
+) -> tuple[int, list[dict[str, Any]]]:
     paths = validate_database_pair(settings)
     with open_readonly(
         paths.archive, busy_timeout_ms=settings.busy_timeout_ms
@@ -314,7 +331,7 @@ def list_journal_report_entries(
     action: object = None,
     date_from: object = None,
     date_to: object = None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Return the complete filtered selection for one controlled XLSX report."""
 
     cell, action_code, start, end = _validated_filters(
