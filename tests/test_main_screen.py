@@ -235,6 +235,10 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "activeOperationId" in script
         assert "occupyManualCell" in script
         assert "occupation_label: occupationLabel" in script
+        assert ".manual-occupy-button" in stylesheet
+        assert "min-height: 34px" in stylesheet
+        assert ".cell-client.lost-key-label" in stylesheet
+        assert 'cell.block_kind === "lost_key" ? " lost-key-label" : ""' in script
         assert "releaseBlockedCell" in script
         assert "renderEmployeeChoices" in script
         assert "togglePrivateDetails" in script

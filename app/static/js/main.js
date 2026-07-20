@@ -464,7 +464,9 @@ function renderOccupiedOperationalDetails(cell) {
   elements.dialogStatus.textContent = cell.block_kind === "lost_key"
     ? "Ключ утерян"
     : (cell.occupation_label || STATUS_LABELS[cell.status]);
-  elements.dialogStatus.className = `status-badge ${cell.status}`;
+  elements.dialogStatus.className = `status-badge ${cell.status}${
+    cell.block_kind === "lost_key" ? " lost-key-label" : ""
+  }`;
   elements.dialogSize.textContent = `${cell.height_mm}×${cell.width_mm}×${cell.depth_mm}`;
   if (cell.block_kind) {
     elements.cellDialogKicker.textContent = "Состояние ячейки";
@@ -1770,7 +1772,9 @@ function createCellButton(cell) {
   height.textContent = String(cell.height_mm);
 
   const client = document.createElement("span");
-  client.className = "cell-client";
+  client.className = `cell-client${
+    cell.block_kind === "lost_key" ? " lost-key-label" : ""
+  }`;
   client.textContent = cell.client_display_name || "";
 
   button.append(number, client, height);

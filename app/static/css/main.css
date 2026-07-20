@@ -1301,6 +1301,23 @@ main {
   color: var(--ink);
 }
 
+.manual-occupy-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-color: #aeb5ba;
+  background: #f3f1eb;
+  color: #53606c;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.manual-occupy-button:hover,
+.manual-occupy-button:focus-visible {
+  border-color: #8f9aa3;
+  background: #ebe8e0;
+  color: var(--ink);
+}
+
 .primary-button:disabled {
   cursor: not-allowed;
   border-color: #9ca4ab;
@@ -1350,6 +1367,11 @@ main {
 .status-badge.normal { background: var(--normal-bg); color: var(--normal); }
 .status-badge.expiring { background: var(--expiring-bg); color: var(--expiring); }
 .status-badge.overdue { background: var(--overdue-bg); color: var(--overdue); }
+
+.cell-client.lost-key-label,
+.status-badge.lost-key-label {
+  color: var(--overdue);
+}
 
 .blocked-card-actions {
   grid-template-columns: 1fr;
