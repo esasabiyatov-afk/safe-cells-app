@@ -31,7 +31,6 @@ WRITE_BLOCK_NAME = "write-block.json"
 QUARANTINE_DIRECTORY_NAME = "damaged-originals"
 RESTORE_CONFIRMATION = "ВОССТАНОВИТЬ"
 SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9._-]{1,160}$")
-_VERIFICATION_CACHE: dict[Path, tuple[tuple[int, int, int, int, int, int], "BackupSet"]] = {}
 
 
 class BackupError(RuntimeError):
@@ -160,6 +159,25 @@ def _file_info(path: Path) -> BackupFile:
     return BackupFile(path.name, path.stat().st_size, _sha256(path))
 
 
+def _verify_file_against_manifest(path: Path, expected: BackupFile) -> None:
+    try:
+        if (
+            not path.is_file()
+            or path.stat().st_size != expected.size
+            or _sha256(path) != expected.sha256
+        ):
+            raise BackupValidationError(
+                "Размер или SHA-256 файла комплекта не совпадает."
+            )
+        _quick_check(path)
+    except BackupValidationError:
+        raise
+    except (OSError, sqlite3.Error) as exc:
+        raise BackupValidationError(
+            "Файл комплекта не прошёл SQLite quick_check."
+        ) from exc
+
+
 def _backup_database(source: sqlite3.Connection, destination_path: Path, name: str) -> None:
     destination = sqlite3.connect(destination_path)
     try:
@@ -214,21 +232,6 @@ def verify_backup_set(
     directory: Path, settings: Settings, *, expected_set_id: str | None = None
 ) -> BackupSet:
     manifest_path = directory / MANIFEST_NAME
-    cache_key = directory.absolute()
-    try:
-        manifest_stat = manifest_path.stat()
-        working_stat = (directory / settings.working_database_name).stat()
-        archive_stat = (directory / settings.archive_database_name).stat()
-        signature = (
-            manifest_stat.st_mtime_ns, manifest_stat.st_size,
-            working_stat.st_mtime_ns, working_stat.st_size,
-            archive_stat.st_mtime_ns, archive_stat.st_size,
-        )
-    except OSError:
-        signature = None
-    cached = _VERIFICATION_CACHE.get(cache_key)
-    if expected_set_id is None and signature is not None and cached and cached[0] == signature:
-        return cached[1]
     try:
         raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -264,19 +267,8 @@ def verify_backup_set(
     if working.name != settings.working_database_name or archive.name != settings.archive_database_name:
         raise BackupValidationError("Имена баз в манифесте не совпадают с конфигурацией.")
     for info in (working, archive):
-        path = directory / info.name
-        try:
-            if not path.is_file() or path.stat().st_size != info.size or _sha256(path) != info.sha256:
-                raise BackupValidationError("Размер или SHA-256 файла комплекта не совпадает.")
-            _quick_check(path)
-        except BackupValidationError:
-            raise
-        except (OSError, sqlite3.Error) as exc:
-            raise BackupValidationError("Файл комплекта не прошёл SQLite quick_check.") from exc
-    result = BackupSet(set_id, str(created_at), operation_id, working, archive, directory)
-    if expected_set_id is None and signature is not None:
-        _VERIFICATION_CACHE[cache_key] = (signature, result)
-    return result
+        _verify_file_against_manifest(directory / info.name, info)
+    return BackupSet(set_id, str(created_at), operation_id, working, archive, directory)
 
 
 def list_backup_sets(settings: Settings, *, include_invalid: bool = True) -> list[BackupSet]:
@@ -305,7 +297,6 @@ def has_valid_backup_for_operation(settings: Settings, operation_id: str) -> boo
 def _rotate_complete_sets(settings: Settings, *, keep: int = 30) -> None:
     valid_sets = [item for item in list_backup_sets(settings, include_invalid=False) if item.valid]
     for item in valid_sets[keep:]:
-        _VERIFICATION_CACHE.pop(item.directory.absolute(), None)
         shutil.rmtree(item.directory)
 
 
@@ -525,8 +516,8 @@ def restore_backup_set(
     try:
         _copy_database_via_backup_api(backup_set.directory / backup_set.working.name, staged_working)
         _copy_database_via_backup_api(backup_set.directory / backup_set.archive.name, staged_archive)
-        _quick_check(staged_working)
-        _quick_check(staged_archive)
+        _verify_file_against_manifest(staged_working, backup_set.working)
+        _verify_file_against_manifest(staged_archive, backup_set.archive)
         with maintenance_lock(settings):
             try:
                 other_instances = ensure_no_other_instances()

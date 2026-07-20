@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import sqlite3
 from threading import Event
@@ -126,6 +127,32 @@ def test_damaged_copy_or_wrong_sha_is_never_valid(
         verify_backup_set(result.manifest.parent, settings)
     listed = list_backup_sets(settings)
     assert len(listed) == 1 and listed[0].valid is False
+
+
+def test_verification_rechecks_content_when_size_and_timestamp_are_unchanged(
+    settings: Settings, initialized_databases,
+) -> None:
+    _, result = _create_set(settings)
+    verify_backup_set(result.manifest.parent, settings)
+    original_stat = result.working.stat()
+
+    connection = sqlite3.connect(result.working)
+    try:
+        connection.execute(
+            "UPDATE config SET value = '8' WHERE key = 'expiring_soon_days'"
+        )
+        connection.commit()
+        assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+    finally:
+        connection.close()
+    assert result.working.stat().st_size == original_stat.st_size
+    os.utime(
+        result.working,
+        ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+    )
+
+    with pytest.raises(BackupValidationError, match="SHA-256"):
+        verify_backup_set(result.manifest.parent, settings)
 
 
 def test_rotation_keeps_latest_thirty_complete_sets_only(
@@ -297,6 +324,54 @@ def test_restore_rejects_invalid_set_before_touching_active_files(
     finally:
         coordinator.close()
     assert active_archive.read_bytes() == before
+
+
+def test_restore_rejects_changed_staged_copy_before_touching_active_files(
+    settings: Settings, initialized_databases, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, result = _create_set(settings)
+    active_archive = settings.database_directory / settings.archive_database_name
+    _corrupt(active_archive)
+    check_active_integrity(settings, detected_at=OCCURRED_AT)
+    before = active_archive.read_bytes()
+    original_copy = backups._copy_database_via_backup_api
+    copy_count = 0
+
+    def change_first_staged_copy(source: Path, destination: Path) -> None:
+        nonlocal copy_count
+        original_copy(source, destination)
+        copy_count += 1
+        if copy_count == 1:
+            connection = sqlite3.connect(destination)
+            try:
+                connection.execute(
+                    "UPDATE config SET value = '8' WHERE key = 'expiring_soon_days'"
+                )
+                connection.commit()
+                assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+            finally:
+                connection.close()
+
+    monkeypatch.setattr(
+        backups, "_copy_database_via_backup_api", change_first_staged_copy
+    )
+    coordinator = InstanceCoordinator(settings)
+    coordinator.start()
+    try:
+        with pytest.raises(BackupValidationError, match="SHA-256"):
+            restore_backup_set(
+                settings,
+                set_id=result.set_id,
+                operation_id=str(uuid4()),
+                confirmation=RESTORE_CONFIRMATION,
+                occurred_at=OCCURRED_AT,
+                ensure_no_other_instances=coordinator.other_active_count,
+            )
+    finally:
+        coordinator.close()
+
+    assert active_archive.read_bytes() == before
+    assert not (settings.database_directory / "damaged-originals").exists()
 
 
 def test_restore_is_forbidden_while_another_instance_is_active(

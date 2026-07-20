@@ -1,3 +1,4 @@
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 import sqlite3
@@ -106,7 +107,7 @@ def test_explicit_v3_migration_backs_up_and_preserves_contract(
         version = connection.execute("SELECT version FROM schema_version").fetchone()[0]
     assert "id_card_issue_date" in columns and "id_card_expiry_date" not in columns
     assert row[0] == "2017-09-12" and version == 3
-    with sqlite3.connect(result.backup.working) as backup:
+    with closing(sqlite3.connect(result.backup.working)) as backup:
         backup_columns = {row[1] for row in backup.execute("PRAGMA table_info(contracts)")}
         assert "id_card_expiry_date" in backup_columns
         assert backup.execute("SELECT version FROM schema_version").fetchone()[0] == 2
@@ -159,7 +160,7 @@ def test_explicit_v4_migration_backs_up_and_adds_cell_blocks(
         "created_at",
         "created_by",
     }
-    with sqlite3.connect(result.backup.working) as backup:
+    with closing(sqlite3.connect(result.backup.working)) as backup:
         assert backup.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cell_blocks'"
         ).fetchone() is None
@@ -212,7 +213,7 @@ def test_explicit_v5_migration_preserves_legacy_bank_block_as_manual_label(
     assert versions == (5, 5)
     assert "occupation_label" in columns
     assert tuple(block) == ("manual", "Занято банком")
-    with sqlite3.connect(result.backup.working) as backup:
+    with closing(sqlite3.connect(result.backup.working)) as backup:
         backup_block = backup.execute(
             "SELECT block_kind FROM cell_blocks WHERE cell_number='1'"
         ).fetchone()

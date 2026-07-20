@@ -322,13 +322,19 @@ def test_journal_api_requires_employee_and_returns_client_safely(
     app = create_app(settings)
     client = app.test_client()
 
-    missing_employee = client.get("/api/journal")
+    missing_employee = client.post("/api/journal", json={})
     assert missing_employee.status_code == 409
     assert missing_employee.get_json()["selection_required"] is True
 
     app.config["EMPLOYEE_PROVIDER"] = lambda: "Тестовый сотрудник"
-    response = client.get(
-        "/api/journal?cell_number=7&action=contract.closed&date_from=2026-07-01&page=1"
+    response = client.post(
+        "/api/journal",
+        json={
+            "cell_number": "7",
+            "action": "contract.closed",
+            "date_from": "2026-07-01",
+            "page": 1,
+        },
     )
     serialized = response.get_data(as_text=True)
 
@@ -337,7 +343,9 @@ def test_journal_api_requires_employee_and_returns_client_safely(
     assert response.get_json()["entries"][0]["action_label"] == "Закрытие"
     assert response.get_json()["entries"][0]["client_full_name"] == "Тестовый Клиент Семь"
     assert "SECRET-ID" not in serialized
-    assert client.get("/api/journal?action=unknown").status_code == 400
+    assert client.post("/api/journal", json={"action": "unknown"}).status_code == 400
+    assert client.get("/api/journal?client_name=Тестовый Клиент").status_code == 405
+    assert client.post("/api/journal", json={"unexpected": "value"}).status_code == 400
 
 
 def test_journal_report_downloads_real_filtered_xlsx_without_edits_or_secrets(
@@ -349,8 +357,13 @@ def test_journal_report_downloads_real_filtered_xlsx_without_edits_or_secrets(
     app.config["TODAY_PROVIDER"] = lambda: date(2026, 7, 16)
     client = app.test_client()
 
-    response = client.get(
-        "/api/journal/report?cell_number=7&date_from=2026-07-01&date_to=2026-07-12"
+    response = client.post(
+        "/api/journal/report",
+        json={
+            "cell_number": "7",
+            "date_from": "2026-07-01",
+            "date_to": "2026-07-12",
+        },
     )
 
     assert response.status_code == 200
@@ -384,7 +397,10 @@ def test_journal_report_requires_employee_and_applies_row_limit(
     app = create_app(settings)
     client = app.test_client()
 
-    assert client.get("/api/journal/report").status_code == 409
+    assert client.post("/api/journal/report", json={}).status_code == 409
+    assert client.get(
+        "/api/journal/report?client_name=Тестовый Клиент"
+    ).status_code == 405
     monkeypatch.setattr(journal, "MAX_REPORT_ROWS", 2)
     with pytest.raises(JournalValidationError, match="слишком много"):
         list_journal_report_entries(settings)
@@ -398,9 +414,9 @@ def test_journal_report_applies_client_and_employee_filters(
     app.config["EMPLOYEE_PROVIDER"] = lambda: "Тестовый сотрудник"
     app.config["TODAY_PROVIDER"] = lambda: date(2026, 7, 16)
 
-    response = app.test_client().get(
+    response = app.test_client().post(
         "/api/journal/report",
-        query_string={
+        json={
             "client_name": "клиент семь",
             "employee": "Второй тестовый сотрудник",
         },
@@ -446,11 +462,15 @@ def test_journal_interface_uses_text_content_and_local_assets(
     app = create_app(settings)
     client = app.test_client()
 
-    main_html = client.get("/").get_data(as_text=True)
-    page_response = client.get("/journal")
-    html = page_response.get_data(as_text=True)
-    script = client.get("/static/js/journal.js").get_data(as_text=True)
-    styles = client.get("/static/css/main.css").get_data(as_text=True)
+    with client.get("/") as main_response:
+        main_html = main_response.get_data(as_text=True)
+    with client.get("/journal") as page_response:
+        html = page_response.get_data(as_text=True)
+        cache_control = page_response.headers["Cache-Control"]
+    with client.get("/static/js/journal.js") as script_response:
+        script = script_response.get_data(as_text=True)
+    with client.get("/static/css/main.css") as styles_response:
+        styles = styles_response.get_data(as_text=True)
 
     assert 'id="journalOpen" href="/journal" target="_blank" rel="noopener"' in main_html
     assert 'src="/static/js/journal.js"' not in main_html
@@ -470,10 +490,12 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert 'id="journalEmployee"' in html
     assert '<option value="cell.key_restored">Ключ восстановлен</option>' in html
     assert html.count("data-journal-date") == 2
-    assert page_response.headers["Cache-Control"] == "no-store"
+    assert cache_control == "no-store"
     assert "innerHTML" not in script
     assert "textContent" in script
-    assert "URLSearchParams" in script
+    assert "URLSearchParams" not in script
+    assert 'method: "POST"' in script
+    assert "JSON.stringify(payload)" in script
     assert "URL.createObjectURL" in script
     assert "journal-action-group" in script
     assert "journal-action-overdue" in script

@@ -66,6 +66,11 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="closureSubmit" type="submit" disabled' in html
     assert "Оплаченная аренда за неиспользованные дни не возвращается" in html
     assert "Потеря ключа" in html
+    assert "при потере ключа остаётся занятой до восстановления ключа" in html
+    assert "Документ будет подключён на этапе шаблонов" not in html
+    assert "Документы будут формироваться после подключения" not in html
+    assert "приложение сформирует документ по настроенному шаблону" in html
+    assert "приложение сформирует документы по настроенным шаблонам" in html
     assert 'id="manualOccupy" type="button">Занять с пометкой' in html
     assert 'id="manualOccupationDialog"' in html
     assert 'name="occupation_label"' in html

@@ -149,12 +149,7 @@
     }
   }
 
-  function queryUrl(baseUrl, includePage) {
-    const parameters = new URLSearchParams();
-    if (includePage) {
-      parameters.set("page", String(state.page));
-      parameters.set("page_size", "50");
-    }
+  function requestPayload(includePage) {
     const filters = {
       cell_number: elements.cell.value.trim(),
       action: elements.action.value,
@@ -163,18 +158,30 @@
       date_from: dateFilterValue(elements.dateFrom),
       date_to: dateFilterValue(elements.dateTo),
     };
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) parameters.set(key, value);
-    });
-    const query = parameters.toString();
-    return query ? `${baseUrl}?${query}` : baseUrl;
+    if (includePage) {
+      filters.page = state.page;
+      filters.page_size = 50;
+    }
+    return filters;
+  }
+
+  function postOptions(payload) {
+    return {
+      method: "POST",
+      cache: "no-store",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    };
   }
 
   async function loadJournal() {
     if (state.busy) return;
     setBusy(true);
     try {
-      const response = await fetch(queryUrl(elements.body.dataset.journalUrl, true), { cache: "no-store" });
+      const response = await fetch(
+        elements.body.dataset.journalUrl,
+        postOptions(requestPayload(true)),
+      );
       const payload = await response.json();
       if (!response.ok) {
         if (payload.selection_required) {
@@ -205,8 +212,8 @@
     elements.message.textContent = "Формирование отчёта Excel…";
     try {
       const response = await fetch(
-        queryUrl(elements.body.dataset.journalReportUrl, false),
-        { cache: "no-store" },
+        elements.body.dataset.journalReportUrl,
+        postOptions(requestPayload(false)),
       );
       if (!response.ok) {
         const payload = await response.json();

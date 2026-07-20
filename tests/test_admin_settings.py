@@ -428,11 +428,11 @@ def test_static_docx_without_placeholders_can_be_uploaded_and_downloaded(
     )
     assert template["required_placeholders"] == []
     assert template["file_present"] is True
-    downloaded = client.get(
+    with client.get(
         f"/api/admin/templates/{template_id}/file", headers=_headers(token)
-    )
-    assert downloaded.status_code == 200
-    assert downloaded.data.startswith(b"PK")
+    ) as downloaded:
+        assert downloaded.status_code == 200
+        assert downloaded.data.startswith(b"PK")
     assert client.get(f"/api/admin/templates/{template_id}/file").status_code == 401
 
 

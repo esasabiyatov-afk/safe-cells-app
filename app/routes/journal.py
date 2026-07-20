@@ -19,6 +19,25 @@ from app.services.journal_reports import REPORT_MIMETYPE, build_journal_report
 
 journal_blueprint = Blueprint("journal", __name__)
 
+_FILTER_KEYS = frozenset(
+    {
+        "cell_number",
+        "action",
+        "date_from",
+        "date_to",
+        "client_name",
+        "employee",
+    }
+)
+
+
+def _request_filters(*, include_page: bool) -> dict[str, object | None]:
+    payload = request.get_json(silent=True)
+    allowed = _FILTER_KEYS | ({"page", "page_size"} if include_page else set())
+    if not isinstance(payload, dict) or not set(payload).issubset(allowed):
+        raise JournalValidationError("Условия журнала переданы неверно.")
+    return {key: payload.get(key) for key in allowed}
+
 
 def _settings() -> Settings:
     return current_app.extensions["safe_cells_settings"]
@@ -31,21 +50,13 @@ def journal_page():
     return render_template("journal.html")
 
 
-@journal_blueprint.get("/api/journal")
+@journal_blueprint.post("/api/journal")
 def journal_list():
     # The ordinary journal is available after the mandatory employee selection.
     current_app.config["EMPLOYEE_PROVIDER"]()
     try:
         payload = list_journal_entries(
-            _settings(),
-            cell_number=request.args.get("cell_number"),
-            action=request.args.get("action"),
-            date_from=request.args.get("date_from"),
-            date_to=request.args.get("date_to"),
-            client_name=request.args.get("client_name"),
-            employee=request.args.get("employee"),
-            page=request.args.get("page"),
-            page_size=request.args.get("page_size"),
+            _settings(), **_request_filters(include_page=True)
         )
     except JournalValidationError as exc:
         return jsonify({"message": str(exc)}), 400
@@ -54,20 +65,13 @@ def journal_list():
     return jsonify(payload)
 
 
-@journal_blueprint.get("/api/journal/report")
+@journal_blueprint.post("/api/journal/report")
 def journal_report():
     """Download the current journal selection as a real XLSX workbook."""
 
     current_app.config["EMPLOYEE_PROVIDER"]()
-    filters = {
-        "cell_number": request.args.get("cell_number"),
-        "action": request.args.get("action"),
-        "date_from": request.args.get("date_from"),
-        "date_to": request.args.get("date_to"),
-        "client_name": request.args.get("client_name"),
-        "employee": request.args.get("employee"),
-    }
     try:
+        filters = _request_filters(include_page=False)
         entries = list_journal_report_entries(_settings(), **filters)
         action = filters["action"]
         report_filters = {
