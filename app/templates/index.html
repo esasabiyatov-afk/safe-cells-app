@@ -20,7 +20,7 @@
   data-renewal-url="{{ url_for('renewals.confirm') }}"
   data-closure-quote-url="{{ url_for('closures.calculate') }}"
   data-closure-url="{{ url_for('closures.confirm') }}"
-  data-cell-block-bank-url="{{ url_for('cell_blocks.occupy_bank') }}"
+  data-cell-block-manual-url="{{ url_for('cell_blocks.occupy_manual') }}"
   data-cell-block-release-url="{{ url_for('cell_blocks.release', block_kind='__BLOCK_KIND__') }}"
   data-lost-key-client-url="{{ url_for('cell_blocks.lost_key_client') }}"
   data-document-templates-url="{{ url_for('documents.templates') }}"
@@ -60,8 +60,6 @@
           <span class="normal"><small>В норме</small><b id="statNormal">—</b></span>
           <span class="expiring"><small>Истекает</small><b id="statExpiring">—</b></span>
           <span class="overdue"><small>Просрочено</small><b id="statOverdue">—</b></span>
-          <span class="lost-key"><small>Ключ утерян</small><b id="statLostKey">—</b></span>
-          <span class="bank"><small>Банк</small><b id="statBank">—</b></span>
         </div>
       </article>
     </section>
@@ -105,8 +103,6 @@
             <option value="normal">В норме</option>
             <option value="expiring">Истекает</option>
             <option value="overdue">Просрочена</option>
-            <option value="lost_key">Ключ утерян</option>
-            <option value="bank">Занята банком</option>
           </select>
         </label>
 
@@ -129,8 +125,6 @@
           <span><i class="legend-dot normal"></i>В норме</span>
           <span><i class="legend-dot expiring"></i>Истекает</span>
           <span><i class="legend-dot overdue"></i>Просрочена</span>
-          <span><i class="legend-dot lost-key"></i>Ключ утерян</span>
-          <span><i class="legend-dot bank"></i>Занята банком</span>
         </div>
         <div class="update-meta"><p class="result-count" id="resultCount">Загрузка…</p><p class="updated-at" id="updatedAt">Данные ещё не получены</p></div>
       </div>
@@ -168,7 +162,7 @@
     </div>
     <dl class="cell-details operational-details">
       <div>
-        <dt>Клиент</dt>
+        <dt id="dialogClientLabel">Клиент</dt>
         <dd id="dialogClient">—</dd>
       </div>
       <div>
@@ -550,10 +544,29 @@
 
       <div class="rental-actions">
         <button class="secondary-button" id="rentalBack" type="button">Назад</button>
-        <button class="secondary-button bank-occupy-button" id="bankOccupy" type="button">Занять банком</button>
+        <button class="secondary-button manual-occupy-button" id="manualOccupy" type="button">Занять с пометкой</button>
         <button class="primary-button" id="rentalContinue" type="button" disabled>Продолжить оформление</button>
       </div>
       <p class="dialog-note">До окончательного подтверждения данные в базу не записываются.</p>
+    </form>
+  </dialog>
+
+  <dialog class="rental-dialog manual-occupation-dialog" id="manualOccupationDialog" aria-labelledby="manualOccupationTitle">
+    <button class="dialog-close" id="manualOccupationClose" type="button" aria-label="Закрыть занятие с пометкой">×</button>
+    <p class="section-kicker">Без договора и срока</p>
+    <h2 id="manualOccupationTitle">Занять ячейку № —</h2>
+    <p class="dialog-intro" id="manualOccupationCellSummary">—</p>
+    <form id="manualOccupationForm" autocomplete="off" novalidate>
+      <label class="rental-field">
+        <span>Что написать на ячейке</span>
+        <input id="manualOccupationLabel" name="occupation_label" type="text" maxlength="80" placeholder="Например: Служебное хранение" required>
+      </label>
+      <div class="calculation-error" id="manualOccupationError" role="alert" hidden></div>
+      <div class="rental-actions">
+        <button class="secondary-button" id="manualOccupationBack" type="button">Назад</button>
+        <button class="primary-button" id="manualOccupationSubmit" type="submit">Занять ячейку</button>
+      </div>
+      <p class="dialog-note">Клиент, договор, даты, тариф и срок не создаются.</p>
     </form>
   </dialog>
 

@@ -16,7 +16,7 @@ from app.services.cell_blocks import (
     CellBlockWriteError,
     CellBlockWriteUncertainError,
     lost_key_client_name,
-    occupy_cell_by_bank,
+    occupy_cell_manually,
     release_cell_block,
 )
 
@@ -44,10 +44,10 @@ def _write_error(error: Exception):
     raise error
 
 
-@cell_blocks_blueprint.post("/bank")
-def occupy_bank():
+@cell_blocks_blueprint.post("/manual")
+def occupy_manual():
     try:
-        result = occupy_cell_by_bank(
+        result = occupy_cell_manually(
             _settings(),
             payload=request.get_json(silent=True),
             employee=current_app.config["EMPLOYEE_PROVIDER"](),

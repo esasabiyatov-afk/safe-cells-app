@@ -43,6 +43,7 @@ def test_list_cells_returns_only_approved_client_display_name(
             "contract_ref",
             "block_kind",
             "source_contract_ref",
+            "occupation_label",
         "start_date",
         "end_date",
         "rent_days",
@@ -82,8 +83,6 @@ def test_list_cells_calculates_counts_at_boundaries(
         "normal": 1,
         "expiring": 2,
         "overdue": 1,
-        "lost_key": 0,
-        "bank": 0,
     }
     assert [cell["status"] for cell in payload["cells"][:4]] == [
         "overdue",

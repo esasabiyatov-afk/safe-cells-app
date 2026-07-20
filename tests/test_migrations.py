@@ -9,6 +9,7 @@ from app.db.migrations import (
     DatabaseMigrationError,
     migrate_v2_to_v3,
     migrate_v3_to_v4,
+    migrate_v4_to_v5,
 )
 
 
@@ -35,6 +36,56 @@ def _downgrade_fixture_to_v3(settings) -> None:
         connection.execute("DROP TABLE main.cell_blocks")
         connection.execute("UPDATE main.schema_version SET version=3")
         connection.execute("UPDATE archive.schema_version SET version=3")
+        connection.commit()
+
+
+def _downgrade_fixture_to_v4(settings) -> None:
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DROP TRIGGER main.prevent_contract_on_blocked_cell")
+        connection.execute("DROP TRIGGER main.prevent_block_on_contracted_cell")
+        connection.execute("DROP TABLE main.cell_blocks")
+        connection.execute(
+            """
+            CREATE TABLE main.cell_blocks(
+                cell_number TEXT PRIMARY KEY REFERENCES cells(number),
+                block_kind TEXT NOT NULL CHECK(block_kind IN ('lost_key', 'bank')),
+                source_contract_id TEXT,
+                created_at TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                CHECK(
+                    (block_kind = 'lost_key' AND source_contract_id IS NOT NULL)
+                    OR (block_kind = 'bank' AND source_contract_id IS NULL)
+                )
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO main.cell_blocks(
+                cell_number, block_kind, source_contract_id, created_at, created_by
+            ) VALUES('1', 'bank', NULL, ?, 'Тестовый Сотрудник')
+            """,
+            (WHEN.isoformat(timespec="seconds"),),
+        )
+        connection.execute(
+            """
+            CREATE TRIGGER main.prevent_contract_on_blocked_cell
+            BEFORE INSERT ON contracts
+            WHEN EXISTS(SELECT 1 FROM cell_blocks WHERE cell_number=NEW.cell_number)
+            BEGIN SELECT RAISE(ABORT, 'cell is blocked'); END
+            """
+        )
+        connection.execute(
+            """
+            CREATE TRIGGER main.prevent_block_on_contracted_cell
+            BEFORE INSERT ON cell_blocks
+            WHEN EXISTS(SELECT 1 FROM contracts WHERE cell_number=NEW.cell_number)
+            BEGIN SELECT RAISE(ABORT, 'cell has active contract'); END
+            """
+        )
+        connection.execute("UPDATE main.schema_version SET version=4")
+        connection.execute("UPDATE archive.schema_version SET version=4")
         connection.commit()
 
 
@@ -136,3 +187,61 @@ def test_v4_migration_rolls_back_pair_after_partial_failure(
         ).fetchone()
     assert versions == (3, 3)
     assert table is None
+
+
+def test_explicit_v5_migration_preserves_legacy_bank_block_as_manual_label(
+    settings, initialized_databases
+):
+    _downgrade_fixture_to_v4(settings)
+
+    result = migrate_v4_to_v5(settings, occurred_at=WHEN)
+
+    assert result.changed and result.from_version == 4 and result.to_version == 5
+    assert result.backup is not None
+    with open_write(settings, attach_archive=True) as connection:
+        versions = (
+            connection.execute("SELECT version FROM main.schema_version").fetchone()[0],
+            connection.execute("SELECT version FROM archive.schema_version").fetchone()[0],
+        )
+        columns = {
+            row[1] for row in connection.execute("PRAGMA main.table_info(cell_blocks)")
+        }
+        block = connection.execute(
+            "SELECT block_kind, occupation_label FROM main.cell_blocks WHERE cell_number='1'"
+        ).fetchone()
+    assert versions == (5, 5)
+    assert "occupation_label" in columns
+    assert tuple(block) == ("manual", "Занято банком")
+    with sqlite3.connect(result.backup.working) as backup:
+        backup_block = backup.execute(
+            "SELECT block_kind FROM cell_blocks WHERE cell_number='1'"
+        ).fetchone()
+        assert backup_block[0] == "bank"
+
+
+def test_v5_migration_rolls_back_pair_after_partial_failure(
+    settings, initialized_databases
+):
+    _downgrade_fixture_to_v4(settings)
+
+    with pytest.raises(DatabaseMigrationError):
+        migrate_v4_to_v5(
+            settings,
+            occurred_at=WHEN,
+            after_data_copy=lambda: (_ for _ in ()).throw(RuntimeError("test")),
+        )
+
+    with open_write(settings, attach_archive=True) as connection:
+        versions = (
+            connection.execute("SELECT version FROM main.schema_version").fetchone()[0],
+            connection.execute("SELECT version FROM archive.schema_version").fetchone()[0],
+        )
+        columns = {
+            row[1] for row in connection.execute("PRAGMA main.table_info(cell_blocks)")
+        }
+        block_kind = connection.execute(
+            "SELECT block_kind FROM main.cell_blocks WHERE cell_number='1'"
+        ).fetchone()[0]
+    assert versions == (4, 4)
+    assert "occupation_label" not in columns
+    assert block_kind == "bank"

@@ -255,9 +255,9 @@ def test_overdue_badge_is_only_added_to_renewal_or_closure(
     _insert_log(
         settings,
         occurred_at="2026-07-14T09:00:00+06:00",
-        action="cell.bank_occupied",
+        action="cell.manual_occupied",
         cell_number="3",
-        changes={"block_kind": "bank", "penalty_days": 99},
+        changes={"block_kind": "manual", "penalty_days": 99},
     )
     _insert_log(
         settings,
@@ -271,12 +271,15 @@ def test_overdue_badge_is_only_added_to_renewal_or_closure(
     )
 
     payload = list_journal_entries(settings)
-    bank = next(entry for entry in payload["entries"] if entry["action"] == "cell.bank_occupied")
+    manual = next(
+        entry for entry in payload["entries"]
+        if entry["action"] == "cell.manual_occupied"
+    )
     closed = next(entry for entry in payload["entries"] if entry["action"] == "contract.closed")
     overdue = list_journal_entries(settings, action="overdue")
 
-    assert bank["is_overdue"] is False
-    assert bank["report_action_label"] == "Занятие банком"
+    assert manual["is_overdue"] is False
+    assert manual["report_action_label"] == "Занятие без договора"
     assert closed["is_overdue"] is True
     assert closed["report_action_label"] == "Закрытие / Просрочка"
     assert [entry["action"] for entry in overdue["entries"]] == [

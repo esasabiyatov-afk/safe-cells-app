@@ -101,7 +101,8 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                     contracts.rent_days,
                     contracts.client_full_name,
                     cell_blocks.block_kind,
-                    cell_blocks.source_contract_id
+                    cell_blocks.source_contract_id,
+                    cell_blocks.occupation_label
                 FROM cells
                 CROSS JOIN vault_defaults
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
@@ -131,12 +132,10 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
         "normal": 0,
         "expiring": 0,
         "overdue": 0,
-        "lost_key": 0,
-        "bank": 0,
     }
     for row in rows:
         block_kind = row["block_kind"]
-        if block_kind not in {None, "lost_key", "bank"}:
+        if block_kind not in {None, "lost_key", "manual"}:
             raise InvalidStoredDataError("Некорректная блокировка ячейки.")
         if block_kind is not None and row["contract_id"] is not None:
             raise InvalidStoredDataError(
@@ -166,13 +165,16 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                 raise InvalidStoredDataError(
                     "Для утерянного ключа не найден закрытый договор."
                 )
-            status_value = "lost_key"
+            status_value = "normal"
             days_remaining = None
-            display_name = client_display_name(lost_client_name)
-        elif block_kind == "bank":
-            status_value = "bank"
+            display_name = "Ключ утерян"
+        elif block_kind == "manual":
+            occupation_label = str(row["occupation_label"] or "").strip()
+            if not occupation_label:
+                raise InvalidStoredDataError("Для занятой ячейки не указана пометка.")
+            status_value = "normal"
             days_remaining = None
-            display_name = "Банк"
+            display_name = occupation_label
         else:
             status = calculate_status(
                 end_date=end_date,
@@ -193,6 +195,7 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                 "contract_ref": row["contract_id"],
                 "block_kind": block_kind,
                 "source_contract_ref": row["source_contract_id"],
+                "occupation_label": row["occupation_label"],
                 "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat() if end_date else None,
                 "rent_days": rent_days,
@@ -229,7 +232,8 @@ def search_cell_numbers(settings: Settings, *, query: str) -> list[str]:
                     contracts.client_full_name,
                     contracts.account_number,
                     cell_blocks.block_kind,
-                    cell_blocks.source_contract_id
+                    cell_blocks.source_contract_id,
+                    cell_blocks.occupation_label
                 FROM cells
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
                 LEFT JOIN cell_blocks ON cell_blocks.cell_number = cells.number
@@ -256,7 +260,8 @@ def search_cell_numbers(settings: Settings, *, query: str) -> list[str]:
             row["client_full_name"] or "",
             row["account_number"] or "",
             archived_names.get(str(row["source_contract_id"] or ""), ""),
-            "Банк" if row["block_kind"] == "bank" else "",
+            "Ключ утерян" if row["block_kind"] == "lost_key" else "",
+            row["occupation_label"] or "",
         )
         if any(normalized_query in value.casefold() for value in searchable_values):
             matches.append(str(row["number"]))

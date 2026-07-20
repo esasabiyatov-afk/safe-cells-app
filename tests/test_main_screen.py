@@ -45,7 +45,7 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-renewal-url="/api/renewals"' in html
     assert 'data-closure-quote-url="/api/closures/calculate"' in html
     assert 'data-closure-url="/api/closures"' in html
-    assert 'data-cell-block-bank-url="/api/cell-blocks/bank"' in html
+    assert 'data-cell-block-manual-url="/api/cell-blocks/manual"' in html
     assert 'data-lost-key-client-url="/api/cell-blocks/lost-key-client"' in html
     assert 'data-private-token="' in html
     assert 'id="rentalContinue"' in html
@@ -65,7 +65,11 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="closureSubmit" type="submit" disabled' in html
     assert "Оплаченная аренда за неиспользованные дни не возвращается" in html
     assert "Потеря ключа" in html
-    assert 'id="bankOccupy" type="button">Занять банком' in html
+    assert 'id="manualOccupy" type="button">Занять с пометкой' in html
+    assert 'id="manualOccupationDialog"' in html
+    assert 'name="occupation_label"' in html
+    assert 'id="statLostKey"' not in html
+    assert 'id="statBank"' not in html
     assert 'id="blockedActionError" role="alert" hidden' in html
     assert 'id="employeeChoices"' in html
     assert 'id="employeeDialogSelect"' not in html
@@ -133,8 +137,6 @@ def test_cells_api_returns_126_safe_rows(
         "normal": 0,
         "expiring": 0,
         "overdue": 0,
-        "lost_key": 0,
-        "bank": 0,
     }
     assert "client_full_name" not in payload["cells"][0]
     assert "account_number" not in payload["cells"][0]
@@ -213,8 +215,6 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "--normal-border:" in stylesheet
         assert "--expiring-border:" in stylesheet
         assert "--overdue-border:" in stylesheet
-        assert "--lost-key-border:" in stylesheet
-        assert "--bank-border:" in stylesheet
         assert "border: 2px solid var(--cell-accent)" in stylesheet
         assert "inset 0 5px 0 var(--cell-accent)" in stylesheet
         assert "font-size: 11.5px" in stylesheet
@@ -222,8 +222,6 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert ".legend-dot.normal { background: #2476a8; }" in stylesheet
         assert ".legend-dot.expiring { background: #e5a900; }" in stylesheet
         assert ".legend-dot.overdue { background: #c83b2d; }" in stylesheet
-        assert ".legend-dot.lost-key" in stylesheet
-        assert ".legend-dot.bank" in stylesheet
         assert "grid-template-columns: repeat(2, 1fr);" in stylesheet
         assert "15_000" in script
         assert "setInterval" in script
@@ -235,7 +233,8 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "createOperationId" in script
         assert "submitContract" in script
         assert "activeOperationId" in script
-        assert "occupyBankCell" in script
+        assert "occupyManualCell" in script
+        assert "occupation_label: occupationLabel" in script
         assert "releaseBlockedCell" in script
         assert "renderEmployeeChoices" in script
         assert "togglePrivateDetails" in script

@@ -19,7 +19,7 @@ from app.db.connections import (
 from app.db.seed import load_cell_seed, seed_working_database
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class DatabaseInitializationError(RuntimeError):
@@ -62,13 +62,22 @@ WORKING_SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS main.cell_blocks(
         cell_number TEXT PRIMARY KEY REFERENCES cells(number),
-        block_kind TEXT NOT NULL CHECK(block_kind IN ('lost_key', 'bank')),
+        block_kind TEXT NOT NULL CHECK(block_kind IN ('lost_key', 'manual')),
         source_contract_id TEXT,
+        occupation_label TEXT,
         created_at TEXT NOT NULL,
         created_by TEXT NOT NULL,
         CHECK(
-            (block_kind = 'lost_key' AND source_contract_id IS NOT NULL)
-            OR (block_kind = 'bank' AND source_contract_id IS NULL)
+            (
+                block_kind = 'lost_key'
+                AND source_contract_id IS NOT NULL
+                AND occupation_label IS NULL
+            )
+            OR (
+                block_kind = 'manual'
+                AND source_contract_id IS NULL
+                AND length(trim(occupation_label)) BETWEEN 1 AND 80
+            )
         )
     )
     """,

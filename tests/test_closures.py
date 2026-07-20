@@ -115,6 +115,7 @@ def test_lost_key_close_archives_contract_and_keeps_cell_blocked(
         "cell_number": "1",
         "block_kind": "lost_key",
         "source_contract_id": "contract-test-1",
+        "occupation_label": None,
         "created_at": OCCURRED.isoformat(timespec="seconds"),
         "created_by": "Тестовый Сотрудник",
     }

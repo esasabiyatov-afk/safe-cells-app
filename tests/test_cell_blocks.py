@@ -13,7 +13,7 @@ from app.services.cell_blocks import (
     CellBlockBusyError,
     CellBlockConflictError,
     lost_key_client_name,
-    occupy_cell_by_bank,
+    occupy_cell_manually,
     release_cell_block,
 )
 from app.services.cells import list_cells, search_cell_numbers
@@ -28,24 +28,37 @@ def _payload(cell_number: str = "1") -> dict[str, str]:
     return {"operation_id": str(uuid4()), "cell_number": cell_number}
 
 
-def test_bank_occupation_has_no_client_or_term_and_can_be_released(
+def _manual_payload(
+    cell_number: str = "1", occupation_label: str = "Служебное хранение"
+) -> dict[str, str]:
+    return {**_payload(cell_number), "occupation_label": occupation_label}
+
+
+def test_manual_occupation_has_custom_label_no_term_and_can_be_released(
     settings, initialized_databases
 ):
-    request = _payload()
-    first = occupy_cell_by_bank(
+    request = _manual_payload(occupation_label="Внутренняя проверка")
+    first = occupy_cell_manually(
         settings, payload=request, employee="Тестовый Сотрудник", occurred_at=WHEN
     )
-    repeated = occupy_cell_by_bank(
+    repeated = occupy_cell_manually(
         settings, payload=request, employee="Тестовый Сотрудник", occurred_at=WHEN
     )
 
-    assert first.block_kind == "bank" and first.repeated is False
+    assert first.block_kind == "manual" and first.repeated is False
+    assert first.occupation_label == "Внутренняя проверка"
     assert repeated.repeated is True
-    cell = list_cells(settings, as_of_date=date(2026, 7, 16))["cells"][0]
-    assert cell["status"] == "bank"
-    assert cell["client_display_name"] == "Банк"
+    cells_payload = list_cells(settings, as_of_date=date(2026, 7, 16))
+    cell = cells_payload["cells"][0]
+    assert cell["status"] == "normal"
+    assert cell["client_display_name"] == "Внутренняя проверка"
+    assert cell["occupation_label"] == "Внутренняя проверка"
     assert cell["start_date"] is None and cell["end_date"] is None
     assert cell["rent_days"] is None and cell["days_remaining"] is None
+    assert cells_payload["counts"] == {
+        "free": 125, "normal": 1, "expiring": 0, "overdue": 0
+    }
+    assert search_cell_numbers(settings, query="внутренняя") == ["1"]
     with pytest.raises(CellUnavailableError, match="занята"):
         calculate_rental_quote(
             settings,
@@ -58,12 +71,12 @@ def test_bank_occupation_has_no_client_or_term_and_can_be_released(
     released = release_cell_block(
         settings,
         payload=_payload(),
-        expected_kind="bank",
+        expected_kind="manual",
         employee="Тестовый Сотрудник",
         occurred_at=WHEN,
     )
 
-    assert released.block_kind == "bank"
+    assert released.block_kind == "manual"
     assert list_cells(settings, as_of_date=date(2026, 7, 16))["cells"][0][
         "status"
     ] == "free"
@@ -72,12 +85,13 @@ def test_bank_occupation_has_no_client_or_term_and_can_be_released(
             "SELECT action, contract_id, changes_json FROM log ORDER BY occurred_at, rowid"
         ).fetchall()
     assert [row["action"] for row in logs] == [
-        "cell.bank_occupied",
-        "cell.bank_released",
+        "cell.manual_occupied",
+        "cell.manual_released",
     ]
     assert all(row["contract_id"] is None for row in logs)
-    assert all(json.loads(row["changes_json"]) == {"block_kind": "bank"} for row in logs)
+    assert all(json.loads(row["changes_json"]) == {"block_kind": "manual"} for row in logs)
     assert "Сотрудник" not in "".join(row["changes_json"] for row in logs)
+    assert "Внутренняя проверка" not in "".join(row["changes_json"] for row in logs)
 
 
 def test_lost_key_client_is_resolved_from_archive_and_key_restore_frees_cell(
@@ -103,11 +117,13 @@ def test_lost_key_client_is_resolved_from_archive_and_key_restore_frees_cell(
         occurred_at=WHEN,
     )
 
-    cell = list_cells(settings, as_of_date=date(2026, 7, 16))["cells"][0]
-    assert cell["status"] == "lost_key"
-    assert cell["client_display_name"] == "Вымышленный К. К."
+    cells_payload = list_cells(settings, as_of_date=date(2026, 7, 16))
+    cell = cells_payload["cells"][0]
+    assert cell["status"] == "normal"
+    assert cell["client_display_name"] == "Ключ утерян"
     assert lost_key_client_name(settings, cell_number="1") == "Вымышленный Клиент Ключа"
     assert search_cell_numbers(settings, query="клиент ключа") == ["1"]
+    assert cells_payload["counts"]["normal"] == 1
 
     release_cell_block(
         settings,
@@ -128,15 +144,15 @@ def test_lost_key_client_is_resolved_from_archive_and_key_restore_frees_cell(
     assert "Вымышленный" not in restored["changes_json"]
 
 
-def test_bank_occupation_rechecks_current_state_inside_transaction(
+def test_manual_occupation_rechecks_current_state_inside_transaction(
     settings, initialized_databases, insert_test_contract
 ):
     insert_test_contract(cell_number="1", end_date="2026-07-16")
 
     with pytest.raises(CellBlockConflictError, match="уже занята"):
-        occupy_cell_by_bank(
+        occupy_cell_manually(
             settings,
-            payload=_payload(),
+            payload=_manual_payload(),
             employee="Тестовый Сотрудник",
             occurred_at=WHEN,
         )
@@ -145,7 +161,7 @@ def test_bank_occupation_rechecks_current_state_inside_transaction(
         assert working.execute("SELECT COUNT(*) FROM cell_blocks").fetchone()[0] == 0
 
 
-def test_bank_occupation_reports_busy_database_without_partial_write(
+def test_manual_occupation_reports_busy_database_without_partial_write(
     settings, initialized_databases
 ):
     short = Settings(
@@ -156,9 +172,9 @@ def test_bank_occupation_reports_busy_database_without_partial_write(
     with open_write(settings) as locker:
         locker.execute("BEGIN IMMEDIATE")
         with pytest.raises(CellBlockBusyError):
-            occupy_cell_by_bank(
+            occupy_cell_manually(
                 short,
-                payload=_payload(),
+                payload=_manual_payload(),
                 employee="Тестовый Сотрудник",
                 occurred_at=WHEN,
             )
@@ -175,10 +191,23 @@ def test_cell_block_routes_require_employee_and_protect_lost_key_name(
     app.config["NOW_PROVIDER"] = lambda: WHEN
     client = app.test_client()
 
-    assert client.post("/api/cell-blocks/bank", json=_payload()).status_code == 409
+    assert client.post("/api/cell-blocks/manual", json=_manual_payload()).status_code == 409
     app.config["EMPLOYEE_PROVIDER"] = lambda: "Тестовый Сотрудник"
-    response = client.post("/api/cell-blocks/bank", json=_payload())
+    response = client.post("/api/cell-blocks/manual", json=_manual_payload())
     assert response.status_code == 201
     assert client.post(
         "/api/cell-blocks/lost-key-client", json={"cell_number": "1"}
     ).status_code == 403
+
+
+@pytest.mark.parametrize("label", ["", "   ", "x" * 81])
+def test_manual_occupation_rejects_invalid_label(
+    settings, initialized_databases, label
+):
+    with pytest.raises(ValueError, match="Пометка"):
+        occupy_cell_manually(
+            settings,
+            payload=_manual_payload(occupation_label=label),
+            employee="Тестовый Сотрудник",
+            occurred_at=WHEN,
+        )

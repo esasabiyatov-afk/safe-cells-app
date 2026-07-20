@@ -18,12 +18,6 @@
   --overdue: #7d291e;
   --overdue-border: #a34536;
   --overdue-bg: #e8b6ab;
-  --lost-key: #7b4513;
-  --lost-key-border: #a66526;
-  --lost-key-bg: #ead0ae;
-  --bank: #51436c;
-  --bank-border: #74658f;
-  --bank-bg: #ddd8ea;
   --shadow: 0 16px 42px rgba(31, 42, 58, 0.09);
 }
 
@@ -222,7 +216,7 @@ main {
 .occupied-breakdown {
   display: grid;
   flex: 1;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 5px;
 }
 
@@ -230,8 +224,6 @@ main {
 .occupied-breakdown .normal { color: var(--normal); }
 .occupied-breakdown .expiring { color: var(--expiring); }
 .occupied-breakdown .overdue { color: var(--overdue); }
-.occupied-breakdown .lost-key { color: var(--lost-key); }
-.occupied-breakdown .bank { color: var(--bank); }
 .occupied-breakdown small { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .occupied-breakdown b { display: block; margin-top: 3px; font-size: 20px; }
 
@@ -531,8 +523,10 @@ main {
 .journal-action-closed { background: var(--overdue-bg); color: var(--overdue); }
 .journal-action-edited { background: var(--expiring-bg); color: var(--expiring); }
 .journal-action-overdue { background: var(--overdue-bg); color: var(--overdue); }
+.journal-action-manual_occupied,
+.journal-action-manual_released,
 .journal-action-bank_occupied,
-.journal-action-bank_released { background: #ddd8ea; color: #51436c; }
+.journal-action-bank_released { background: var(--normal-bg); color: var(--normal); }
 .journal-action-key_restored { background: var(--free-bg); color: var(--free); }
 .journal-entry time { color: var(--ink-soft); font-size: 12px; }
 .journal-client { margin: 9px 0 0; font-size: 13px; font-weight: 700; line-height: 1.45; }
@@ -690,8 +684,6 @@ main {
 .legend-dot.normal { background: #2476a8; }
 .legend-dot.expiring { background: #e5a900; }
 .legend-dot.overdue { background: #c83b2d; }
-.legend-dot.lost-key { background: var(--lost-key-border); }
-.legend-dot.bank { background: var(--bank-border); }
 
 .update-meta { display: flex; align-items: center; gap: 14px; }
 .result-count { padding-right: 14px; border-right: 1px solid var(--line); }
@@ -763,8 +755,6 @@ main {
 .cell.normal { --cell-accent: var(--normal-border); background: var(--normal-bg); }
 .cell.expiring { --cell-accent: var(--expiring-border); background: var(--expiring-bg); }
 .cell.overdue { --cell-accent: var(--overdue-border); background: var(--overdue-bg); }
-.cell.lost_key { --cell-accent: var(--lost-key-border); background: var(--lost-key-bg); }
-.cell.bank { --cell-accent: var(--bank-border); background: var(--bank-bg); }
 
 .cell.overdue::after {
   position: absolute;
@@ -794,13 +784,15 @@ main {
 }
 
 .cell-client {
-  display: block;
+  display: -webkit-box;
   min-height: 26px;
   margin-top: 4px;
   overflow: hidden;
   font-size: 11.5px;
   font-weight: 700;
   line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .dialog-dimensions {
@@ -1358,8 +1350,6 @@ main {
 .status-badge.normal { background: var(--normal-bg); color: var(--normal); }
 .status-badge.expiring { background: var(--expiring-bg); color: var(--expiring); }
 .status-badge.overdue { background: var(--overdue-bg); color: var(--overdue); }
-.status-badge.lost_key { background: var(--lost-key-bg); color: var(--lost-key); }
-.status-badge.bank { background: var(--bank-bg); color: var(--bank); }
 
 .blocked-card-actions {
   grid-template-columns: 1fr;

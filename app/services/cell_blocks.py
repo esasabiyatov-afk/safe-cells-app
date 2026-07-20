@@ -27,7 +27,7 @@ UNCERTAIN_MESSAGE = (
     "Обновите главный экран и проверьте состояние ячейки."
 )
 BLOCK_ACTIONS = {
-    "bank": ("cell.bank_occupied", "cell.bank_released"),
+    "manual": ("cell.manual_occupied", "cell.manual_released"),
     "lost_key": (None, "cell.key_restored"),
 }
 
@@ -64,6 +64,7 @@ class CellBlockWriteUncertainError(RuntimeError):
 class CellBlockResult:
     cell_number: str
     block_kind: str
+    occupation_label: str | None
     repeated: bool
     backup_created: bool
     warning: str | None = None
@@ -101,6 +102,18 @@ def _payload(payload: object) -> tuple[str, str]:
     )
 
 
+def _manual_payload(payload: object) -> tuple[str, str, str]:
+    if not isinstance(payload, dict) or set(payload) != {
+        "operation_id", "cell_number", "occupation_label"
+    }:
+        raise CellBlockValidationError("Переданы неверные данные операции.")
+    return (
+        _operation_id(payload.get("operation_id")),
+        _required_text(payload.get("cell_number"), label="Номер ячейки", maximum=50),
+        _required_text(payload.get("occupation_label"), label="Пометка", maximum=80),
+    )
+
+
 def _timestamp(occurred_at: datetime) -> str:
     if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
         raise CellBlockValidationError("Время операции должно содержать часовой пояс.")
@@ -124,6 +137,7 @@ def _existing_operation(
     action: str,
     block_kind: str,
     release: bool,
+    occupation_label: str | None = None,
 ) -> CellBlockResult | None:
     row = connection.execute(
         "SELECT action, cell_number FROM archive.log WHERE operation_id=?",
@@ -135,13 +149,17 @@ def _existing_operation(
         raise CellBlockConflictError("Этот идентификатор операции уже использован.")
     if not release:
         block = connection.execute(
-            "SELECT block_kind FROM main.cell_blocks WHERE cell_number=?",
+            "SELECT block_kind, occupation_label FROM main.cell_blocks WHERE cell_number=?",
             (cell_number,),
         ).fetchone()
         if block is None or block["block_kind"] != block_kind:
             raise CellBlockWriteUncertainError(UNCERTAIN_MESSAGE)
+        if block_kind == "manual" and block["occupation_label"] != occupation_label:
+            raise CellBlockConflictError("Этот идентификатор операции уже использован.")
     backed_up, warning = _warning(settings, operation_id, repeated=True)
-    return CellBlockResult(cell_number, block_kind, True, backed_up, warning)
+    return CellBlockResult(
+        cell_number, block_kind, occupation_label, True, backed_up, warning
+    )
 
 
 def _audit_changes(block_kind: str) -> str:
@@ -173,17 +191,17 @@ def _write_error(error: BaseException, *, phase: str) -> BaseException:
     return CellBlockWriteError("Операция не сохранена. Изменения отменены.")
 
 
-def occupy_cell_by_bank(
+def occupy_cell_manually(
     settings: Settings,
     *,
     payload: object,
     employee: str,
     occurred_at: datetime,
 ) -> CellBlockResult:
-    operation_id, cell_number = _payload(payload)
+    operation_id, cell_number, occupation_label = _manual_payload(payload)
     employee_name = _required_text(employee, label="Сотрудник", maximum=128)
     timestamp = _timestamp(occurred_at)
-    action = "cell.bank_occupied"
+    action = "cell.manual_occupied"
     phase = "opening"
     try:
         with open_write(settings, attach_archive=True) as connection:
@@ -196,8 +214,9 @@ def occupy_cell_by_bank(
                 operation_id=operation_id,
                 cell_number=cell_number,
                 action=action,
-                block_kind="bank",
+                block_kind="manual",
                 release=False,
+                occupation_label=occupation_label,
             )
             if existing is not None:
                 connection.rollback()
@@ -221,10 +240,11 @@ def occupy_cell_by_bank(
             connection.execute(
                 """
                 INSERT INTO main.cell_blocks(
-                    cell_number, block_kind, source_contract_id, created_at, created_by
-                ) VALUES(?, 'bank', NULL, ?, ?)
+                    cell_number, block_kind, source_contract_id,
+                    occupation_label, created_at, created_by
+                ) VALUES(?, 'manual', NULL, ?, ?, ?)
                 """,
-                (cell_number, timestamp, employee_name),
+                (cell_number, occupation_label, timestamp, employee_name),
             )
             connection.execute(
                 """
@@ -235,17 +255,21 @@ def occupy_cell_by_bank(
                 """,
                 (
                     str(uuid4()), operation_id, timestamp, employee_name, action,
-                    cell_number, _audit_changes("bank"),
+                    cell_number, _audit_changes("manual"),
                 ),
             )
             phase = "committing"
             connection.commit()
             phase = "verifying"
             saved = connection.execute(
-                "SELECT block_kind FROM main.cell_blocks WHERE cell_number=?",
+                "SELECT block_kind, occupation_label FROM main.cell_blocks WHERE cell_number=?",
                 (cell_number,),
             ).fetchone()
-            if saved is None or saved["block_kind"] != "bank":
+            if (
+                saved is None
+                or saved["block_kind"] != "manual"
+                or saved["occupation_label"] != occupation_label
+            ):
                 raise CellBlockWriteUncertainError(UNCERTAIN_MESSAGE)
             phase = "backup"
             backed_up = True
@@ -256,7 +280,9 @@ def occupy_cell_by_bank(
                 )
             except Exception:
                 backed_up, warning = _warning(settings, operation_id, repeated=False)
-            return CellBlockResult(cell_number, "bank", False, backed_up, warning)
+            return CellBlockResult(
+                cell_number, "manual", occupation_label, False, backed_up, warning
+            )
     except (CellBlockValidationError, CellBlockConflictError, CellBlockWriteUncertainError):
         raise
     except sqlite3.IntegrityError as exc:
@@ -299,7 +325,7 @@ def release_cell_block(
                 return existing
             block = connection.execute(
                 """
-                SELECT block_kind, source_contract_id
+                SELECT block_kind, source_contract_id, occupation_label
                 FROM main.cell_blocks WHERE cell_number=?
                 """,
                 (cell_number,),
@@ -352,7 +378,12 @@ def release_cell_block(
             except Exception:
                 backed_up, warning = _warning(settings, operation_id, repeated=False)
             return CellBlockResult(
-                cell_number, expected_kind, False, backed_up, warning
+                cell_number,
+                expected_kind,
+                block["occupation_label"],
+                False,
+                backed_up,
+                warning,
             )
     except (CellBlockValidationError, CellBlockConflictError, CellBlockWriteUncertainError):
         raise

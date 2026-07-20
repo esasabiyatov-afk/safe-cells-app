@@ -122,3 +122,57 @@ def test_v4_migration_cli_requires_confirmation_and_updates_both_versions(
         "migrate-v4", "--config", str(config_path), "--confirm", "MIGRATE-TO-4"
     ]) == 0
     assert "Версия схемы: 4" in capsys.readouterr().out
+
+
+def test_v5_migration_cli_requires_confirmation_and_updates_both_versions(
+    settings: Settings, initialized_databases, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "config-v5.json"
+    config_path.write_text(
+        json.dumps({"database_directory": str(settings.database_directory)}),
+        encoding="utf-8",
+    )
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("DROP TRIGGER main.prevent_contract_on_blocked_cell")
+        connection.execute("DROP TRIGGER main.prevent_block_on_contracted_cell")
+        connection.execute("DROP TABLE main.cell_blocks")
+        connection.execute(
+            """
+            CREATE TABLE main.cell_blocks(
+                cell_number TEXT PRIMARY KEY REFERENCES cells(number),
+                block_kind TEXT NOT NULL CHECK(block_kind IN ('lost_key', 'bank')),
+                source_contract_id TEXT,
+                created_at TEXT NOT NULL,
+                created_by TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TRIGGER main.prevent_contract_on_blocked_cell
+            BEFORE INSERT ON contracts
+            WHEN EXISTS(SELECT 1 FROM cell_blocks WHERE cell_number=NEW.cell_number)
+            BEGIN SELECT RAISE(ABORT, 'cell is blocked'); END
+            """
+        )
+        connection.execute(
+            """
+            CREATE TRIGGER main.prevent_block_on_contracted_cell
+            BEFORE INSERT ON cell_blocks
+            WHEN EXISTS(SELECT 1 FROM contracts WHERE cell_number=NEW.cell_number)
+            BEGIN SELECT RAISE(ABORT, 'cell has active contract'); END
+            """
+        )
+        connection.execute("UPDATE main.schema_version SET version=4")
+        connection.execute("UPDATE archive.schema_version SET version=4")
+        connection.commit()
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["migrate-v5", "--config", str(config_path), "--confirm", "WRONG"])
+    assert exc_info.value.code == 2
+    assert main([
+        "migrate-v5", "--config", str(config_path), "--confirm", "MIGRATE-TO-5"
+    ]) == 0
+    assert "Версия схемы: 5" in capsys.readouterr().out

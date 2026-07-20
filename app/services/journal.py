@@ -22,11 +22,22 @@ ACTION_LABELS = {
     "contract.created": "Открытие",
     "contract.renewed": "Продление",
     "contract.closed": "Закрытие",
-    "cell.bank_occupied": "Занятие банком",
-    "cell.bank_released": "Освобождение банком",
+    "cell.manual_occupied": "Занятие без договора",
+    "cell.manual_released": "Освобождение ячейки",
+    # Legacy actions stay readable after the explicit schema 4→5 migration.
+    "cell.bank_occupied": "Занятие без договора",
+    "cell.bank_released": "Освобождение ячейки",
     "cell.key_restored": "Ключ восстановлен",
 }
-FILTER_LABELS = {**ACTION_LABELS, "overdue": "Просрочка"}
+FILTER_LABELS = {
+    "contract.created": "Открытие",
+    "contract.renewed": "Продление",
+    "contract.closed": "Закрытие",
+    "overdue": "Просрочка",
+    "cell.manual_occupied": "Занятие без договора",
+    "cell.manual_released": "Освобождение ячейки",
+    "cell.key_restored": "Ключ восстановлен",
+}
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
 MAX_REPORT_ROWS = 20_000
@@ -152,10 +163,10 @@ def _summary(action: str, raw_changes: object) -> str:
             parts.append(f"Просрочка: {penalty_days} дн.")
         return "; ".join(parts) or "Договор закрыт, ячейка освобождена."
 
-    if action == "cell.bank_occupied":
-        return "Ячейка занята банком без договора и срока."
-    if action == "cell.bank_released":
-        return "Банковская блокировка снята, ячейка свободна."
+    if action in {"cell.manual_occupied", "cell.bank_occupied"}:
+        return "Ячейка занята без договора и срока."
+    if action in {"cell.manual_released", "cell.bank_released"}:
+        return "Ячейка освобождена."
     if action == "cell.key_restored":
         return "Ключ восстановлен, ячейка свободна."
 
@@ -215,6 +226,10 @@ def _where_clause(
             "ELSE 0 END > 0"
         )
         parameters.append("$.penalty_days")
+    elif action_code == "cell.manual_occupied":
+        clauses.append("log.action IN ('cell.manual_occupied', 'cell.bank_occupied')")
+    elif action_code == "cell.manual_released":
+        clauses.append("log.action IN ('cell.manual_released', 'cell.bank_released')")
     elif action_code is not None:
         clauses.append("log.action = ?")
         parameters.append(action_code)
@@ -255,7 +270,11 @@ def _entry(row: sqlite3.Row) -> dict[str, Any]:
         "cell_number": str(row["cell_number"]),
         "client_full_name": (
             client_name
-            or ("Банк" if action.startswith("cell.bank_") else "Клиент не найден")
+            or (
+                "Без договора"
+                if action.startswith(("cell.manual_", "cell.bank_"))
+                else "Клиент не найден"
+            )
         ),
         "action": action,
         "action_label": action_label,

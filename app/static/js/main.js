@@ -5,15 +5,13 @@ const STATUS_LABELS = {
   normal: "В норме",
   expiring: "Истекает",
   overdue: "Просрочена",
-  lost_key: "Ключ утерян",
-  bank: "Занята банком",
 };
 
 const NETWORK_ERROR_MESSAGE = "Не удалось получить данные с сетевого диска. Проверьте подключение к сети";
 
 const state = {
   cells: [],
-  counts: { free: 0, normal: 0, expiring: 0, overdue: 0, lost_key: 0, bank: 0 },
+  counts: { free: 0, normal: 0, expiring: 0, overdue: 0 },
   privateMatches: null,
   searchSequence: 0,
   asOfDate: null,
@@ -38,7 +36,7 @@ const state = {
   editSubmitting: false,
   documentSubmitting: false,
   employeeSubmitting: false,
-  bankOperationId: null,
+  manualOperationId: null,
   blockOperationId: null,
   blockSubmitting: false,
 };
@@ -62,13 +60,12 @@ const elements = {
   statNormal: document.getElementById("statNormal"),
   statExpiring: document.getElementById("statExpiring"),
   statOverdue: document.getElementById("statOverdue"),
-  statLostKey: document.getElementById("statLostKey"),
-  statBank: document.getElementById("statBank"),
   dialog: document.getElementById("cellDialog"),
   dialogClose: document.getElementById("dialogClose"),
   dialogTitle: document.getElementById("dialogTitle"),
   dialogStatus: document.getElementById("dialogStatus"),
   dialogSize: document.getElementById("dialogSize"),
+  dialogClientLabel: document.getElementById("dialogClientLabel"),
   dialogClient: document.getElementById("dialogClient"),
   dialogStartDate: document.getElementById("dialogStartDate"),
   dialogEndDate: document.getElementById("dialogEndDate"),
@@ -183,7 +180,16 @@ const elements = {
   quoteDeposit: document.getElementById("quoteDeposit"),
   rentalBack: document.getElementById("rentalBack"),
   rentalContinue: document.getElementById("rentalContinue"),
-  bankOccupy: document.getElementById("bankOccupy"),
+  manualOccupy: document.getElementById("manualOccupy"),
+  manualOccupationDialog: document.getElementById("manualOccupationDialog"),
+  manualOccupationClose: document.getElementById("manualOccupationClose"),
+  manualOccupationTitle: document.getElementById("manualOccupationTitle"),
+  manualOccupationCellSummary: document.getElementById("manualOccupationCellSummary"),
+  manualOccupationForm: document.getElementById("manualOccupationForm"),
+  manualOccupationLabel: document.getElementById("manualOccupationLabel"),
+  manualOccupationError: document.getElementById("manualOccupationError"),
+  manualOccupationBack: document.getElementById("manualOccupationBack"),
+  manualOccupationSubmit: document.getElementById("manualOccupationSubmit"),
   contractDialog: document.getElementById("contractDialog"),
   contractDialogClose: document.getElementById("contractDialogClose"),
   contractDialogTitle: document.getElementById("contractDialogTitle"),
@@ -374,12 +380,10 @@ function populateHeightFilter(cells) {
 function renderStats() {
   elements.statFree.textContent = state.counts.free;
   elements.statOccupied.textContent = state.counts.normal + state.counts.expiring
-    + state.counts.overdue + state.counts.lost_key + state.counts.bank;
+    + state.counts.overdue;
   elements.statNormal.textContent = state.counts.normal;
   elements.statExpiring.textContent = state.counts.expiring;
   elements.statOverdue.textContent = state.counts.overdue;
-  elements.statLostKey.textContent = state.counts.lost_key;
-  elements.statBank.textContent = state.counts.bank;
 }
 
 function clearDisplayedData() {
@@ -389,11 +393,14 @@ function clearDisplayedData() {
   if (elements.renewalDialog.open) {
     closeRenewalDialog(false);
   }
+  if (elements.manualOccupationDialog.open) {
+    closeManualOccupationDialog();
+  }
   if (elements.dialog.open) {
     closeCellDialog();
   }
   state.cells = [];
-  state.counts = { free: 0, normal: 0, expiring: 0, overdue: 0, lost_key: 0, bank: 0 };
+  state.counts = { free: 0, normal: 0, expiring: 0, overdue: 0 };
   state.privateMatches = null;
   state.asOfDate = null;
   elements.statFree.textContent = "—";
@@ -401,8 +408,6 @@ function clearDisplayedData() {
   elements.statNormal.textContent = "—";
   elements.statExpiring.textContent = "—";
   elements.statOverdue.textContent = "—";
-  elements.statLostKey.textContent = "—";
-  elements.statBank.textContent = "—";
   elements.grid.replaceChildren();
   elements.empty.hidden = true;
   elements.resultCount.textContent = "Данные недоступны";
@@ -456,13 +461,16 @@ function daysLabel(cell) {
 
 function renderOccupiedOperationalDetails(cell) {
   elements.dialogTitle.textContent = `Ячейка № ${cell.number}`;
-  elements.dialogStatus.textContent = STATUS_LABELS[cell.status];
+  elements.dialogStatus.textContent = cell.block_kind === "lost_key"
+    ? "Ключ утерян"
+    : (cell.occupation_label || STATUS_LABELS[cell.status]);
   elements.dialogStatus.className = `status-badge ${cell.status}`;
   elements.dialogSize.textContent = `${cell.height_mm}×${cell.width_mm}×${cell.depth_mm}`;
   if (cell.block_kind) {
     elements.cellDialogKicker.textContent = "Состояние ячейки";
-    elements.dialogClient.textContent = cell.block_kind === "bank"
-      ? "Банк"
+    elements.dialogClientLabel.textContent = cell.block_kind === "manual" ? "Пометка" : "Клиент";
+    elements.dialogClient.textContent = cell.block_kind === "manual"
+      ? cell.occupation_label
       : "Получение данных…";
     elements.dialogStartDate.textContent = "Не применяется";
     elements.dialogEndDate.textContent = "Не применяется";
@@ -479,6 +487,7 @@ function renderOccupiedOperationalDetails(cell) {
     return;
   }
   elements.cellDialogKicker.textContent = "Карточка занятой ячейки";
+  elements.dialogClientLabel.textContent = "Клиент";
   elements.dialogClient.textContent = "Получение данных…";
   elements.dialogStartDate.textContent = formatDate(cell.start_date);
   elements.dialogEndDate.textContent = formatDate(cell.end_date);
@@ -838,7 +847,7 @@ async function releaseBlockedCell() {
   if (!cell?.block_kind || !state.blockOperationId || state.blockSubmitting) return;
   const confirmation = cell.block_kind === "lost_key"
     ? `Подтвердите, что ключ от ячейки № ${cell.number} восстановлен.`
-    : `Освободить занятую банком ячейку № ${cell.number}?`;
+    : `Освободить ячейку № ${cell.number}?`;
   if (!window.confirm(confirmation)) return;
   state.blockSubmitting = true;
   elements.blockReleaseAction.disabled = true;
@@ -860,7 +869,7 @@ async function releaseBlockedCell() {
     }
     const message = cell.block_kind === "lost_key"
       ? `Ключ от ячейки № ${cell.number} восстановлен. Ячейка свободна.`
-      : `Ячейка № ${cell.number} освобождена банком.`;
+      : `Ячейка № ${cell.number} освобождена.`;
     state.blockSubmitting = false;
     closeCellDialog();
     await refreshCells();
@@ -1534,7 +1543,7 @@ function openRentalCalculator(cell) {
   state.activeRentalCell = cell;
   state.activeQuote = null;
   state.activeOperationId = null;
-  state.bankOperationId = createOperationId();
+  state.manualOperationId = createOperationId();
   clearSuccess();
   elements.rentalDialogTitle.textContent = `Ячейка № ${cell.number}`;
   elements.rentalCellSummary.textContent = `Высота ${cell.height_mm} мм · ${cell.width_mm} × ${cell.depth_mm} мм`;
@@ -1554,42 +1563,67 @@ function closeRentalCalculator() {
   state.activeRentalCell = null;
   state.activeQuote = null;
   state.activeOperationId = null;
-  state.bankOperationId = null;
-  elements.rentalDialog.close();
+  state.manualOperationId = null;
+  if (elements.rentalDialog.open) elements.rentalDialog.close();
 }
 
-async function occupyBankCell() {
+function openManualOccupationDialog() {
   const cell = state.activeRentalCell;
-  if (!cell || !state.bankOperationId || state.blockSubmitting) return;
-  if (!window.confirm(
-    `Занять ячейку № ${cell.number} банком без клиента и срока?`,
-  )) return;
+  if (!cell || !state.manualOperationId || state.blockSubmitting) return;
+  elements.rentalDialog.close();
+  elements.manualOccupationTitle.textContent = `Занять ячейку № ${cell.number}`;
+  elements.manualOccupationCellSummary.textContent = `Высота ${cell.height_mm} мм · без договора и срока`;
+  elements.manualOccupationLabel.value = "";
+  elements.manualOccupationError.hidden = true;
+  elements.manualOccupationError.textContent = "";
+  elements.manualOccupationDialog.showModal();
+  elements.manualOccupationLabel.focus();
+}
+
+function closeManualOccupationDialog() {
+  if (elements.manualOccupationDialog.open) elements.manualOccupationDialog.close();
+  closeRentalCalculator();
+}
+
+async function occupyManualCell(event) {
+  event.preventDefault();
+  const cell = state.activeRentalCell;
+  const occupationLabel = elements.manualOccupationLabel.value.trim().replace(/\s+/g, " ");
+  if (!cell || !state.manualOperationId || state.blockSubmitting) return;
+  if (!occupationLabel) {
+    elements.manualOccupationError.textContent = "Напишите, для чего занята ячейка.";
+    elements.manualOccupationError.hidden = false;
+    return;
+  }
   state.blockSubmitting = true;
-  elements.bankOccupy.disabled = true;
+  elements.manualOccupationSubmit.disabled = true;
+  elements.manualOccupationError.hidden = true;
   try {
-    const response = await fetch(elements.body.dataset.cellBlockBankUrl, {
+    const response = await fetch(elements.body.dataset.cellBlockManualUrl, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
-        operation_id: state.bankOperationId,
+        operation_id: state.manualOperationId,
         cell_number: cell.number,
+        occupation_label: occupationLabel,
       }),
     });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.message || "Не удалось занять ячейку банком");
+      throw new Error(payload.message || "Не удалось занять ячейку");
     }
     const cellNumber = cell.number;
     state.blockSubmitting = false;
-    closeRentalCalculator();
+    closeManualOccupationDialog();
     await refreshCells();
-    const message = `Ячейка № ${cellNumber} занята банком без срока.`;
+    const message = `Ячейка № ${cellNumber} занята без договора и срока.`;
     showSuccess(payload.warning ? `${message} ${payload.warning}` : message);
   } catch (error) {
-    showRentalError(errorMessage(error, "Не удалось занять ячейку банком"));
+    elements.manualOccupationError.textContent = errorMessage(error, "Не удалось занять ячейку");
+    elements.manualOccupationError.hidden = false;
   } finally {
     state.blockSubmitting = false;
-    elements.bankOccupy.disabled = false;
+    elements.manualOccupationSubmit.disabled = false;
   }
 }
 
@@ -1658,7 +1692,7 @@ function cancelContractWorkflow() {
   state.activeRentalCell = null;
   state.activeQuote = null;
   state.activeOperationId = null;
-  state.bankOperationId = null;
+  state.manualOperationId = null;
 }
 
 async function submitContract(event) {
@@ -1705,6 +1739,7 @@ async function submitContract(event) {
     state.activeRentalCell = null;
     state.activeQuote = null;
     state.activeOperationId = null;
+    state.manualOperationId = null;
     await refreshCells();
     showOperationResult(`Ячейка № ${savedCellNumber} занята.${warning}`, payload);
   } catch (error) {
@@ -1718,9 +1753,12 @@ function createCellButton(cell) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `cell ${cell.status}`;
+  const accessibleStatus = cell.block_kind
+    ? cell.client_display_name
+    : STATUS_LABELS[cell.status];
   button.setAttribute(
     "aria-label",
-    `Ячейка ${cell.number}, высота ${cell.height_mm} миллиметров, ${STATUS_LABELS[cell.status]}`,
+    `Ячейка ${cell.number}, высота ${cell.height_mm} миллиметров, ${accessibleStatus}`,
   );
 
   const number = document.createElement("span");
@@ -1933,8 +1971,12 @@ elements.rentalForm.addEventListener("submit", (event) => event.preventDefault()
 elements.rentalDialogClose.addEventListener("click", closeRentalCalculator);
 elements.rentalBack.addEventListener("click", closeRentalCalculator);
 elements.rentalContinue.addEventListener("click", openContractForm);
-elements.bankOccupy.addEventListener("click", occupyBankCell);
+elements.manualOccupy.addEventListener("click", openManualOccupationDialog);
 elements.rentalDialog.addEventListener("cancel", (event) => event.preventDefault());
+elements.manualOccupationForm.addEventListener("submit", occupyManualCell);
+elements.manualOccupationClose.addEventListener("click", closeManualOccupationDialog);
+elements.manualOccupationBack.addEventListener("click", closeManualOccupationDialog);
+elements.manualOccupationDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.contractForm.addEventListener("submit", submitContract);
 elements.contractBack.addEventListener("click", backToRentalCalculator);
 elements.contractDialogClose.addEventListener("click", cancelContractWorkflow);
