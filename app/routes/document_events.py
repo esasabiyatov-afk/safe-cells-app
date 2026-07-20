@@ -1,6 +1,7 @@
-"""Best-effort DOCX publication after a confirmed database operation."""
+"""Best-effort DOCX preparation after a confirmed database operation."""
 
 from pathlib import Path
+import tempfile
 
 from flask import current_app
 
@@ -11,6 +12,7 @@ from app.services.documents import (
     DocumentValidationError,
     generate_event_documents,
 )
+from app.services.document_downloads import publish_generated_documents
 from app.services.employee import (
     EmployeeDirectoryReadError,
     EmployeeSelectionRequiredError,
@@ -20,29 +22,34 @@ from app.services.employee import (
 def document_event_payload(
     *, event_type: str, contract_ref: str, event_ref: str | None
 ) -> dict[str, object]:
-    """Return generated filenames or a warning without undoing committed data."""
+    """Return browser download handles or a warning without undoing committed data."""
 
     try:
         employee = current_app.config["EMPLOYEE_PROVIDER"]()
-        generated = generate_event_documents(
-            current_app.extensions["safe_cells_settings"],
-            event_type=event_type,
-            contract_ref=contract_ref,
-            event_ref=event_ref,
-            output_directory=Path(
-                current_app.config["DOWNLOADS_DIRECTORY_PROVIDER"]()
-            ),
-            employee=employee,
-        )
-        if not generated:
+        with tempfile.TemporaryDirectory(prefix="safe-cells-documents-") as staging:
+            output_directory = Path(staging)
+            generated = generate_event_documents(
+                current_app.extensions["safe_cells_settings"],
+                event_type=event_type,
+                contract_ref=contract_ref,
+                event_ref=event_ref,
+                output_directory=output_directory,
+                employee=employee,
+            )
+            if not generated:
+                return {
+                    "documents": [],
+                    "document_warning": "Активные DOCX-шаблоны этого действия не настроены.",
+                }
+            published = publish_generated_documents(
+                current_app.extensions["safe_cells_document_downloads"],
+                output_directory=output_directory,
+                generated=generated,
+            )
             return {
-                "documents": [],
-                "document_warning": "Активные DOCX-шаблоны этого действия не настроены.",
+                "documents": [document.to_dict() for document in published],
+                "document_warning": None,
             }
-        return {
-            "documents": [document.file_name for document in generated],
-            "document_warning": None,
-        }
     except (
         DocumentValidationError,
         DocumentTemplateError,
@@ -53,3 +60,8 @@ def document_event_payload(
         EmployeeSelectionRequiredError,
     ) as exc:
         return {"documents": [], "document_warning": str(exc)}
+    except OSError:
+        return {
+            "documents": [],
+            "document_warning": "Не удалось подготовить документы для скачивания.",
+        }

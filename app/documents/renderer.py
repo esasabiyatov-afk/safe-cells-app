@@ -153,6 +153,6 @@ def render_docx(
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
         raise DocumentPublishError(
-            "Не удалось сохранить документ в папку «Загрузки»."
+            "Не удалось подготовить новый документ."
         ) from exc
     return output_path

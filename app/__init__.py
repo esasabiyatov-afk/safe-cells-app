@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from pathlib import Path
 from secrets import token_urlsafe
 
 from flask import Flask, request
@@ -26,6 +25,7 @@ from app.routes import (
     statement_import_blueprint,
 )
 from app.services.admin_auth import AdminAccessManager
+from app.services.document_downloads import DocumentDownloadStore
 from app.services.employee import (
     EmployeeDirectoryReadError,
     EmployeeSelectionManager,
@@ -47,11 +47,11 @@ def create_app(settings: Settings) -> Flask:
         TESTING=settings.testing,
         TODAY_PROVIDER=date.today,
         NOW_PROVIDER=lambda: datetime.now().astimezone(),
-        DOWNLOADS_DIRECTORY_PROVIDER=lambda: Path.home() / "Downloads",
     )
     app.extensions["safe_cells_settings"] = settings
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
     app.extensions["safe_cells_admin_access"] = AdminAccessManager()
+    app.extensions["safe_cells_document_downloads"] = DocumentDownloadStore()
     instance_coordinator = attach_instance_coordinator(app, settings)
     employee_selection = EmployeeSelectionManager()
     app.extensions["safe_cells_employee_selection"] = employee_selection

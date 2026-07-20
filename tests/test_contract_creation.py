@@ -3,12 +3,14 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
 import json
 from pathlib import Path
 import sqlite3
 from uuid import uuid4
 
 import pytest
+from docx import Document
 
 from app import create_app
 from app.config import Settings
@@ -88,6 +90,70 @@ def test_document_failure_after_api_save_returns_warning_without_undoing_contrac
     assert body["documents"] == []
     assert "Файл шаблона не найден" in body["document_warning"]
     assert _counts(settings) == (1, 1)
+
+
+def test_contract_api_prepares_complete_browser_download_bundle_without_silent_files(
+    settings: Settings, initialized_databases, tmp_path: Path
+) -> None:
+    templates = settings.database_directory / "templates"
+    templates.mkdir()
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for index, (template_id, display_name) in enumerate(
+            (
+                ("opening-browser-a", "ТЕСТ-АКТ"),
+                ("opening-browser-b", "ТЕСТ-ДОГОВОР"),
+                ("opening-browser-c", "ТЕСТ-РАСПОРЯЖЕНИЕ"),
+            ),
+            start=1,
+        ):
+            file_name = f"browser-{index}.docx"
+            document = Document()
+            document.add_paragraph("ТЕСТОВЫЙ ДОКУМЕНТ: [Сейф.Номер]")
+            document.save(templates / file_name)
+            connection.execute(
+                "INSERT INTO document_templates VALUES(?, 'opening', ?, ?, ?, 1, ?, ?)",
+                (
+                    template_id,
+                    display_name,
+                    file_name,
+                    json.dumps(["Сейф.Номер"], ensure_ascii=False),
+                    OCCURRED_AT.isoformat(),
+                    "test-user",
+                ),
+            )
+        connection.commit()
+
+    silent_downloads = tmp_path / "silent-downloads"
+    app = create_app(settings)
+    app.config.update(
+        TODAY_PROVIDER=lambda: date(2026, 7, 12),
+        TIMESTAMP_PROVIDER=lambda: OCCURRED_AT,
+        DOWNLOADS_DIRECTORY_PROVIDER=lambda: silent_downloads,
+        EMPLOYEE_PROVIDER=lambda: "Тестовый Сотрудник",
+    )
+    token = app.extensions["safe_cells_private_token"]
+    client = app.test_client()
+
+    response = client.post("/api/contracts", json=contract_payload(cell_number="4"))
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["document_warning"] is None
+    assert len(body["documents"]) == 3
+    assert all(
+        set(document_info) == {"download_id", "file_name"}
+        for document_info in body["documents"]
+    )
+    assert not silent_downloads.exists()
+    for document_info in body["documents"]:
+        downloaded = client.post(
+            "/api/documents/download",
+            headers={"X-Safe-Cells-Token": token},
+            json={"download_id": document_info["download_id"]},
+        )
+        assert downloaded.status_code == 200
+        assert Document(BytesIO(downloaded.data)).paragraphs[0].text.endswith("4")
 
 
 def test_create_contract_saves_active_row_audit_and_verified_backups(

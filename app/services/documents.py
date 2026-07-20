@@ -58,7 +58,10 @@ ALLOWED_DOCUMENT_PLACEHOLDERS = frozenset(
 class GeneratedDocument:
     file_name: str
     def to_dict(self) -> dict[str, str]:
-        return {"file_name": self.file_name, "message": "Документ сохранён в папку «Загрузки»."}
+        return {
+            "file_name": self.file_name,
+            "message": "Документ готов к скачиванию в браузере.",
+        }
 
 
 def _required_placeholders(value: object) -> list[str]:
@@ -374,6 +377,6 @@ def generate_event_documents(
         raise
     except OSError as exc:
         raise DocumentPublishError(
-            "Не удалось сохранить комплект документов в папку «Загрузки»."
+            "Не удалось подготовить комплект документов."
         ) from exc
     return generated

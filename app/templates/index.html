@@ -25,6 +25,7 @@
   data-lost-key-client-url="{{ url_for('cell_blocks.lost_key_client') }}"
   data-document-templates-url="{{ url_for('documents.templates') }}"
   data-document-generate-url="{{ url_for('documents.generate') }}"
+  data-document-download-url="{{ url_for('documents.download') }}"
   data-statement-import-url="{{ url_for('statement_import.extract') }}"
   data-employee-directory-url="{{ url_for('employee.directory') }}"
   data-employee-select-url="{{ url_for('employee.select') }}"
@@ -253,7 +254,7 @@
     <p class="operation-result-summary" id="operationResultSummary"></p>
     <section class="operation-documents-result" id="operationDocumentsSuccess">
       <h3>Документы сформированы</h3>
-      <p>Файлы сохранены в папке «Загрузки»:</p>
+      <p>Скачайте готовые копии через браузер. Исходные шаблоны не изменяются.</p>
       <ul id="operationDocumentList"></ul>
     </section>
     <div class="calculation-error" id="operationDocumentsWarning" role="alert" hidden></div>

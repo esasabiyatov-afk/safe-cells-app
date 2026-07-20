@@ -45,6 +45,7 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-renewal-url="/api/renewals"' in html
     assert 'data-closure-quote-url="/api/closures/calculate"' in html
     assert 'data-closure-url="/api/closures"' in html
+    assert 'data-document-download-url="/api/documents/download"' in html
     assert 'data-cell-block-manual-url="/api/cell-blocks/manual"' in html
     assert 'data-lost-key-client-url="/api/cell-blocks/lost-key-client"' in html
     assert 'data-statement-import-url="/api/contract-statements/extract"' in html
@@ -105,6 +106,9 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Все ячейки" not in html
     assert '<dt>ФИО клиента</dt>' not in html
     assert "Повторно сформировать документ" in html
+    assert "Скачайте готовые копии через браузер" in html
+    assert "Исходные шаблоны не изменяются" in html
+    assert "Файлы сохранены в папке «Загрузки»" not in html
     assert html.count("data-date-input") == 5
     assert 'type="date"' not in html
     assert html.count('placeholder="ДД.ММ.ГГГГ"') == 5
@@ -261,6 +265,9 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "dayAfterOldEnd > renewalDate" in script
         assert "elements.renewalPenaltyPanel.hidden = true" in script
         assert "showOperationResult" in script
+        assert "downloadGeneratedDocument" in script
+        assert "documentDownloadUrl" in script
+        assert 'download.textContent = "Скачать"' in script
         assert "operationDocumentList" in script
         assert "Операция сохранена, но документы не сформированы" in script
         assert "Документ по ячейке № ${cell.number} сформирован." in script

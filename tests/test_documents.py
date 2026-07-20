@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -14,9 +15,15 @@ from app.db.connections import open_write
 from app.documents import DocumentPublishError, DocumentTemplateError, render_docx
 from app.services.closures import close_contract
 from app.services.documents import (
+    GeneratedDocument,
     build_document_values,
     generate_active_contract_document,
     generate_event_documents,
+)
+from app.services.document_downloads import (
+    DocumentDownloadStore,
+    DownloadArtifact,
+    publish_generated_documents,
 )
 from app.documents.values import (
     amount_in_words_ky, amount_in_words_ru,
@@ -129,7 +136,7 @@ def test_renderer_removes_temporary_file_after_publish_failure(tmp_path: Path, m
     templates.mkdir()
     _template(templates / "test.docx")
     monkeypatch.setattr("app.documents.renderer.os.replace", lambda *args: (_ for _ in ()).throw(OSError("test failure")))
-    with pytest.raises(DocumentPublishError, match="Загрузки"):
+    with pytest.raises(DocumentPublishError, match="подготовить новый документ"):
         render_docx(
             template_directory=templates, template_file_name="test.docx",
             output_directory=downloads, output_file_name="result.docx",
@@ -143,6 +150,110 @@ def test_renderer_removes_temporary_file_after_publish_failure(tmp_path: Path, m
             template_directory=templates, template_file_name="..\\outside.docx",
             output_directory=tmp_path, output_file_name="result.docx", values={}, required_placeholders=[],
         )
+
+
+def test_renderer_creates_new_file_without_modifying_source_template(tmp_path: Path):
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    source = templates / "source.docx"
+    _template(source)
+    source_before = source.read_bytes()
+
+    result = render_docx(
+        template_directory=templates,
+        template_file_name=source.name,
+        output_directory=tmp_path / "staging",
+        output_file_name="filled.docx",
+        values={
+            "CLIENT_FULL_NAME": "Вымышленный Клиент",
+            "SAFE_NUMBER": "41",
+            "CREATION_DATE": "2026-07-13",
+        },
+        required_placeholders=["CLIENT_FULL_NAME", "SAFE_NUMBER", "CREATION_DATE"],
+    )
+
+    assert result != source
+    assert result.is_file()
+    assert source.read_bytes() == source_before
+
+
+def test_document_download_store_is_one_time_and_expires():
+    now = [100.0]
+    store = DocumentDownloadStore(
+        ttl_seconds=10,
+        max_documents=2,
+        time_provider=lambda: now[0],
+    )
+    first = store.publish(
+        [DownloadArtifact(file_name="first.docx", content=b"PK-first")]
+    )[0]
+
+    claimed = store.claim(first.download_id)
+    assert claimed == DownloadArtifact(file_name="first.docx", content=b"PK-first")
+    assert store.claim(first.download_id) is None
+
+    second = store.publish(
+        [DownloadArtifact(file_name="second.docx", content=b"PK-second")]
+    )[0]
+    now[0] = 111.0
+    assert store.claim(second.download_id) is None
+
+
+def test_document_download_store_does_not_publish_partial_set_when_id_creation_fails(
+    monkeypatch,
+):
+    store = DocumentDownloadStore()
+    existing = store.publish(
+        [DownloadArtifact(file_name="existing.docx", content=b"PK-existing")]
+    )[0]
+    calls = 0
+
+    def fail_on_second_id(_length):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("test random source failure")
+        return f"test-download-{calls}"
+
+    monkeypatch.setattr(
+        "app.services.document_downloads.token_urlsafe", fail_on_second_id
+    )
+    with pytest.raises(OSError, match="random source failure"):
+        store.publish(
+            [
+                DownloadArtifact(file_name="one.docx", content=b"PK-one"),
+                DownloadArtifact(file_name="two.docx", content=b"PK-two"),
+            ]
+        )
+
+    assert store.claim("test-download-1") is None
+    assert store.claim(existing.download_id) == DownloadArtifact(
+        file_name="existing.docx", content=b"PK-existing"
+    )
+
+
+def test_generated_documents_are_published_only_as_complete_set(tmp_path: Path):
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "one.docx").write_bytes(b"PK-one")
+    store = DocumentDownloadStore()
+
+    with pytest.raises(DocumentPublishError, match="передать"):
+        publish_generated_documents(
+            store,
+            output_directory=staging,
+            generated=[GeneratedDocument("one.docx"), GeneratedDocument("missing.docx")],
+        )
+
+    published = publish_generated_documents(
+        store,
+        output_directory=staging,
+        generated=[GeneratedDocument("one.docx")],
+    )
+    assert len(published) == 1
+    assert store.claim(published[0].download_id) == DownloadArtifact(
+        file_name="one.docx", content=b"PK-one"
+    )
 
 
 def test_active_contract_document_and_private_endpoint(
@@ -172,9 +283,10 @@ def test_active_contract_document_and_private_endpoint(
     assert (downloads / result.file_name).is_file()
 
     app = create_app(settings)
+    endpoint_downloads = tmp_path / "endpoint-downloads"
     app.config.update(
         TODAY_PROVIDER=lambda: date(2026, 7, 13),
-        DOWNLOADS_DIRECTORY_PROVIDER=lambda: downloads,
+        DOWNLOADS_DIRECTORY_PROVIDER=lambda: endpoint_downloads,
         EMPLOYEE_PROVIDER=lambda: "Тестовый Сотрудник",
     )
     token = app.extensions["safe_cells_private_token"]
@@ -191,9 +303,33 @@ def test_active_contract_document_and_private_endpoint(
         json={"cell_number": "41", "contract_ref": "contract-test-41", "template_id": "test-template"},
     )
     assert response.status_code == 201
-    assert response.get_json()["message"] == "Документ сохранён в папку «Загрузки»."
-    assert response.get_json()["documents"] == [response.get_json()["file_name"]]
-    assert (downloads / response.get_json()["file_name"]).is_file()
+    payload = response.get_json()
+    assert payload["message"] == "Документ готов к скачиванию в браузере."
+    assert payload["documents"] == [
+        {
+            "download_id": payload["documents"][0]["download_id"],
+            "file_name": payload["file_name"],
+        }
+    ]
+    assert not endpoint_downloads.exists()
+    download = app.test_client().post(
+        "/api/documents/download",
+        headers={"X-Safe-Cells-Token": token},
+        json={"download_id": payload["documents"][0]["download_id"]},
+    )
+    assert download.status_code == 200
+    assert download.mimetype == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert "attachment" in download.headers["Content-Disposition"]
+    downloaded = Document(BytesIO(download.data))
+    assert "Вымышленный Клиент" in downloaded.paragraphs[0].text
+    repeated_download = app.test_client().post(
+        "/api/documents/download",
+        headers={"X-Safe-Cells-Token": token},
+        json={"download_id": payload["documents"][0]["download_id"]},
+    )
+    assert repeated_download.status_code == 410
     assert not list(settings.database_directory.glob("*.docx"))
 
 
@@ -201,6 +337,9 @@ def test_document_endpoint_does_not_disclose_without_token(settings, initialized
     app = create_app(settings)
     response = app.test_client().post("/api/documents/generate", json={})
     assert response.status_code == 403
+    assert app.test_client().post(
+        "/api/documents/download", json={"download_id": "test"}
+    ).status_code == 403
 
 
 def test_approved_date_and_deposit_formats():

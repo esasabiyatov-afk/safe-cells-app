@@ -331,6 +331,40 @@ function errorMessage(error, fallback) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+async function downloadGeneratedDocument(documentInfo, button) {
+  button.disabled = true;
+  const previousText = button.textContent;
+  button.textContent = "Подготовка…";
+  try {
+    const response = await fetch(elements.body.dataset.documentDownloadUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Safe-Cells-Token": elements.body.dataset.privateToken,
+      },
+      body: JSON.stringify({download_id: documentInfo.download_id}),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.message || "Не удалось скачать документ");
+    }
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = documentInfo.file_name || "Документ.docx";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    button.textContent = "Скачано";
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = previousText;
+    showError(errorMessage(error, "Не удалось скачать документ"));
+  }
+}
+
 function showOperationResult(summary, payload) {
   const documents = Array.isArray(payload.documents)
     ? payload.documents
@@ -340,9 +374,26 @@ function showOperationResult(summary, payload) {
   elements.operationDocumentList.replaceChildren();
   for (const generatedDocument of documents) {
     const item = document.createElement("li");
-    item.textContent = typeof generatedDocument === "string"
+    const fileName = typeof generatedDocument === "string"
       ? generatedDocument
       : generatedDocument.file_name || generatedDocument.display_name || "Документ DOCX";
+    const label = document.createElement("span");
+    label.textContent = fileName;
+    item.append(label);
+    if (
+      generatedDocument
+      && typeof generatedDocument === "object"
+      && typeof generatedDocument.download_id === "string"
+    ) {
+      const download = document.createElement("button");
+      download.type = "button";
+      download.className = "secondary-button document-download-button";
+      download.textContent = "Скачать";
+      download.addEventListener("click", () => {
+        downloadGeneratedDocument(generatedDocument, download);
+      });
+      item.append(download);
+    }
     elements.operationDocumentList.append(item);
   }
   const hasDocuments = documents.length > 0;
