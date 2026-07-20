@@ -47,6 +47,7 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-closure-url="/api/closures"' in html
     assert 'data-cell-block-manual-url="/api/cell-blocks/manual"' in html
     assert 'data-lost-key-client-url="/api/cell-blocks/lost-key-client"' in html
+    assert 'data-statement-import-url="/api/contract-statements/extract"' in html
     assert 'data-private-token="' in html
     assert 'id="rentalContinue"' in html
     assert (
@@ -80,6 +81,9 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "Тариф 1–30 дней" in html
     assert "Ручная ставка" in html
     assert 'id="contractForm"' in html
+    assert 'id="statementFile"' in html
+    assert 'id="statementImport" type="button">Перенести данные' in html
+    assert "После переноса обязательно сверьте" in html
     assert 'name="client_full_name"' in html
     assert 'name="id_card_number"' in html
     assert 'name="account_number"' in html

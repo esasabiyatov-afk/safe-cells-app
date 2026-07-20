@@ -13,6 +13,7 @@ from app.routes.main import main_blueprint
 from app.routes.rental import rental_blueprint
 from app.routes.renewals import renewals_blueprint
 from app.routes.system import system_blueprint
+from app.routes.statement_import import statement_import_blueprint
 
 __all__ = [
     "admin_blueprint",
@@ -28,4 +29,5 @@ __all__ = [
     "rental_blueprint",
     "renewals_blueprint",
     "system_blueprint",
+    "statement_import_blueprint",
 ]

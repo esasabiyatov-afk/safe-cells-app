@@ -23,6 +23,7 @@ from app.routes import (
     rental_blueprint,
     renewals_blueprint,
     system_blueprint,
+    statement_import_blueprint,
 )
 from app.services.admin_auth import AdminAccessManager
 from app.services.employee import (
@@ -70,6 +71,7 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(renewals_blueprint)
     app.register_blueprint(system_blueprint)
+    app.register_blueprint(statement_import_blueprint)
 
     @app.before_request
     def refresh_instance_registration():

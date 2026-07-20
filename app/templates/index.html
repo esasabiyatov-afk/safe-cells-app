@@ -25,6 +25,7 @@
   data-lost-key-client-url="{{ url_for('cell_blocks.lost_key_client') }}"
   data-document-templates-url="{{ url_for('documents.templates') }}"
   data-document-generate-url="{{ url_for('documents.generate') }}"
+  data-statement-import-url="{{ url_for('statement_import.extract') }}"
   data-employee-directory-url="{{ url_for('employee.directory') }}"
   data-employee-select-url="{{ url_for('employee.select') }}"
   data-private-token="{{ private_token }}"
@@ -582,6 +583,22 @@
 
     <form id="contractForm" autocomplete="off" novalidate>
       <div class="calculation-error" id="contractError" role="alert" hidden></div>
+      <section class="statement-import" aria-labelledby="statementImportTitle">
+        <div class="statement-import__heading">
+          <div>
+            <strong id="statementImportTitle">Заполнить из заявления АБС</strong>
+            <span>DOCX, скачанный при первичном оформлении</span>
+          </div>
+          <button class="secondary-button statement-import__button" id="statementImport" type="button">Перенести данные</button>
+        </div>
+        <div class="statement-import__file-row">
+          <label class="secondary-button statement-import__file-button" for="statementFile">Выбрать DOCX</label>
+          <span id="statementFileState">Файл не выбран</span>
+          <input class="visually-hidden" id="statementFile" name="statement_file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        </div>
+        <p class="statement-import__status" id="statementImportStatus" role="status" aria-live="polite" hidden></p>
+        <p class="statement-import__note">После переноса обязательно сверьте ФИО, паспорт и номер счёта с заявлением.</p>
+      </section>
       <div class="contract-fields">
         <label class="contract-field contract-field--wide">
           <span>ФИО клиента *</span>

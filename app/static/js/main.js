@@ -19,6 +19,8 @@ const state = {
   activeQuote: null,
   activeOperationId: null,
   contractSubmitting: false,
+  statementImporting: false,
+  statementImportSequence: 0,
   quoteSequence: 0,
   activeOccupiedCell: null,
   clientNameRequestSequence: 0,
@@ -198,6 +200,10 @@ const elements = {
   contractDepositSummary: document.getElementById("contractDepositSummary"),
   contractForm: document.getElementById("contractForm"),
   contractError: document.getElementById("contractError"),
+  statementFile: document.getElementById("statementFile"),
+  statementFileState: document.getElementById("statementFileState"),
+  statementImport: document.getElementById("statementImport"),
+  statementImportStatus: document.getElementById("statementImportStatus"),
   clientFullName: document.getElementById("clientFullName"),
   accountNumber: document.getElementById("accountNumber"),
   idCardNumber: document.getElementById("idCardNumber"),
@@ -1653,9 +1659,87 @@ function showContractError(message) {
 
 function setContractSubmitting(submitting) {
   state.contractSubmitting = submitting;
-  elements.contractSubmit.disabled = submitting;
-  elements.contractBack.disabled = submitting;
+  refreshContractControls();
   elements.contractSubmit.textContent = submitting ? "Сохранение…" : "Подтвердить и занять";
+}
+
+function refreshContractControls() {
+  const busy = state.contractSubmitting || state.statementImporting;
+  elements.contractSubmit.disabled = busy;
+  elements.contractBack.disabled = busy;
+  elements.contractDialogClose.disabled = busy;
+  elements.statementFile.disabled = busy;
+  elements.statementImport.disabled = busy;
+}
+
+function setStatementImportStatus(message = "", isError = false) {
+  elements.statementImportStatus.textContent = message;
+  elements.statementImportStatus.hidden = !message;
+  elements.statementImportStatus.classList.toggle("is-error", isError);
+}
+
+function resetStatementImport() {
+  state.statementImportSequence += 1;
+  state.statementImporting = false;
+  elements.statementFile.value = "";
+  elements.statementFileState.textContent = "Файл не выбран";
+  setStatementImportStatus();
+  refreshContractControls();
+}
+
+async function importStatementData() {
+  const file = elements.statementFile.files[0];
+  if (!file) {
+    setStatementImportStatus("Выберите заявление в формате DOCX.", true);
+    return;
+  }
+  if (!file.name.toLocaleLowerCase("ru").endsWith(".docx")) {
+    setStatementImportStatus("Заявление должно быть файлом DOCX.", true);
+    return;
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    setStatementImportStatus("Размер заявления не должен превышать 2 МБ.", true);
+    return;
+  }
+
+  const sequence = state.statementImportSequence + 1;
+  state.statementImportSequence = sequence;
+  state.statementImporting = true;
+  setStatementImportStatus("Чтение заявления…");
+  refreshContractControls();
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const response = await fetch(elements.body.dataset.statementImportUrl, {
+      method: "POST",
+      headers: {"X-Safe-Cells-Token": elements.body.dataset.privateToken},
+      body: formData,
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось прочитать заявление.");
+    }
+    if (sequence !== state.statementImportSequence) {
+      return;
+    }
+    elements.clientFullName.value = payload.client_full_name;
+    elements.accountNumber.value = payload.account_number;
+    elements.idCardNumber.value = payload.id_card_number;
+    elements.idCardIssuer.value = payload.id_card_issuer;
+    setDateInputIso(elements.idCardIssueDate, payload.id_card_issue_date);
+    elements.statementFile.value = "";
+    elements.statementFileState.textContent = "Файл не выбран";
+    setStatementImportStatus("Данные перенесены. Обязательно проверьте их перед сохранением.");
+  } catch (error) {
+    if (sequence === state.statementImportSequence) {
+      setStatementImportStatus(errorMessage(error, "Не удалось прочитать заявление."), true);
+    }
+  } finally {
+    if (sequence === state.statementImportSequence) {
+      state.statementImporting = false;
+      refreshContractControls();
+    }
+  }
 }
 
 function openContractForm() {
@@ -1667,6 +1751,7 @@ function openContractForm() {
   }
   state.activeOperationId = createOperationId();
   elements.contractForm.reset();
+  resetStatementImport();
   setDateInputIso(elements.idCardIssueDate, "");
   elements.contractDialogTitle.textContent = `Занять ячейку № ${cell.number}`;
   elements.contractPeriodSummary.textContent = `${formatDate(quote.start_date)} — ${formatDate(quote.end_date)} · ${quote.rent_days} дн.`;
@@ -1679,17 +1764,22 @@ function openContractForm() {
 }
 
 function backToRentalCalculator() {
+  if (state.statementImporting) {
+    return;
+  }
   elements.contractDialog.close();
   clearContractError();
+  resetStatementImport();
   elements.rentalDialog.showModal();
 }
 
 function cancelContractWorkflow() {
-  if (state.contractSubmitting) {
+  if (state.contractSubmitting || state.statementImporting) {
     return;
   }
   elements.contractDialog.close();
   elements.contractForm.reset();
+  resetStatementImport();
   clearContractError();
   state.activeRentalCell = null;
   state.activeQuote = null;
@@ -1738,6 +1828,7 @@ async function submitContract(event) {
     const warning = payload.warning ? ` ${payload.warning}` : "";
     elements.contractDialog.close();
     elements.contractForm.reset();
+    resetStatementImport();
     state.activeRentalCell = null;
     state.activeQuote = null;
     state.activeOperationId = null;
@@ -1982,6 +2073,13 @@ elements.manualOccupationClose.addEventListener("click", closeManualOccupationDi
 elements.manualOccupationBack.addEventListener("click", closeManualOccupationDialog);
 elements.manualOccupationDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.contractForm.addEventListener("submit", submitContract);
+elements.statementImport.addEventListener("click", importStatementData);
+elements.statementFile.addEventListener("change", () => {
+  elements.statementFileState.textContent = elements.statementFile.files.length
+    ? "DOCX выбран"
+    : "Файл не выбран";
+  setStatementImportStatus();
+});
 elements.contractBack.addEventListener("click", backToRentalCalculator);
 elements.contractDialogClose.addEventListener("click", cancelContractWorkflow);
 elements.contractDialog.addEventListener("cancel", (event) => event.preventDefault());
