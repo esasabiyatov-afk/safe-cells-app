@@ -29,7 +29,10 @@ from app.services.backups import check_active_integrity
 
 LOOPBACK_HOST = "127.0.0.1"
 DEFAULT_SHUTDOWN_GRACE_SECONDS = 5.0
-DEFAULT_HEARTBEAT_TIMEOUT_SECONDS = 35.0
+# Closing a tab is normally reported immediately through ``pagehide``.  The
+# heartbeat timeout is only a fallback for a crashed browser, so it must also
+# tolerate background-tab throttling, workstation lock and overnight sleep.
+DEFAULT_HEARTBEAT_TIMEOUT_SECONDS = 24 * 60 * 60
 TAB_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
 
 

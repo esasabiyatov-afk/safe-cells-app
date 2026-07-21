@@ -169,6 +169,28 @@ def test_stale_tab_eventually_stops_its_server() -> None:
     assert stopped.wait(0.4)
 
 
+def test_default_lifecycle_tolerates_long_background_tab_pause() -> None:
+    clock = [0.0]
+    stopped = Event()
+    lifecycle = BrowserLifecycle(monotonic=lambda: clock[0])
+    lifecycle.set_shutdown_callback(stopped.set)
+    try:
+        lifecycle.heartbeat(VALID_TAB_ONE)
+        with lifecycle._mutex:
+            lifecycle._cancel_watchdog_locked()
+
+        # Browsers may throttle a hidden tab to one timer per minute or pause
+        # it while Windows is locked.  One silent hour must not mean "closed".
+        clock[0] = 60 * 60
+        lifecycle._expire_stale_tabs()
+
+        assert lifecycle.active_tab_count() == 1
+        assert not stopped.wait(0.05)
+        assert lifecycle.heartbeat_timeout_seconds == 24 * 60 * 60
+    finally:
+        lifecycle.close()
+
+
 def test_explicit_shutdown_cannot_be_cancelled_by_another_tab() -> None:
     stopped = Event()
     lifecycle = BrowserLifecycle(
