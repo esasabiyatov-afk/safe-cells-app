@@ -32,6 +32,8 @@ dist/
 .env.*
 config.local.*
 config.json
+config.previous.json
+.config.*.tmp
 local_config.*
 secrets.*
 private_templates/

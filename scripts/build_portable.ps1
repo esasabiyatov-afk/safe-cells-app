@@ -39,5 +39,7 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "config.example.json") -Destinati
 Copy-Item -LiteralPath (Join-Path $projectRoot "packaging\PORTABLE_README.txt") -Destination (Join-Path $portableFull "README.txt")
 Copy-Item -LiteralPath (Join-Path $projectRoot "scripts\create_shortcut.ps1") -Destination (Join-Path $portableFull "create_shortcut.ps1")
 Copy-Item -LiteralPath (Join-Path $projectRoot "scripts\create-shortcut.cmd") -Destination (Join-Path $portableFull "create-shortcut.cmd")
+Copy-Item -LiteralPath (Join-Path $projectRoot "scripts\configure_database.ps1") -Destination (Join-Path $portableFull "configure_database.ps1")
+Copy-Item -LiteralPath (Join-Path $projectRoot "scripts\configure-database.cmd") -Destination (Join-Path $portableFull "configure-database.cmd")
 
 Write-Host "Ready: dist\safe-cells-portable"
