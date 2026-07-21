@@ -13,4 +13,5 @@ def index():
     return render_template(
         "index.html",
         private_token=current_app.extensions["safe_cells_private_token"],
+        runtime_enabled="safe_cells_runtime_lifecycle" in current_app.extensions,
     )

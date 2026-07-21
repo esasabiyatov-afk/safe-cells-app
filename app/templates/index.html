@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Депозитарий</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <script defer src="{{ url_for('static', filename='js/runtime.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </head>
@@ -30,6 +31,10 @@
   data-employee-directory-url="{{ url_for('employee.directory') }}"
   data-employee-select-url="{{ url_for('employee.select') }}"
   data-private-token="{{ private_token }}"
+  data-runtime-enabled="{{ 'true' if runtime_enabled else 'false' }}"
+  data-runtime-heartbeat-url="{{ url_for('system.runtime_heartbeat') }}"
+  data-runtime-disconnect-url="{{ url_for('system.runtime_disconnect') }}"
+  data-runtime-shutdown-url="{{ url_for('system.runtime_shutdown') }}"
   data-admin-status-url="{{ url_for('admin.status') }}"
   data-admin-setup-url="{{ url_for('admin.setup') }}"
   data-admin-login-url="{{ url_for('admin.login') }}"
@@ -78,6 +83,7 @@
         <span>Проверка данных…</span>
       </div>
       <button class="settings-icon-button" id="adminOpen" type="button" title="Настройки" aria-label="Настройки">⚙</button>
+      <button class="runtime-exit-button" type="button" data-runtime-exit {% if not runtime_enabled %}hidden{% endif %}>Выйти</button>
     </div>
   </header>
 

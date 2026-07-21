@@ -36,6 +36,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert "http://" not in html
     assert "https://" not in html
     assert 'src="/static/js/main.js"' in html
+    assert 'src="/static/js/runtime.js"' in html
+    assert 'data-runtime-enabled="false"' in html
     assert 'href="/static/css/main.css"' in html
     assert 'data-rental-url="/api/rental/calculate"' in html
     assert 'data-contract-url="/api/contracts"' in html

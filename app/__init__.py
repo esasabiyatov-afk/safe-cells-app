@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from secrets import token_urlsafe
+from typing import TYPE_CHECKING
 
 from flask import Flask, request
 
@@ -34,8 +35,15 @@ from app.services.employee import (
 )
 from app.services.instances import attach_instance_coordinator
 
+if TYPE_CHECKING:
+    from app.runtime import BrowserLifecycle
 
-def create_app(settings: Settings) -> Flask:
+
+def create_app(
+    settings: Settings,
+    *,
+    runtime_lifecycle: "BrowserLifecycle | None" = None,
+) -> Flask:
     """Create the Flask app without creating or mutating any database files."""
 
     app = Flask(__name__)
@@ -52,6 +60,8 @@ def create_app(settings: Settings) -> Flask:
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
     app.extensions["safe_cells_admin_access"] = AdminAccessManager()
     app.extensions["safe_cells_document_downloads"] = DocumentDownloadStore()
+    if runtime_lifecycle is not None:
+        app.extensions["safe_cells_runtime_lifecycle"] = runtime_lifecycle
     instance_coordinator = attach_instance_coordinator(app, settings)
     employee_selection = EmployeeSelectionManager()
     app.extensions["safe_cells_employee_selection"] = employee_selection

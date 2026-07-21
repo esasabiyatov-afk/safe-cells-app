@@ -126,6 +126,14 @@ select {
 .employee select { width: 100%; height: 34px; padding: 0 28px 0 8px; border: 1px solid var(--line-dark); border-radius: 4px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 600; }
 .settings-icon-button { width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-dark); border-radius: 50%; background: var(--surface); color: var(--ink); font-size: 16px; line-height: 1; cursor: pointer; }
 .settings-icon-button:hover { border-color: var(--ink); background: var(--paper-deep); }
+.runtime-exit-button { min-height: 34px; padding: 7px 12px; border: 1px solid #9aa6b2; border-radius: 4px; background: #f8f6f0; color: #233143; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.runtime-exit-button:hover { background: #ebe7dd; }
+.runtime-exit-button:disabled { cursor: wait; opacity: .65; }
+.journal-header-actions { display: flex; align-items: center; gap: 10px; }
+.runtime-closed-body { min-width: 0; min-height: 100vh; display: grid; place-items: center; margin: 0; background: #eeeae0; }
+.runtime-closed-panel { width: min(520px, calc(100vw - 48px)); padding: 36px; border: 1px solid #bac1c7; border-radius: 8px; background: #fffdf8; box-shadow: 0 16px 45px rgb(27 39 54 / 16%); text-align: center; }
+.runtime-closed-panel h1 { margin: 0 0 12px; }
+.runtime-closed-panel p { margin: 0; line-height: 1.55; color: #58697b; }
 
 .connection-state {
   display: flex;
