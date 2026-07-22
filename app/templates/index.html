@@ -444,6 +444,22 @@
     <p class="legacy-contract-note" id="editLegacyNote" hidden>Это договор из старого отчёта. Заполните реквизиты по бумажному договору. Фактический залог нужен для безопасного закрытия.</p>
     <form id="editForm" novalidate>
       <div class="calculation-error" id="editError" role="alert" hidden></div>
+      <section class="statement-import" id="editStatementImportSection" aria-labelledby="editStatementImportTitle" hidden>
+        <div class="statement-import__heading">
+          <div>
+            <strong id="editStatementImportTitle">Заполнить из заявления АБС</strong>
+            <span>DOCX, скачанный при первичном оформлении</span>
+          </div>
+          <button class="secondary-button statement-import__button" id="editStatementImport" type="button">Перенести данные</button>
+        </div>
+        <div class="statement-import__file-row">
+          <label class="secondary-button statement-import__file-button" for="editStatementFile">Выбрать DOCX</label>
+          <span id="editStatementFileState">Файл не выбран</span>
+          <input class="visually-hidden" id="editStatementFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        </div>
+        <p class="statement-import__status" id="editStatementImportStatus" role="status" aria-live="polite" hidden></p>
+        <p class="statement-import__note">Данные только подставятся в форму. Сверьте их с заявлением и отдельно укажите фактический залог.</p>
+      </section>
       <div class="contract-fields">
         <label class="contract-field contract-field--wide"><span>ФИО клиента *</span><input id="editClientFullName" maxlength="200" required autocomplete="off"></label>
         <label class="contract-field"><span>Номер счёта из АБС *</span><input id="editAccountNumber" maxlength="100" required autocomplete="off"></label>

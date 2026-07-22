@@ -21,6 +21,8 @@ const state = {
   contractSubmitting: false,
   statementImporting: false,
   statementImportSequence: 0,
+  editStatementImporting: false,
+  editStatementImportSequence: 0,
   quoteSequence: 0,
   activeOccupiedCell: null,
   clientNameRequestSequence: 0,
@@ -128,6 +130,11 @@ const elements = {
   editIdCardIssuer: document.getElementById("editIdCardIssuer"),
   editIdCardIssueDate: document.getElementById("editIdCardIssueDate"),
   editLegacyNote: document.getElementById("editLegacyNote"),
+  editStatementImportSection: document.getElementById("editStatementImportSection"),
+  editStatementFile: document.getElementById("editStatementFile"),
+  editStatementFileState: document.getElementById("editStatementFileState"),
+  editStatementImport: document.getElementById("editStatementImport"),
+  editStatementImportStatus: document.getElementById("editStatementImportStatus"),
   editDepositField: document.getElementById("editDepositField"),
   editDepositAmount: document.getElementById("editDepositAmount"),
   editBack: document.getElementById("editBack"),
@@ -850,12 +857,80 @@ async function submitDocument(event) {
   }
 }
 
+function setEditStatementImportStatus(message = "", isError = false) {
+  elements.editStatementImportStatus.textContent = message;
+  elements.editStatementImportStatus.hidden = !message;
+  elements.editStatementImportStatus.classList.toggle("is-error", isError);
+}
+
+function refreshEditControls() {
+  const busy = state.editSubmitting || state.editStatementImporting;
+  elements.editSubmit.disabled = busy;
+  elements.editBack.disabled = busy;
+  elements.editDialogClose.disabled = busy;
+  elements.editStatementFile.disabled = busy;
+  elements.editStatementImport.disabled = busy;
+}
+
+function resetEditStatementImport() {
+  state.editStatementImportSequence += 1;
+  state.editStatementImporting = false;
+  elements.editStatementFile.value = "";
+  elements.editStatementFileState.textContent = "Файл не выбран";
+  setEditStatementImportStatus();
+  refreshEditControls();
+}
+
+async function importEditStatementData() {
+  const cell = state.activeOccupiedCell;
+  const file = elements.editStatementFile.files[0];
+  if (!cell?.legacy_imported || !elements.editDialog.open) return;
+  const validationError = statementFileValidationError(file);
+  if (validationError) {
+    setEditStatementImportStatus(validationError, true);
+    return;
+  }
+  const contractRef = cell.contract_ref;
+  const sequence = state.editStatementImportSequence + 1;
+  state.editStatementImportSequence = sequence;
+  state.editStatementImporting = true;
+  setEditStatementImportStatus("Чтение заявления…");
+  refreshEditControls();
+  try {
+    const payload = await extractStatementFile(file);
+    if (
+      sequence !== state.editStatementImportSequence
+      || state.activeOccupiedCell?.contract_ref !== contractRef
+      || !elements.editDialog.open
+    ) return;
+    elements.editClientFullName.value = payload.client_full_name;
+    elements.editAccountNumber.value = payload.account_number;
+    elements.editIdCardNumber.value = payload.id_card_number;
+    elements.editIdCardIssuer.value = payload.id_card_issuer;
+    setDateInputIso(elements.editIdCardIssueDate, payload.id_card_issue_date);
+    elements.editStatementFile.value = "";
+    elements.editStatementFileState.textContent = "Файл не выбран";
+    setEditStatementImportStatus("Данные перенесены в форму. Сверьте их и укажите залог перед сохранением.");
+  } catch (error) {
+    if (sequence === state.editStatementImportSequence) {
+      setEditStatementImportStatus(errorMessage(error, "Не удалось прочитать заявление."), true);
+    }
+  } finally {
+    if (sequence === state.editStatementImportSequence) {
+      state.editStatementImporting = false;
+      refreshEditControls();
+    }
+  }
+}
+
 function closeEditDialog() {
   if (elements.editDialog.open) elements.editDialog.close();
+  resetEditStatementImport();
   elements.editForm.reset();
   elements.editError.hidden = true;
   elements.editError.textContent = "";
   elements.editLegacyNote.hidden = true;
+  elements.editStatementImportSection.hidden = true;
   elements.editDepositField.hidden = true;
   elements.editDepositAmount.required = false;
   elements.editDepositAmount.value = "";
@@ -882,6 +957,8 @@ async function openEditDialog() {
     elements.editIdCardIssuer.value = payload.id_card_issuer;
     setDateInputIso(elements.editIdCardIssueDate, payload.id_card_issue_date);
     elements.editLegacyNote.hidden = !payload.legacy_imported;
+    resetEditStatementImport();
+    elements.editStatementImportSection.hidden = !payload.legacy_imported;
     elements.editDepositField.hidden = !payload.legacy_imported;
     elements.editDepositAmount.required = Boolean(payload.legacy_imported);
     elements.editDepositAmount.value = payload.deposit_amount === null ? "" : String(payload.deposit_amount);
@@ -896,9 +973,9 @@ async function openEditDialog() {
 async function submitEdit(event) {
   event.preventDefault();
   const cell = state.activeOccupiedCell;
-  if (!cell || !state.editOperationId || state.editSubmitting) return;
+  if (!cell || !state.editOperationId || state.editSubmitting || state.editStatementImporting) return;
   if (!elements.editForm.reportValidity()) return;
-  state.editSubmitting = true; elements.editSubmit.disabled = true; elements.editError.hidden = true;
+  state.editSubmitting = true; refreshEditControls(); elements.editError.hidden = true;
   try {
     const editPayload = {operation_id: state.editOperationId, contract_ref: cell.contract_ref,
       cell_number: cell.number, client_full_name: elements.editClientFullName.value,
@@ -916,7 +993,7 @@ async function submitEdit(event) {
   } catch (error) {
     elements.editError.textContent = errorMessage(error, "Не удалось сохранить изменения");
     elements.editError.hidden = false;
-  } finally { state.editSubmitting = false; elements.editSubmit.disabled = false; }
+  } finally { state.editSubmitting = false; refreshEditControls(); }
 }
 
 function closeCellDialog() {
@@ -1756,6 +1833,26 @@ function setStatementImportStatus(message = "", isError = false) {
   elements.statementImportStatus.classList.toggle("is-error", isError);
 }
 
+function statementFileValidationError(file) {
+  if (!file) return "Выберите заявление в формате DOCX.";
+  if (!file.name.toLocaleLowerCase("ru").endsWith(".docx")) return "Заявление должно быть файлом DOCX.";
+  if (file.size > 2 * 1024 * 1024) return "Размер заявления не должен превышать 2 МБ.";
+  return "";
+}
+
+async function extractStatementFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(elements.body.dataset.statementImportUrl, {
+    method: "POST",
+    headers: {"X-Safe-Cells-Token": elements.body.dataset.privateToken},
+    body: formData,
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.message || "Не удалось прочитать заявление.");
+  return payload;
+}
+
 function resetStatementImport() {
   state.statementImportSequence += 1;
   state.statementImporting = false;
@@ -1767,16 +1864,9 @@ function resetStatementImport() {
 
 async function importStatementData() {
   const file = elements.statementFile.files[0];
-  if (!file) {
-    setStatementImportStatus("Выберите заявление в формате DOCX.", true);
-    return;
-  }
-  if (!file.name.toLocaleLowerCase("ru").endsWith(".docx")) {
-    setStatementImportStatus("Заявление должно быть файлом DOCX.", true);
-    return;
-  }
-  if (file.size > 2 * 1024 * 1024) {
-    setStatementImportStatus("Размер заявления не должен превышать 2 МБ.", true);
+  const validationError = statementFileValidationError(file);
+  if (validationError) {
+    setStatementImportStatus(validationError, true);
     return;
   }
 
@@ -1785,18 +1875,8 @@ async function importStatementData() {
   state.statementImporting = true;
   setStatementImportStatus("Чтение заявления…");
   refreshContractControls();
-  const formData = new FormData();
-  formData.append("file", file);
   try {
-    const response = await fetch(elements.body.dataset.statementImportUrl, {
-      method: "POST",
-      headers: {"X-Safe-Cells-Token": elements.body.dataset.privateToken},
-      body: formData,
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.message || "Не удалось прочитать заявление.");
-    }
+    const payload = await extractStatementFile(file);
     if (sequence !== state.statementImportSequence) {
       return;
     }
@@ -2098,6 +2178,13 @@ elements.documentDialog.addEventListener("cancel", (event) => event.preventDefau
 elements.editDialogClose.addEventListener("click", closeEditDialog);
 elements.editBack.addEventListener("click", closeEditDialog);
 elements.editForm.addEventListener("submit", submitEdit);
+elements.editStatementImport.addEventListener("click", importEditStatementData);
+elements.editStatementFile.addEventListener("change", () => {
+  elements.editStatementFileState.textContent = elements.editStatementFile.files.length
+    ? "DOCX выбран"
+    : "Файл не выбран";
+  setEditStatementImportStatus();
+});
 elements.editDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.dialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.closureReason.addEventListener("change", requestClosureQuote);

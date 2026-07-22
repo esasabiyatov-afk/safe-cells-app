@@ -93,6 +93,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="adminLegacyImport" type="button" disabled' in html
     assert 'id="legacyContractNote" hidden' in html
     assert 'id="editDepositField" hidden' in html
+    assert 'id="editStatementImportSection"' in html
+    assert 'id="editStatementFile" type="file"' in html
+    assert 'id="editStatementImport" type="button">Перенести данные' in html
+    assert "Данные только подставятся в форму" in html
     assert "Тариф 1–30 дней" in html
     assert "Ручная ставка" in html
     assert 'id="contractForm"' in html

@@ -24,8 +24,8 @@ def extract():
     if not supplied_token or not compare_digest(supplied_token, expected_token):
         return jsonify({"message": "Доступ к данным не подтверждён."}), 403
 
-    # The import is part of contract creation and is unavailable before an
-    # employee is selected. The document itself is never written to the DB.
+    # The import fills a contract form and is unavailable before an employee
+    # is selected. The document itself is never written to the DB.
     current_app.config["EMPLOYEE_PROVIDER"]()
     upload = request.files.get("file")
     if upload is None or upload.stream is None:
