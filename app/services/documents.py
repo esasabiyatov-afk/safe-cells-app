@@ -25,6 +25,7 @@ from app.documents.values import (
     format_quoted_russian_date,
     format_russian_date,
 )
+from app.services.legacy_contracts import legacy_status
 
 
 class DocumentValidationError(ValueError): pass
@@ -85,7 +86,7 @@ def list_active_templates(settings: Settings, *, cell_number: object, contract_r
         paths = validate_database_pair(settings)
         with open_readonly(paths.working, busy_timeout_ms=settings.busy_timeout_ms) as connection:
             contract = connection.execute(
-                "SELECT 1 FROM contracts WHERE cell_number = ? AND contract_id = ?",
+                "SELECT extra_fields_json FROM contracts WHERE cell_number = ? AND contract_id = ?",
                 (cell_number.strip(), contract_ref.strip()),
             ).fetchone()
             rows = connection.execute(
@@ -98,6 +99,10 @@ def list_active_templates(settings: Settings, *, cell_number: object, contract_r
         raise DocumentReadError(NETWORK_ERROR_MESSAGE) from exc
     if contract is None:
         raise DocumentConflictError("Договор изменён или закрыт. Обновите главный экран.")
+    if legacy_status(contract["extra_fields_json"])["legacy_imported"]:
+        raise DocumentConflictError(
+            "Первичные документы старого договора нельзя сформировать повторно: исходная сумма и тариф неизвестны."
+        )
     return [{"template_id": str(row["template_id"]), "display_name": str(row["display_name"])} for row in rows]
 
 
@@ -206,6 +211,10 @@ def generate_active_contract_document(
         raise DocumentValidationError("Активный шаблон документа не найден.")
     if contract is None:
         raise DocumentConflictError("Договор изменён или закрыт. Обновите главный экран.")
+    if legacy_status(contract["extra_fields_json"])["legacy_imported"]:
+        raise DocumentConflictError(
+            "Первичные документы старого договора нельзя сформировать повторно: исходная сумма и тариф неизвестны."
+        )
     required = _required_placeholders(template["required_placeholders_json"])
 
     values = build_document_values(
@@ -344,6 +353,7 @@ def generate_event_documents(
     cell = _safe_filename_part(str(contract["cell_number"]), "ячейка")
     client = _safe_filename_part(str(contract["client_full_name"]), "клиент")
     generated: list[GeneratedDocument] = []
+    legacy = legacy_status(contract.get("extra_fields_json"))
     try:
         output_directory.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
@@ -351,6 +361,17 @@ def generate_event_documents(
         ) as temporary_directory:
             staging_directory = Path(temporary_directory)
             for template in templates:
+                required = _required_placeholders(
+                    template["required_placeholders_json"]
+                )
+                if (
+                    legacy["legacy_imported"]
+                    and not legacy["legacy_rent_terms_known"]
+                    and {"RENT_PRICE", "Сумма"}.intersection(required)
+                ):
+                    raise DocumentValidationError(
+                        "Документ требует исходную сумму старого договора, которая неизвестна."
+                    )
                 display = _safe_filename_part(
                     str(template["display_name"]), "Документ"
                 )
@@ -363,9 +384,7 @@ def generate_event_documents(
                     output_directory=staging_directory,
                     output_file_name=output_name,
                     values=values,
-                    required_placeholders=_required_placeholders(
-                        template["required_placeholders_json"]
-                    ),
+                    required_placeholders=required,
                 )
                 generated.append(GeneratedDocument(output_name))
             for document in generated:

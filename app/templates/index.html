@@ -49,6 +49,8 @@
   data-admin-backups-url="{{ url_for('admin.backups_view') }}"
   data-admin-backups-check-url="{{ url_for('admin.backups_check') }}"
   data-admin-backups-restore-url="{{ url_for('admin.backups_restore') }}"
+  data-admin-legacy-preview-url="{{ url_for('admin.legacy_import_preview') }}"
+  data-admin-legacy-confirm-url="{{ url_for('admin.legacy_import_confirm') }}"
 >
   <header class="page-header">
     <div class="brand-block">
@@ -191,6 +193,8 @@
       </div>
     </dl>
 
+    <p class="legacy-contract-note" id="legacyContractNote" hidden>Договор перенесён из старого отчёта. Сумма оплаты и применённый тариф неизвестны. Перед продлением или закрытием заполните недостающие реквизиты через «Редактировать данные».</p>
+
     <section class="private-card-section" id="privateCardSection" aria-labelledby="privateSectionTitle">
       <div class="private-card-heading">
         <div>
@@ -303,6 +307,7 @@
         <button type="button" class="admin-tab" data-admin-tab="tariffs" aria-selected="false">Тарифы</button>
         <button type="button" class="admin-tab" data-admin-tab="templates" aria-selected="false">Шаблоны</button>
         <button type="button" class="admin-tab" data-admin-tab="employees" aria-selected="false">Сотрудники</button>
+        <button type="button" class="admin-tab" data-admin-tab="legacy-import" aria-selected="false">Перенос старых договоров</button>
         <button type="button" class="admin-tab" data-admin-tab="backups" aria-selected="false">Резервные копии</button>
         <button type="button" class="admin-tab" data-admin-tab="access" aria-selected="false">Доступ</button>
       </nav>
@@ -403,6 +408,31 @@
           <div class="admin-backup-list" id="adminBackupRows"></div>
         </div>
       </section>
+
+      <section class="admin-panel" data-admin-panel="legacy-import" hidden>
+        <div class="admin-section">
+          <h3>Перенос старых договоров из Excel</h3>
+          <p class="dialog-note">Функция предназначена только для первичного заполнения пустой рабочей базы. Сначала файл проверяется без записи. ФИО и даты не сохраняются во временные файлы и не попадают в технические сообщения.</p>
+          <form id="adminLegacyPreviewForm" class="admin-upload-form">
+            <label class="contract-field contract-field--wide">
+              <span>Отчёт по занятым и свободным ячейкам, XLSX</span>
+              <input id="adminLegacyFile" type="file" accept=".xlsx" required>
+              <small>Нужны столбцы: номер ячейки, статус, ФИО, дата начала и дата окончания.</small>
+            </label>
+            <div class="dialog-actions"><button class="secondary-button" id="adminLegacyPreview" type="submit">Проверить файл без записи</button></div>
+          </form>
+          <div class="admin-legacy-result" id="adminLegacyResult" hidden>
+            <h4>Результат проверки</h4>
+            <p id="adminLegacySummary"></p>
+            <ul id="adminLegacyIssues" class="admin-legacy-issues"></ul>
+            <label class="admin-acknowledgement" id="adminLegacyConfirmationField" hidden>
+              <input id="adminLegacyConfirmation" type="checkbox">
+              <span>Я проверил итог. Перенести все договоры одним действием. Понимаю, что суммы, тарифы, паспортные данные и номера счетов останутся помечены как неизвестные.</span>
+            </label>
+            <div class="dialog-actions"><button class="primary-button" id="adminLegacyImport" type="button" disabled>Перенести старые договоры</button></div>
+          </div>
+        </div>
+      </section>
     </div>
   </dialog>
 
@@ -410,7 +440,8 @@
     <button class="dialog-close" id="editDialogClose" type="button" aria-label="Закрыть редактирование">×</button>
     <p class="section-kicker">Исправление данных</p>
     <h2 id="editDialogTitle">Ячейка № —</h2>
-    <p class="dialog-note">Срок аренды и денежные условия здесь не изменяются.</p>
+    <p class="dialog-note">Срок аренды и стоимость аренды здесь не изменяются.</p>
+    <p class="legacy-contract-note" id="editLegacyNote" hidden>Это договор из старого отчёта. Заполните реквизиты по бумажному договору. Фактический залог нужен для безопасного закрытия.</p>
     <form id="editForm" novalidate>
       <div class="calculation-error" id="editError" role="alert" hidden></div>
       <div class="contract-fields">
@@ -419,6 +450,7 @@
         <label class="contract-field"><span>Серия и номер ID-карты *</span><input id="editIdCardNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Орган выдачи *</span><input id="editIdCardIssuer" maxlength="200" required autocomplete="off"></label>
         <label class="contract-field"><span>Дата выдачи ID-карты *</span><input id="editIdCardIssueDate" type="text" inputmode="numeric" maxlength="10" placeholder="ДД.ММ.ГГГГ" autocomplete="off" data-date-input required></label>
+        <label class="contract-field" id="editDepositField" hidden><span>Фактический залог, сом *</span><input id="editDepositAmount" type="number" min="0" max="10000000" autocomplete="off"><small>Возьмите сумму из бумажного договора.</small></label>
       </div>
       <div class="rental-actions"><button class="secondary-button" id="editBack" type="button">Назад</button><button class="primary-button" id="editSubmit" type="submit">Сохранить изменения</button></div>
     </form>

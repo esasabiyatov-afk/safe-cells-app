@@ -586,6 +586,10 @@ main {
 .admin-panel[hidden] { display: none; }
 .admin-section { margin-top: 16px; padding: 16px; border: 1px solid var(--line-dark); border-radius: 5px; background: var(--surface); }
 .admin-section h3, .admin-section h4 { margin: 0 0 12px; font-family: Georgia, "Times New Roman", serif; }
+.admin-legacy-result { margin-top: 16px; padding: 16px; border: 1px solid var(--line-dark); border-radius: 5px; background: #fbfaf6; }
+.admin-legacy-result > p { margin: 0 0 12px; line-height: 1.5; }
+.admin-legacy-issues { margin: 0 0 14px; padding-left: 22px; color: var(--danger); line-height: 1.5; }
+.legacy-contract-note { margin: 12px 0; padding: 12px 14px; border-left: 4px solid #b9984b; background: #fff8e6; color: var(--ink); font-size: 13px; line-height: 1.5; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .admin-config-grid, .admin-password-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .admin-config-grid small, .admin-upload-form small { color: var(--ink-soft); font-size: 11px; font-weight: 400; line-height: 1.35; }

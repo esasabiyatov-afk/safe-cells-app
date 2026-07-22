@@ -53,6 +53,17 @@ from app.services.employee import (
     EmployeeSelectionRequiredError,
     list_employees,
 )
+from app.services.legacy_import import (
+    LegacyImportBusyError,
+    LegacyImportConflictError,
+    LegacyImportNetworkError,
+    LegacyImportValidationError,
+    LegacyImportWriteError,
+    LegacyImportWriteUncertainError,
+    import_legacy_contracts,
+    preview_legacy_import,
+    read_upload,
+)
 
 
 admin_blueprint = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -499,3 +510,73 @@ def backups_restore():
     except (RestoreError, BackupValidationError, BackupError, OSError, sqlite3.Error) as exc:
         return jsonify({"message": str(exc)}), 503
     return jsonify(result.to_dict())
+
+
+def _legacy_import_error(exc: Exception):
+    if isinstance(exc, LegacyImportValidationError):
+        return jsonify({"message": str(exc)}), 400
+    if isinstance(exc, LegacyImportConflictError):
+        return jsonify({"message": str(exc)}), 409
+    if isinstance(exc, LegacyImportBusyError):
+        return jsonify({"message": str(exc)}), 423
+    if isinstance(exc, (LegacyImportNetworkError, LegacyImportWriteUncertainError)):
+        return jsonify({"message": str(exc)}), 503
+    return jsonify({"message": str(exc)}), 500
+
+
+@admin_blueprint.post("/legacy-import/preview")
+def legacy_import_preview():
+    denied = _require_admin()
+    if denied:
+        return denied
+    upload = request.files.get("file")
+    if upload is None or upload.stream is None:
+        return jsonify({"message": "Выберите XLSX-файл старого отчёта."}), 400
+    try:
+        content = read_upload(upload.stream)
+        plan = preview_legacy_import(
+            _settings(),
+            content=content,
+            file_name=upload.filename,
+            as_of_date=_occurred_at().date(),
+        )
+    except (
+        LegacyImportValidationError,
+        LegacyImportConflictError,
+        LegacyImportBusyError,
+        LegacyImportNetworkError,
+        LegacyImportWriteError,
+        LegacyImportWriteUncertainError,
+    ) as exc:
+        return _legacy_import_error(exc)
+    return jsonify(plan.to_dict())
+
+
+@admin_blueprint.post("/legacy-import/confirm")
+def legacy_import_confirm():
+    denied = _require_admin()
+    if denied:
+        return denied
+    upload = request.files.get("file")
+    if upload is None or upload.stream is None:
+        return jsonify({"message": "Выберите XLSX-файл старого отчёта."}), 400
+    try:
+        result = import_legacy_contracts(
+            _settings(),
+            content=read_upload(upload.stream),
+            file_name=upload.filename,
+            expected_sha256=request.form.get("expected_sha256"),
+            confirmation=request.form.get("confirmation"),
+            operation_id=request.form.get("operation_id"),
+            occurred_at=_occurred_at(),
+        )
+    except (
+        LegacyImportValidationError,
+        LegacyImportConflictError,
+        LegacyImportBusyError,
+        LegacyImportNetworkError,
+        LegacyImportWriteError,
+        LegacyImportWriteUncertainError,
+    ) as exc:
+        return _legacy_import_error(exc)
+    return jsonify(result.to_dict()), 200 if result.repeated else 201

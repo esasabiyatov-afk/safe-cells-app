@@ -15,6 +15,7 @@ from app.db.connections import (
     validate_database_pair,
 )
 from app.services.statuses import calculate_status
+from app.services.legacy_contracts import legacy_status
 
 
 class CellsReadError(RuntimeError):
@@ -100,6 +101,7 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                     contracts.end_date,
                     contracts.rent_days,
                     contracts.client_full_name,
+                    contracts.extra_fields_json,
                     cell_blocks.block_kind,
                     cell_blocks.source_contract_id,
                     cell_blocks.occupation_label
@@ -184,6 +186,7 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
             status_value = status.status.value
             days_remaining = status.days_remaining
             display_name = client_display_name(row["client_full_name"])
+        legacy = legacy_status(row["extra_fields_json"])
         counts[status_value] += 1
         cells.append(
             {
@@ -202,6 +205,7 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                 "total_days": total_days,
                 "client_display_name": display_name,
                 "days_remaining": days_remaining,
+                **legacy,
             }
         )
 

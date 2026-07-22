@@ -48,14 +48,19 @@ def test_list_cells_returns_only_approved_client_display_name(
         "end_date",
         "rent_days",
         "total_days",
-        "client_display_name",
-        "days_remaining",
-    }
+            "client_display_name",
+            "days_remaining",
+            "legacy_imported",
+            "legacy_identity_complete",
+            "legacy_deposit_known",
+            "legacy_rent_terms_known",
+        }
     assert cell["start_date"] == "2026-07-01"
     assert cell["contract_ref"] == "contract-test-1"
     assert cell["rent_days"] == 1
     assert cell["total_days"] == 9
     assert cell["client_display_name"] == "Секретный Т. К."
+    assert cell["legacy_imported"] is False
     serialized = repr(payload)
     assert "Секретный Тестовый" not in serialized
     assert "PRIVATE-TEST-ACCOUNT" not in serialized

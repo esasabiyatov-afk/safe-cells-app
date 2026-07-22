@@ -86,6 +86,13 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="adminPenaltyRows"' in html
     assert 'id="adminPenaltyLinked"' in html
     assert 'id="adminPenaltyManual"' in html
+    assert 'data-admin-legacy-preview-url="/api/admin/legacy-import/preview"' in html
+    assert 'data-admin-legacy-confirm-url="/api/admin/legacy-import/confirm"' in html
+    assert 'data-admin-tab="legacy-import"' in html
+    assert 'id="adminLegacyPreviewForm"' in html
+    assert 'id="adminLegacyImport" type="button" disabled' in html
+    assert 'id="legacyContractNote" hidden' in html
+    assert 'id="editDepositField" hidden' in html
     assert "Тариф 1–30 дней" in html
     assert "Ручная ставка" in html
     assert 'id="contractForm"' in html

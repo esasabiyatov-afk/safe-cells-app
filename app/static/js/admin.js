@@ -2,7 +2,7 @@
 
 (() => {
   const body = document.body;
-  const state = {configured: null, accessMode: "password", recoveryMode: false, token: null, snapshot: null, backups: null, busy: false};
+  const state = {configured: null, accessMode: "password", recoveryMode: false, token: null, snapshot: null, backups: null, legacyPreview: null, busy: false};
   const elements = {
     open: document.getElementById("adminOpen"), dialog: document.getElementById("adminDialog"), close: document.getElementById("adminDialogClose"),
     authForm: document.getElementById("adminAuthForm"), authNote: document.getElementById("adminAuthNote"), authError: document.getElementById("adminAuthError"),
@@ -22,6 +22,9 @@
     accessForm: document.getElementById("adminAccessForm"), accessPassword: document.getElementById("adminAccessPassword"), accessAcknowledgement: document.getElementById("adminAccessAcknowledgement"), accessSubmit: document.getElementById("adminAccessSubmit"),
     passwordForm: document.getElementById("adminPasswordForm"), currentPassword: document.getElementById("adminCurrentPassword"), newPassword: document.getElementById("adminNewPassword"), newPasswordConfirm: document.getElementById("adminNewPasswordConfirm"), passwordSubmit: document.getElementById("adminPasswordSubmit"),
     backupStatus: document.getElementById("adminBackupStatus"), backupRows: document.getElementById("adminBackupRows"), backupCheck: document.getElementById("adminBackupCheck"),
+    legacyPreviewForm: document.getElementById("adminLegacyPreviewForm"), legacyFile: document.getElementById("adminLegacyFile"), legacyPreviewButton: document.getElementById("adminLegacyPreview"),
+    legacyResult: document.getElementById("adminLegacyResult"), legacySummary: document.getElementById("adminLegacySummary"), legacyIssues: document.getElementById("adminLegacyIssues"),
+    legacyConfirmationField: document.getElementById("adminLegacyConfirmationField"), legacyConfirmation: document.getElementById("adminLegacyConfirmation"), legacyImport: document.getElementById("adminLegacyImport"),
   };
 
   const operationId = () => crypto.randomUUID();
@@ -413,6 +416,68 @@
     finally { state.busy = false; elements.backupCheck.disabled = false; }
   }
 
+  function resetLegacyPreview() {
+    state.legacyPreview = null;
+    elements.legacyResult.hidden = true;
+    elements.legacyIssues.replaceChildren();
+    elements.legacyConfirmation.checked = false;
+    elements.legacyConfirmationField.hidden = true;
+    elements.legacyImport.disabled = true;
+  }
+
+  function renderLegacyPreview(payload) {
+    state.legacyPreview = payload;
+    elements.legacyIssues.replaceChildren();
+    elements.legacyResult.hidden = false;
+    elements.legacySummary.textContent = `Всего ячеек: ${payload.cells_count}. Договоров: ${payload.contracts_count}. Свободных: ${payload.free_count}. Служебно занятых: ${payload.manual_count}.`;
+    for (const issue of payload.issues) {
+      const item = document.createElement("li");
+      item.textContent = issue.cell_number ? `Ячейка № ${issue.cell_number}: ${issue.message}` : issue.message;
+      elements.legacyIssues.append(item);
+    }
+    if (!payload.issues.length) {
+      const item = document.createElement("li");
+      item.textContent = "Ошибок не найдено. Запись ещё не выполнялась.";
+      item.className = "template-status-ok";
+      elements.legacyIssues.append(item);
+    }
+    elements.legacyConfirmation.checked = false;
+    elements.legacyConfirmationField.hidden = !payload.ready;
+    elements.legacyImport.disabled = true;
+  }
+
+  async function previewLegacyImport(event) {
+    event.preventDefault();
+    if (state.busy || !elements.legacyFile.files[0]) return;
+    state.busy = true; elements.legacyPreviewButton.disabled = true; clearMessages(); resetLegacyPreview();
+    try {
+      const form = new FormData(); form.set("file", elements.legacyFile.files[0]);
+      const payload = await jsonRequest(body.dataset.adminLegacyPreviewUrl, {method: "POST", body: form});
+      renderLegacyPreview(payload);
+      if (!payload.ready) showError(elements.error, "Исправьте перечисленные ошибки в Excel и проверьте файл заново.");
+    } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
+    finally { state.busy = false; elements.legacyPreviewButton.disabled = false; }
+  }
+
+  async function confirmLegacyImport() {
+    if (state.busy || !state.legacyPreview?.ready || !elements.legacyConfirmation.checked || !elements.legacyFile.files[0]) return;
+    const accepted = window.confirm("Будут перенесены все старые договоры одним действием. Перед записью приложение создаст резервную копию обеих баз. Продолжить?");
+    if (!accepted) return;
+    state.busy = true; elements.legacyImport.disabled = true; clearMessages();
+    try {
+      const form = new FormData();
+      form.set("file", elements.legacyFile.files[0]);
+      form.set("expected_sha256", state.legacyPreview.sha256);
+      form.set("confirmation", state.legacyPreview.confirmation);
+      form.set("operation_id", operationId());
+      const payload = await jsonRequest(body.dataset.adminLegacyConfirmUrl, {method: "POST", body: form});
+      elements.legacyPreviewForm.reset(); resetLegacyPreview();
+      showSuccess(payload.warning || `Перенесено договоров: ${payload.contracts_count}. Главный экран обновлён.`);
+      window.dispatchEvent(new Event("safe-cells:refresh"));
+    } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
+    finally { state.busy = false; elements.legacyImport.disabled = !(state.legacyPreview?.ready && elements.legacyConfirmation.checked); }
+  }
+
   async function restoreBackup(button) {
     if (state.busy || !state.backups?.restore_allowed) return;
     const accepted = window.confirm("Закройте приложение на других компьютерах. Повреждённые текущие файлы будут сохранены отдельно. Продолжить восстановление обеих баз?");
@@ -455,4 +520,8 @@
   elements.employeeRows.addEventListener("click", employeeAction); elements.employeeAddForm.addEventListener("submit", addEmployee);
   elements.accessForm.addEventListener("submit", saveAccess); elements.passwordForm.addEventListener("submit", changePassword);
   elements.backupCheck.addEventListener("click", checkBackups); elements.backupRows.addEventListener("click", backupAction);
+  elements.legacyPreviewForm.addEventListener("submit", previewLegacyImport);
+  elements.legacyFile.addEventListener("change", resetLegacyPreview);
+  elements.legacyConfirmation.addEventListener("change", () => { elements.legacyImport.disabled = !(state.legacyPreview?.ready && elements.legacyConfirmation.checked); });
+  elements.legacyImport.addEventListener("click", confirmLegacyImport);
 })();

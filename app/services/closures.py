@@ -20,6 +20,7 @@ from app.db.connections import (
     validate_database_pair,
 )
 from app.services.backups import create_backup_pair, has_valid_backup_for_operation
+from app.services.legacy_contracts import require_legacy_deposit, require_legacy_identity
 from app.services.penalty_rates import (
     PenaltyRateConfigurationError,
     resolve_penalty_rate,
@@ -176,6 +177,11 @@ def calculate_closure_quote_in_connection(
         raise ClosureConflictError(
             "Ячейка уже свободна или договор изменился. Обновите главный экран."
         )
+    try:
+        require_legacy_identity(row["extra_fields_json"], action="закрытием")
+        require_legacy_deposit(row["extra_fields_json"], action="закрытием")
+    except ValueError as exc:
+        raise ClosureConflictError(str(exc)) from exc
     end = _stored_date(row["end_date"])
     kind = closing_kind(close_date=close_date, end_date=end)
     unused_days = max(0, (end - close_date).days)

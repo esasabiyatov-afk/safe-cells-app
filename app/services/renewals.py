@@ -20,6 +20,7 @@ from app.db.connections import (
     validate_database_pair,
 )
 from app.services.backups import create_backup_pair, has_valid_backup_for_operation
+from app.services.legacy_contracts import require_legacy_identity
 from app.services.penalty_rates import (
     PenaltyRateConfigurationError,
     resolve_penalty_rate,
@@ -218,7 +219,8 @@ def calculate_renewal_quote_in_connection(
     row = connection.execute(
         """
         SELECT contracts.contract_id,
-               contracts.cell_number, contracts.end_date, cells.height_mm
+               contracts.cell_number, contracts.end_date,
+               contracts.extra_fields_json, cells.height_mm
         FROM contracts
         JOIN cells ON cells.number = contracts.cell_number
         WHERE contracts.cell_number = ? AND contracts.contract_id = ?
@@ -229,6 +231,10 @@ def calculate_renewal_quote_in_connection(
         raise RenewalConflictError(
             "Договор изменился или ячейка уже свободна. Обновите главный экран."
         )
+    try:
+        require_legacy_identity(row["extra_fields_json"], action="продлением")
+    except ValueError as exc:
+        raise RenewalConflictError(str(exc)) from exc
     old_end = _date(row["end_date"], label="текущую дату окончания")
     new_start = renewal_start_date(
         renewal_date=renewal_date, old_end_date=old_end

@@ -13,6 +13,7 @@ from app.db.connections import (
     open_readonly,
     validate_database_pair,
 )
+from app.services.legacy_contracts import LEGACY_MISSING_TEXT, legacy_status
 
 
 class ContractDetailsValidationError(ValueError):
@@ -50,6 +51,10 @@ class PrivateContractDetails:
     account_number: str
     created_at: str
     created_by: str
+    deposit_amount: int | None
+    legacy_imported: bool
+    legacy_identity_complete: bool
+    legacy_deposit_known: bool
     renewals: tuple[RenewalDetails, ...]
 
     def to_dict(self) -> dict[str, Any]:
@@ -122,7 +127,8 @@ def get_private_contract_details(
                 SELECT
                     contract_id, cell_number, client_full_name, id_card_number,
                     id_card_issuer, id_card_issue_date,
-                    account_number, created_at, created_by
+                    account_number, extra_fields_json, deposit_amount_minor,
+                    created_at, created_by
                 FROM contracts
                 WHERE cell_number = ? AND contract_id = ?
                 """,
@@ -166,14 +172,33 @@ def get_private_contract_details(
         )
         for row in renewal_rows
     )
+    legacy = legacy_status(contract["extra_fields_json"])
+    identity_complete = legacy["legacy_identity_complete"]
+    deposit_known = legacy["legacy_deposit_known"]
     return PrivateContractDetails(
         cell_number=str(contract["cell_number"]),
         client_full_name=str(contract["client_full_name"]),
-        id_card_number=str(contract["id_card_number"]),
-        id_card_issuer=str(contract["id_card_issuer"]),
-        id_card_issue_date=str(contract["id_card_issue_date"]),
-        account_number=str(contract["account_number"]),
+        id_card_number=(
+            str(contract["id_card_number"])
+            if identity_complete and contract["id_card_number"] != LEGACY_MISSING_TEXT
+            else ""
+        ),
+        id_card_issuer=(
+            str(contract["id_card_issuer"])
+            if identity_complete and contract["id_card_issuer"] != LEGACY_MISSING_TEXT
+            else ""
+        ),
+        id_card_issue_date=(str(contract["id_card_issue_date"]) if identity_complete else ""),
+        account_number=(
+            str(contract["account_number"])
+            if identity_complete and contract["account_number"] != LEGACY_MISSING_TEXT
+            else ""
+        ),
         created_at=str(contract["created_at"]),
         created_by=str(contract["created_by"]),
+        deposit_amount=int(contract["deposit_amount_minor"]) if deposit_known else None,
+        legacy_imported=legacy["legacy_imported"],
+        legacy_identity_complete=identity_complete,
+        legacy_deposit_known=deposit_known,
         renewals=renewals,
     )

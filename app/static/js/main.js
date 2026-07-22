@@ -73,6 +73,7 @@ const elements = {
   dialogEndDate: document.getElementById("dialogEndDate"),
   dialogRentDays: document.getElementById("dialogRentDays"),
   dialogDays: document.getElementById("dialogDays"),
+  legacyContractNote: document.getElementById("legacyContractNote"),
   cellDialogKicker: document.getElementById("cellDialogKicker"),
   privateCardSection: document.getElementById("privateCardSection"),
   contractCardActions: document.getElementById("contractCardActions"),
@@ -126,6 +127,9 @@ const elements = {
   editIdCardNumber: document.getElementById("editIdCardNumber"),
   editIdCardIssuer: document.getElementById("editIdCardIssuer"),
   editIdCardIssueDate: document.getElementById("editIdCardIssueDate"),
+  editLegacyNote: document.getElementById("editLegacyNote"),
+  editDepositField: document.getElementById("editDepositField"),
+  editDepositAmount: document.getElementById("editDepositAmount"),
   editBack: document.getElementById("editBack"),
   editSubmit: document.getElementById("editSubmit"),
   documentAction: document.getElementById("documentAction"),
@@ -526,6 +530,7 @@ function renderOccupiedOperationalDetails(cell) {
   }`;
   elements.dialogSize.textContent = `${cell.height_mm}×${cell.width_mm}×${cell.depth_mm}`;
   if (cell.block_kind) {
+    elements.legacyContractNote.hidden = true;
     elements.cellDialogKicker.textContent = "Состояние ячейки";
     elements.dialogClientLabel.textContent = cell.block_kind === "manual" ? "Пометка" : "Клиент";
     elements.dialogClient.textContent = cell.block_kind === "manual"
@@ -555,6 +560,18 @@ function renderOccupiedOperationalDetails(cell) {
   elements.privateCardSection.hidden = false;
   elements.contractCardActions.hidden = false;
   elements.blockedCardActions.hidden = true;
+  elements.legacyContractNote.hidden = !cell.legacy_imported;
+  if (cell.legacy_imported) {
+    elements.legacyContractNote.textContent = cell.legacy_identity_complete && cell.legacy_deposit_known
+      ? "Договор перенесён из старого отчёта. Исходная сумма оплаты и применённый тариф неизвестны, поэтому первичные документы повторно не формируются."
+      : "Договор перенесён из старого отчёта. Сумма оплаты и применённый тариф неизвестны. Перед продлением или закрытием заполните недостающие реквизиты через «Редактировать данные».";
+  }
+  elements.renewAction.disabled = cell.legacy_imported && !cell.legacy_identity_complete;
+  elements.closeAction.disabled = cell.legacy_imported && (!cell.legacy_identity_complete || !cell.legacy_deposit_known);
+  elements.documentAction.disabled = Boolean(cell.legacy_imported);
+  elements.renewAction.title = elements.renewAction.disabled ? "Сначала заполните реквизиты старого договора" : "";
+  elements.closeAction.title = elements.closeAction.disabled ? "Сначала заполните реквизиты и фактический залог старого договора" : "";
+  elements.documentAction.title = cell.legacy_imported ? "Исходная сумма и тариф старого договора неизвестны" : "";
 }
 
 async function loadOpenedClientName(cell) {
@@ -733,10 +750,10 @@ async function togglePrivateDetails() {
     ) {
       return;
     }
-    elements.privateIdCardNumber.textContent = payload.id_card_number;
-    elements.privateIdCardIssuer.textContent = payload.id_card_issuer;
-    elements.privateIdCardIssueDate.textContent = formatDate(payload.id_card_issue_date);
-    elements.privateAccountNumber.textContent = payload.account_number;
+    elements.privateIdCardNumber.textContent = payload.id_card_number || "Не указано";
+    elements.privateIdCardIssuer.textContent = payload.id_card_issuer || "Не указано";
+    elements.privateIdCardIssueDate.textContent = payload.id_card_issue_date ? formatDate(payload.id_card_issue_date) : "Не указано";
+    elements.privateAccountNumber.textContent = payload.account_number || "Не указано";
     elements.privateCreatedAt.textContent = formatDateTime(payload.created_at);
     elements.privateCreatedBy.textContent = payload.created_by;
     renderRenewals(payload.renewals);
@@ -838,6 +855,10 @@ function closeEditDialog() {
   elements.editForm.reset();
   elements.editError.hidden = true;
   elements.editError.textContent = "";
+  elements.editLegacyNote.hidden = true;
+  elements.editDepositField.hidden = true;
+  elements.editDepositAmount.required = false;
+  elements.editDepositAmount.value = "";
   state.editOperationId = null;
 }
 
@@ -860,6 +881,10 @@ async function openEditDialog() {
     elements.editIdCardNumber.value = payload.id_card_number;
     elements.editIdCardIssuer.value = payload.id_card_issuer;
     setDateInputIso(elements.editIdCardIssueDate, payload.id_card_issue_date);
+    elements.editLegacyNote.hidden = !payload.legacy_imported;
+    elements.editDepositField.hidden = !payload.legacy_imported;
+    elements.editDepositAmount.required = Boolean(payload.legacy_imported);
+    elements.editDepositAmount.value = payload.deposit_amount === null ? "" : String(payload.deposit_amount);
     state.editOperationId = createOperationId();
     elements.editDialog.showModal();
   } catch (error) {
@@ -875,12 +900,14 @@ async function submitEdit(event) {
   if (!elements.editForm.reportValidity()) return;
   state.editSubmitting = true; elements.editSubmit.disabled = true; elements.editError.hidden = true;
   try {
+    const editPayload = {operation_id: state.editOperationId, contract_ref: cell.contract_ref,
+      cell_number: cell.number, client_full_name: elements.editClientFullName.value,
+      account_number: elements.editAccountNumber.value, id_card_number: elements.editIdCardNumber.value,
+      id_card_issuer: elements.editIdCardIssuer.value, id_card_issue_date: dateInputIso(elements.editIdCardIssueDate)};
+    if (cell.legacy_imported) editPayload.deposit_amount = Number(elements.editDepositAmount.value);
     const response = await fetch(elements.body.dataset.editUrl, {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({operation_id: state.editOperationId, contract_ref: cell.contract_ref,
-        cell_number: cell.number, client_full_name: elements.editClientFullName.value,
-        account_number: elements.editAccountNumber.value, id_card_number: elements.editIdCardNumber.value,
-        id_card_issuer: elements.editIdCardIssuer.value, id_card_issue_date: dateInputIso(elements.editIdCardIssueDate)}),
+      body: JSON.stringify(editPayload),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.message || "Не удалось сохранить изменения");
