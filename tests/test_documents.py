@@ -344,14 +344,68 @@ def test_document_endpoint_does_not_disclose_without_token(settings, initialized
 
 def test_approved_date_and_deposit_formats():
     value = date(2026, 5, 22)
+    single_digit_day = date(2026, 9, 3)
     assert format_russian_date(value) == "22 мая 2026 г."
     assert format_kyrgyz_date(value) == "22-май 2026-ж."
     assert format_document_issue_date(date(2017, 9, 12)) == "12.09.2017-ж/г."
     assert format_quoted_russian_date(value) == "«22» мая 2026 г."
     assert format_quoted_kyrgyz_date(value) == "«22» май 2026-ж."
     assert format_quoted_kyrgyz_date_stem(value) == "«22» май 2026"
+    assert format_russian_date(single_digit_day) == "03 сентября 2026 г."
+    assert format_kyrgyz_date(single_digit_day) == "03-сентябрь 2026-ж."
+    assert (
+        format_quoted_russian_date(single_digit_day)
+        == "«03» сентября 2026 г."
+    )
+    assert (
+        format_quoted_kyrgyz_date(single_digit_day)
+        == "«03» сентябрь 2026-ж."
+    )
+    assert (
+        format_quoted_kyrgyz_date_stem(single_digit_day)
+        == "«03» сентябрь 2026"
+    )
     assert amount_in_words_ru(1500) == "Одна тысяча пятьсот"
     assert amount_in_words_ky(1500) == "Бир миң беш жүз"
+
+
+def test_document_values_keep_leading_zero_for_single_digit_day():
+    contract = {
+        "client_full_name": "Вымышленный Клиент",
+        "id_card_number": "TEST00000001",
+        "id_card_issuer": "Тестовый орган",
+        "id_card_issue_date": "2017-09-03",
+        "account_number": "TEST-ACCOUNT-001",
+        "cell_number": "7",
+        "height_mm": 100,
+        "width_mm": 220,
+        "depth_mm": 330,
+        "start_date": "2026-09-03",
+        "end_date": "2026-10-05",
+        "rent_days": 33,
+        "rent_price_minor": 330,
+        "deposit_amount_minor": 1500,
+    }
+    renewal = {
+        "new_start_date": "2026-11-03",
+        "new_end_date": "2026-12-05",
+        "renewal_days": 33,
+        "renewal_price_minor": 330,
+    }
+
+    values = build_document_values(
+        contract,
+        creation_date=date(2026, 9, 3),
+        employee="Тестовый Сотрудник",
+        renewal=renewal,
+    )
+
+    assert values["Дата.Сегодня"] == "03 сентября 2026 г."
+    assert values["Дата.СегодняК"] == "03-сентябрь 2026-ж."
+    assert values["Договор.НачалоД"] == "«03» сентября 2026 г."
+    assert values["Договор.НачалоДК"] == "«03» сентябрь 2026"
+    assert values["Продление.Начало"] == "«03» ноября 2026 г."
+    assert values["Продление.НачалоК"] == "«03» ноябрь 2026-ж."
 
 
 def test_renderer_supports_split_bank_square_codes(tmp_path: Path):
