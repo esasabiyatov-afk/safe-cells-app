@@ -2018,7 +2018,9 @@ function createCellButton(cell) {
 
   const client = document.createElement("span");
   client.className = `cell-client${
-    cell.block_kind === "lost_key" ? " lost-key-label" : ""
+    cell.block_kind === "lost_key"
+      ? " lost-key-label"
+      : (cell.block_kind === "manual" ? " manual-block-label" : "")
   }`;
   client.textContent = cell.client_display_name || "";
 

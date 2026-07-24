@@ -264,7 +264,10 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert ".manual-occupy-button" in stylesheet
         assert "min-height: 34px" in stylesheet
         assert ".cell-client.lost-key-label" in stylesheet
-        assert 'cell.block_kind === "lost_key" ? " lost-key-label" : ""' in script
+        assert 'cell.block_kind === "lost_key"' in script
+        assert '? " lost-key-label"' in script
+        assert ".cell-client.manual-block-label" in stylesheet
+        assert 'cell.block_kind === "manual" ? " manual-block-label" : ""' in script
         assert "releaseBlockedCell" in script
         assert "renderEmployeeChoices" in script
         assert "togglePrivateDetails" in script

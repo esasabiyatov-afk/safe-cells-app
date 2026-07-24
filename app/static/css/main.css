@@ -1457,6 +1457,11 @@ main {
 .status-badge.overdue { background: var(--overdue-bg); color: var(--overdue); }
 
 .cell-client.lost-key-label,
+.cell-client.manual-block-label {
+  color: var(--overdue);
+  font-weight: 800;
+}
+
 .status-badge.lost-key-label {
   color: var(--overdue);
 }
