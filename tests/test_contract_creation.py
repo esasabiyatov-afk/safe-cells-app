@@ -104,6 +104,7 @@ def test_contract_api_prepares_complete_browser_download_bundle_without_silent_f
                 ("opening-browser-a", "ТЕСТ-АКТ"),
                 ("opening-browser-b", "ТЕСТ-ДОГОВОР"),
                 ("opening-browser-c", "ТЕСТ-РАСПОРЯЖЕНИЕ"),
+                ("opening-browser-d", "ТЕСТ-БИРКА"),
             ),
             start=1,
         ):
@@ -140,9 +141,13 @@ def test_contract_api_prepares_complete_browser_download_bundle_without_silent_f
     assert response.status_code == 201
     body = response.get_json()
     assert body["document_warning"] is None
-    assert len(body["documents"]) == 3
+    assert len(body["documents"]) == 4
     assert all(
         set(document_info) == {"download_id", "file_name"}
+        for document_info in body["documents"]
+    )
+    assert all(
+        "_Ячейка-04_" in document_info["file_name"]
         for document_info in body["documents"]
     )
     assert not silent_downloads.exists()
@@ -153,7 +158,7 @@ def test_contract_api_prepares_complete_browser_download_bundle_without_silent_f
             json={"download_id": document_info["download_id"]},
         )
         assert downloaded.status_code == 200
-        assert Document(BytesIO(downloaded.data)).paragraphs[0].text.endswith("4")
+        assert Document(BytesIO(downloaded.data)).paragraphs[0].text.endswith("04")
 
 
 def test_create_contract_saves_active_row_audit_and_verified_backups(

@@ -81,7 +81,7 @@ def _template_id(value: object | None) -> str:
     try:
         return str(UUID(value))
     except ValueError:
-        # The five approved seed identifiers are stable readable IDs.
+        # The six approved seed identifiers are stable readable IDs.
         if 1 <= len(value) <= 100 and all(
             character.isalnum() or character in "-_" for character in value
         ):

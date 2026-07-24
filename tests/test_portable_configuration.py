@@ -8,6 +8,7 @@ import subprocess
 SCRIPT = Path(__file__).parents[1] / "scripts" / "configure_database.ps1"
 TEMPLATE_NAMES = (
     "Акт приема передач сейф.docx",
+    "бирка на конверт.docx",
     "Договор индивидуального сейфа ф.л.docx",
     "Распоряжение Открытие сейф.docx",
     "Доп. соглашение сейф ф.л.docx",

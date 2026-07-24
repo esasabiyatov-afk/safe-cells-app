@@ -112,6 +112,15 @@ def _safe_filename_part(value: str, fallback: str) -> str:
     return (cleaned[:60] or fallback)
 
 
+def _format_document_cell_number(value: object) -> str:
+    """Keep database identifiers unchanged, but print one digit as two."""
+
+    cell_number = str(value).strip()
+    if len(cell_number) == 1 and cell_number.isdecimal():
+        return f"0{cell_number}"
+    return cell_number
+
+
 def build_document_values(
     contract: Mapping[str, object] | sqlite3.Row,
     *,
@@ -128,13 +137,14 @@ def build_document_values(
     safe_size = (
         f'{contract["height_mm"]}×{contract["width_mm"]}×{contract["depth_mm"]} мм'
     )
+    document_cell_number = _format_document_cell_number(contract["cell_number"])
     values: dict[str, object] = {
         "CLIENT_FULL_NAME": contract["client_full_name"],
         "ID_CARD_NUMBER": contract["id_card_number"],
         "ID_CARD_ISSUER": contract["id_card_issuer"],
         "ID_CARD_ISSUE_DATE": contract["id_card_issue_date"],
         "ACCOUNT_NUMBER": contract["account_number"],
-        "SAFE_NUMBER": contract["cell_number"],
+        "SAFE_NUMBER": document_cell_number,
         "SAFE_HEIGHT": contract["height_mm"],
         "SAFE_WIDTH": contract["width_mm"],
         "SAFE_DEPTH": contract["depth_mm"],
@@ -163,7 +173,7 @@ def build_document_values(
         "Залог.Цифр": deposit,
         "Залог.Пропись": amount_in_words_ru(deposit),
         "Залог.ПрописьК": amount_in_words_ky(deposit),
-        "Сейф.Номер": contract["cell_number"],
+        "Сейф.Номер": document_cell_number,
         "Сейф.Размер": safe_size,
     }
     if renewal is not None:
@@ -221,7 +231,9 @@ def generate_active_contract_document(
         contract, creation_date=creation_date, employee=employee
     )
     display = _safe_filename_part(str(template["display_name"]), "Документ")
-    cell = _safe_filename_part(str(contract["cell_number"]), "ячейка")
+    cell = _safe_filename_part(
+        _format_document_cell_number(contract["cell_number"]), "ячейка"
+    )
     client = _safe_filename_part(str(contract["client_full_name"]), "клиент")
     output_name = f"{display}_Ячейка-{cell}_{client}_{creation_date.isoformat()}.docx"
     try:
@@ -350,7 +362,9 @@ def generate_event_documents(
         raise DocumentValidationError(
             "Сохранённые данные договора нельзя подставить в документ."
         ) from exc
-    cell = _safe_filename_part(str(contract["cell_number"]), "ячейка")
+    cell = _safe_filename_part(
+        _format_document_cell_number(contract["cell_number"]), "ячейка"
+    )
     client = _safe_filename_part(str(contract["client_full_name"]), "клиент")
     generated: list[GeneratedDocument] = []
     legacy = legacy_status(contract.get("extra_fields_json"))

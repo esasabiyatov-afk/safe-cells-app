@@ -51,6 +51,7 @@ if (-not (Test-Path -LiteralPath $templateDirectory -PathType Container)) {
 
 $requiredTemplates = @(
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("0JDQutGCINC/0YDQuNC10LzQsCDQv9C10YDQtdC00LDRhyDRgdC10LnRhC5kb2N4")),
+    [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("0LHQuNGA0LrQsCDQvdCwINC60L7QvdCy0LXRgNGCLmRvY3g=")),
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("0JTQvtCz0L7QstC+0YAg0LjQvdC00LjQstC40LTRg9Cw0LvRjNC90L7Qs9C+INGB0LXQudGE0LAg0YQu0LsuZG9jeA==")),
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("0KDQsNGB0L/QvtGA0Y/QttC10L3QuNC1INCe0YLQutGA0YvRgtC40LUg0YHQtdC50YQuZG9jeA==")),
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("0JTQvtC/LiDRgdC+0LPQu9Cw0YjQtdC90LjQtSDRgdC10LnRhCDRhC7Quy5kb2N4")),

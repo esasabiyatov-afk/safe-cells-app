@@ -505,6 +505,41 @@ def test_renewal_codes_keep_original_contract_start_and_specific_period(
     assert "[Продление." not in text
 
 
+@pytest.mark.parametrize(
+    ("stored_cell_number", "document_cell_number"),
+    (("2", "02"), ("12", "12")),
+)
+def test_document_values_print_single_digit_cell_number_with_leading_zero(
+    stored_cell_number: str,
+    document_cell_number: str,
+) -> None:
+    contract = {
+        "client_full_name": "Вымышленный Клиент",
+        "id_card_number": "TEST-000000",
+        "id_card_issuer": "Тестовый орган",
+        "id_card_issue_date": "2017-09-12",
+        "account_number": "TEST-ACCOUNT-001",
+        "cell_number": stored_cell_number,
+        "height_mm": 50,
+        "width_mm": 220,
+        "depth_mm": 330,
+        "start_date": "2026-07-12",
+        "end_date": "2026-08-10",
+        "rent_days": 30,
+        "rent_price_minor": 450,
+        "deposit_amount_minor": 1500,
+    }
+
+    values = build_document_values(
+        contract,
+        creation_date=date(2026, 7, 12),
+        employee="Тестовый Сотрудник",
+    )
+
+    assert values["SAFE_NUMBER"] == document_cell_number
+    assert values["Сейф.Номер"] == document_cell_number
+
+
 def test_opening_renewal_and_closing_document_bundles(
     settings, initialized_databases, insert_test_contract, tmp_path: Path
 ):
@@ -521,6 +556,7 @@ def test_opening_renewal_and_closing_document_bundles(
         ("open-a", "opening", "ТЕСТ-АКТ", "open-a.docx", "Сейф.Номер"),
         ("open-b", "opening", "ТЕСТ-ДОГОВОР", "open-b.docx", "Договор.Начало"),
         ("open-c", "opening", "ТЕСТ-РАСПОРЯЖЕНИЕ", "open-c.docx", "Счет.Номер"),
+        ("open-d", "opening", "ТЕСТ-БИРКА", "open-d.docx", "Сейф.Номер"),
         ("renew", "renewal", "ТЕСТ-ПРОДЛЕНИЕ", "renew.docx", "Продление.Начало"),
         ("close", "closing", "ТЕСТ-ЗАКРЫТИЕ", "close.docx", "Залог.Пропись"),
     )
@@ -588,7 +624,7 @@ def test_opening_renewal_and_closing_document_bundles(
         output_directory=downloads,
         employee="Тестовый Сотрудник",
     )
-    assert len(opening) == 3
+    assert len(opening) == 4
     assert len(renewal) == 1
 
     operation_id = str(uuid4())
@@ -616,7 +652,7 @@ def test_opening_renewal_and_closing_document_bundles(
         employee="Тестовый Сотрудник",
     )
     assert len(closing) == 1
-    assert len(list(downloads.glob("*.docx"))) == 5
+    assert len(list(downloads.glob("*.docx"))) == 6
     for path in downloads.glob("*.docx"):
         assert "[" not in "\n".join(paragraph.text for paragraph in Document(path).paragraphs)
 

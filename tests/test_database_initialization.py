@@ -59,7 +59,7 @@ def test_initialization_registers_only_supplied_approved_document_templates(
                FROM document_templates GROUP BY document_type
                ORDER BY document_type"""
         ).fetchall()
-    assert rows == [("closing", 1), ("opening", 3), ("renewal", 1)]
+    assert rows == [("closing", 1), ("opening", 4), ("renewal", 1)]
 
 
 def test_initialization_creates_two_complete_databases(
