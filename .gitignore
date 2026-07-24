@@ -24,6 +24,7 @@ local/
 backups/
 generated_documents/
 downloads/
+outputs/
 build/
 dist/
 

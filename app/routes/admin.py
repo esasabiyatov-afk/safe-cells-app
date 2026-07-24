@@ -343,14 +343,23 @@ def password_change():
     if payload.get("new_password") != payload.get("password_confirmation"):
         return jsonify({"message": "Новые пароли не совпадают."}), 400
     try:
-        result = change_admin_password(
-            _settings(),
-            operation_id=payload.get("operation_id"),
-            current_password=payload.get("current_password"),
-            new_password=payload.get("new_password"),
-            employee=_employee(),
-            occurred_at=_occurred_at(),
-        )
+        if is_admin_configured(_settings()):
+            result = change_admin_password(
+                _settings(),
+                operation_id=payload.get("operation_id"),
+                current_password=payload.get("current_password"),
+                new_password=payload.get("new_password"),
+                employee=_employee(),
+                occurred_at=_occurred_at(),
+            )
+        else:
+            result = create_admin_password(
+                _settings(),
+                operation_id=payload.get("operation_id"),
+                password=payload.get("new_password"),
+                employee=_employee(),
+                occurred_at=_occurred_at(),
+            )
         stored_hash = get_admin_password_hash(_settings())
         if stored_hash is None:
             raise AdminWriteError("Пароль не найден после сохранения.")

@@ -133,7 +133,6 @@ const elements = {
   editStatementImportSection: document.getElementById("editStatementImportSection"),
   editStatementFile: document.getElementById("editStatementFile"),
   editStatementFileState: document.getElementById("editStatementFileState"),
-  editStatementImport: document.getElementById("editStatementImport"),
   editStatementImportStatus: document.getElementById("editStatementImportStatus"),
   editDepositField: document.getElementById("editDepositField"),
   editDepositAmount: document.getElementById("editDepositAmount"),
@@ -213,7 +212,6 @@ const elements = {
   contractError: document.getElementById("contractError"),
   statementFile: document.getElementById("statementFile"),
   statementFileState: document.getElementById("statementFileState"),
-  statementImport: document.getElementById("statementImport"),
   statementImportStatus: document.getElementById("statementImportStatus"),
   clientFullName: document.getElementById("clientFullName"),
   accountNumber: document.getElementById("accountNumber"),
@@ -869,7 +867,6 @@ function refreshEditControls() {
   elements.editBack.disabled = busy;
   elements.editDialogClose.disabled = busy;
   elements.editStatementFile.disabled = busy;
-  elements.editStatementImport.disabled = busy;
 }
 
 function resetEditStatementImport() {
@@ -1824,7 +1821,6 @@ function refreshContractControls() {
   elements.contractBack.disabled = busy;
   elements.contractDialogClose.disabled = busy;
   elements.statementFile.disabled = busy;
-  elements.statementImport.disabled = busy;
 }
 
 function setStatementImportStatus(message = "", isError = false) {
@@ -2178,12 +2174,12 @@ elements.documentDialog.addEventListener("cancel", (event) => event.preventDefau
 elements.editDialogClose.addEventListener("click", closeEditDialog);
 elements.editBack.addEventListener("click", closeEditDialog);
 elements.editForm.addEventListener("submit", submitEdit);
-elements.editStatementImport.addEventListener("click", importEditStatementData);
 elements.editStatementFile.addEventListener("change", () => {
   elements.editStatementFileState.textContent = elements.editStatementFile.files.length
     ? "DOCX выбран"
     : "Файл не выбран";
   setEditStatementImportStatus();
+  if (elements.editStatementFile.files.length) importEditStatementData();
 });
 elements.editDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.dialog.addEventListener("cancel", (event) => event.preventDefault());
@@ -2238,12 +2234,12 @@ elements.manualOccupationClose.addEventListener("click", closeManualOccupationDi
 elements.manualOccupationBack.addEventListener("click", closeManualOccupationDialog);
 elements.manualOccupationDialog.addEventListener("cancel", (event) => event.preventDefault());
 elements.contractForm.addEventListener("submit", submitContract);
-elements.statementImport.addEventListener("click", importStatementData);
 elements.statementFile.addEventListener("change", () => {
   elements.statementFileState.textContent = elements.statementFile.files.length
     ? "DOCX выбран"
     : "Файл не выбран";
   setStatementImportStatus();
+  if (elements.statementFile.files.length) importStatementData();
 });
 elements.contractBack.addEventListener("click", backToRentalCalculator);
 elements.contractDialogClose.addEventListener("click", cancelContractWorkflow);

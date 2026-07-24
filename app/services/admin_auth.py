@@ -29,14 +29,10 @@ class AdminAuthenticationError(RuntimeError):
 def validate_new_password(value: object) -> str:
     if not isinstance(value, str):
         raise AdminPasswordError("Введите административный пароль.")
-    if len(value) < 12:
-        raise AdminPasswordError("Пароль должен содержать не менее 12 символов.")
+    if not value.strip():
+        raise AdminPasswordError("Пароль не может быть пустым.")
     if len(value) > 256:
         raise AdminPasswordError("Пароль слишком длинный.")
-    if not any(character.isalpha() for character in value) or not any(
-        character.isdigit() for character in value
-    ):
-        raise AdminPasswordError("Пароль должен содержать буквы и цифры.")
     return value
 
 

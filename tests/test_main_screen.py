@@ -95,14 +95,14 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="editDepositField" hidden' in html
     assert 'id="editStatementImportSection"' in html
     assert 'id="editStatementFile" type="file"' in html
-    assert 'id="editStatementImport" type="button">Перенести данные' in html
-    assert "Данные только подставятся в форму" in html
+    assert 'id="editStatementImport"' not in html
+    assert "данные перенесутся сразу" in html
     assert "Тариф 1–30 дней" in html
     assert "Ручная ставка" in html
     assert 'id="contractForm"' in html
     assert 'id="statementFile"' in html
-    assert 'id="statementImport" type="button">Перенести данные' in html
-    assert "После переноса обязательно сверьте" in html
+    assert 'id="statementImport"' not in html
+    assert "После автоматического переноса обязательно сверьте" in html
     assert 'name="client_full_name"' in html
     assert 'name="id_card_number"' in html
     assert 'name="account_number"' in html

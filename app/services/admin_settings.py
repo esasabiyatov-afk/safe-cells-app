@@ -148,7 +148,7 @@ def is_admin_configured(settings: Settings) -> bool:
 
 
 def get_admin_access_mode(settings: Settings) -> str:
-    """Read the access mode, defaulting old databases to password mode."""
+    """Read the access mode without forcing password setup on an empty database."""
     try:
         paths = validate_database_pair(settings)
         with open_readonly(
@@ -157,13 +157,22 @@ def get_admin_access_mode(settings: Settings) -> str:
             row = connection.execute(
                 "SELECT value FROM config WHERE key = 'admin_access_mode'"
             ).fetchone()
+            password_exists = connection.execute(
+                "SELECT 1 FROM admin_credentials WHERE id = 1"
+            ).fetchone() is not None
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     if row is None:
-        return ACCESS_MODE_PASSWORD
+        return (
+            ACCESS_MODE_PASSWORD
+            if password_exists
+            else ACCESS_MODE_ACKNOWLEDGEMENT
+        )
     mode = str(row["value"])
     if mode not in ADMIN_ACCESS_MODES:
         raise AdminWriteError("Режим доступа к настройкам повреждён.")
+    if mode == ACCESS_MODE_PASSWORD and not password_exists:
+        return ACCESS_MODE_ACKNOWLEDGEMENT
     return mode
 
 
@@ -236,6 +245,19 @@ def _write_password(
                 connection.execute(
                     "INSERT INTO admin_credentials(id, password_hash, changed_at) VALUES(1, ?, ?)",
                     (password_hash, timestamp),
+                )
+                connection.execute(
+                    """INSERT INTO config(key, value, updated_at, updated_by)
+                       VALUES('admin_access_mode', ?, ?, ?)
+                       ON CONFLICT(key) DO UPDATE SET
+                           value=excluded.value,
+                           updated_at=excluded.updated_at,
+                           updated_by=excluded.updated_by""",
+                    (
+                        ACCESS_MODE_PASSWORD,
+                        timestamp,
+                        normalized_employee,
+                    ),
                 )
             else:
                 if row is None:
@@ -358,6 +380,9 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
             employee_row = connection.execute(
                 "SELECT value FROM config WHERE key = ?", (EMPLOYEES_CONFIG_KEY,)
             ).fetchone()
+            password_configured = connection.execute(
+                "SELECT 1 FROM admin_credentials WHERE id = 1"
+            ).fetchone() is not None
             penalty = get_penalty_settings(connection)
     except PenaltyRateConfigurationError as exc:
         raise AdminWriteError(str(exc)) from exc
@@ -412,6 +437,7 @@ def get_admin_settings(settings: Settings) -> dict[str, Any]:
         ],
         "penalty": penalty,
         "access_mode": get_admin_access_mode(settings),
+        "password_configured": password_configured,
     }
 
 

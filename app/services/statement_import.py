@@ -179,7 +179,11 @@ def extract_statement_data(
     table = _validate_structure(document)
 
     full_name = _normalized(_cell_text(table, 1, 3), "ФИО клиента", 200)
-    id_number = _normalized(_cell_text(table, 9, 4), "серия и номер документа", 100)
+    id_number = re.sub(
+        r"\s+",
+        "",
+        _normalized(_cell_text(table, 9, 4), "серия и номер документа", 100),
+    )
     issue_source = _normalized(
         _cell_text(table, 11, 0), "дата выдачи и кем выдан документ", 240
     )

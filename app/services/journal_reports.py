@@ -86,11 +86,11 @@ def build_journal_report(
 
     headers = (
         "Дата и время",
+        "Клиент",
         "Ячейка",
         "Действие",
-        "Клиент",
-        "Сотрудник",
         "Сведения",
+        "Сотрудник",
     )
     header_fill = PatternFill("solid", fgColor="243B53")
     thin = Side(style="thin", color="CBD5E1")
@@ -104,13 +104,13 @@ def build_journal_report(
     for row_number, entry in enumerate(entries, start=6):
         values = (
             _occurred_at(entry.get("occurred_at")),
+            _safe_excel_text(entry.get("client_full_name")),
             _safe_excel_text(entry.get("cell_number")),
             _safe_excel_text(
                 entry.get("report_action_label") or entry.get("action_label")
             ),
-            _safe_excel_text(entry.get("client_full_name")),
-            _safe_excel_text(entry.get("employee")),
             _safe_excel_text(entry.get("summary")),
+            _safe_excel_text(entry.get("employee")),
         )
         for column, value in enumerate(values, start=1):
             cell = worksheet.cell(row=row_number, column=column, value=value)
@@ -120,11 +120,11 @@ def build_journal_report(
     worksheet.auto_filter.ref = f"A5:F{max(5, 5 + len(entries))}"
     for column, width in {
         "A": 19,
-        "B": 12,
-        "C": 22,
-        "D": 34,
-        "E": 28,
-        "F": 58,
+        "B": 34,
+        "C": 12,
+        "D": 22,
+        "E": 58,
+        "F": 28,
     }.items():
         worksheet.column_dimensions[column].width = width
     worksheet.row_dimensions[1].height = 26

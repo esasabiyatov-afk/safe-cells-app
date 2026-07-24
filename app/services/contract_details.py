@@ -13,7 +13,11 @@ from app.db.connections import (
     open_readonly,
     validate_database_pair,
 )
-from app.services.legacy_contracts import LEGACY_MISSING_TEXT, legacy_status
+from app.services.legacy_contracts import (
+    LEGACY_MISSING_DATE,
+    LEGACY_MISSING_TEXT,
+    legacy_status,
+)
 
 
 class ContractDetailsValidationError(ValueError):
@@ -180,18 +184,22 @@ def get_private_contract_details(
         client_full_name=str(contract["client_full_name"]),
         id_card_number=(
             str(contract["id_card_number"])
-            if identity_complete and contract["id_card_number"] != LEGACY_MISSING_TEXT
+            if contract["id_card_number"] != LEGACY_MISSING_TEXT
             else ""
         ),
         id_card_issuer=(
             str(contract["id_card_issuer"])
-            if identity_complete and contract["id_card_issuer"] != LEGACY_MISSING_TEXT
+            if contract["id_card_issuer"] != LEGACY_MISSING_TEXT
             else ""
         ),
-        id_card_issue_date=(str(contract["id_card_issue_date"]) if identity_complete else ""),
+        id_card_issue_date=(
+            str(contract["id_card_issue_date"])
+            if contract["id_card_issue_date"] != LEGACY_MISSING_DATE
+            else ""
+        ),
         account_number=(
             str(contract["account_number"])
-            if identity_complete and contract["account_number"] != LEGACY_MISSING_TEXT
+            if contract["account_number"] != LEGACY_MISSING_TEXT
             else ""
         ),
         created_at=str(contract["created_at"]),

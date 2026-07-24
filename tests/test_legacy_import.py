@@ -48,6 +48,12 @@ HEADERS = (
     "дата открытия",
     "Срок окончания",
 )
+IDENTITY_HEADERS = (
+    "Серия и номер паспорта",
+    "Кем выдан",
+    "Дата выдачи паспорта",
+    "Номер счёта",
+)
 
 
 def _cell_numbers(settings: Settings) -> list[str]:
@@ -61,21 +67,36 @@ def _workbook(
     settings: Settings,
     occupied: dict[str, tuple[str, object, object]] | None = None,
     manual: dict[str, str] | None = None,
+    identity: dict[str, tuple[object, object, object, object]] | None = None,
+    second_sheet_identity: list[
+        tuple[str, object, object, object, object]
+    ] | None = None,
 ) -> bytes:
     occupied = occupied or {}
     manual = manual or {}
+    identity = identity or {}
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Лист2"
-    sheet.append(HEADERS)
+    sheet.append((*HEADERS, *IDENTITY_HEADERS) if identity else HEADERS)
     for number in _cell_numbers(settings):
         if number in occupied:
             name, start, end = occupied[number]
-            sheet.append((number, "100×220×330", 1, name, start, end))
+            row = (number, "100×220×330", 1, name, start, end)
+            sheet.append((*row, *identity.get(number, (None, None, None, None))))
         elif number in manual:
-            sheet.append((number, "100×220×330", 1, manual[number], None, None))
+            row = (number, "100×220×330", 1, manual[number], None, None)
+            sheet.append((*row, *identity.get(number, (None, None, None, None))))
         else:
-            sheet.append((number, "100×220×330", 0, None, None, None))
+            row = (number, "100×220×330", 0, None, None, None)
+            sheet.append((*row, *identity.get(number, (None, None, None, None))))
+    if second_sheet_identity is not None:
+        second = workbook.create_sheet("Паспортные данные")
+        second.append(("№", "Ф.И.О. Клиента", "срок выдачи", "орган", "паспорт", None))
+        for index, (name, issued_on, issuer, series, number) in enumerate(
+            second_sheet_identity, start=1
+        ):
+            second.append((index, name, issued_on, issuer, series, number))
     output = BytesIO()
     workbook.save(output)
     workbook.close()
@@ -193,6 +214,91 @@ def test_successful_import_is_atomic_audited_and_backed_up_without_pii_in_metada
         if item.valid
     )
     assert client_name not in manifests
+
+
+def test_import_combines_passport_parts_from_second_sheet_without_exposing_them(
+    settings: Settings, initialized_databases,
+) -> None:
+    client_name = "Тестовый Клиент Дополнительного Листа"
+    content = _workbook(
+        settings,
+        {"1": (client_name, "01.02.2025", "31.12.2026")},
+        second_sheet_identity=[
+            (client_name, "02.03.2020", "Тестовый орган", "ID ", "221331"),
+            (client_name, "02.03.2020", "Тестовый орган", "ID", "221331"),
+        ],
+    )
+
+    preview = preview_legacy_import(
+        settings,
+        content=content,
+        file_name="report.xlsx",
+        as_of_date=OCCURRED_AT.date(),
+    )
+
+    assert preview.ready is True
+    assert preview.passport_details_count == 1
+    assert preview.identity_complete_count == 0
+    _import(settings, content)
+    with open_readonly(settings.database_directory / settings.working_database_name) as connection:
+        contract = connection.execute(
+            "SELECT * FROM contracts WHERE cell_number='1'"
+        ).fetchone()
+    assert contract is not None
+    assert contract["id_card_number"] == "ID221331"
+    assert contract["id_card_issuer"] == "Тестовый орган"
+    assert contract["id_card_issue_date"] == "2020-03-02"
+    details = get_private_contract_details(
+        settings,
+        cell_number="1",
+        contract_ref=str(contract["contract_id"]),
+    )
+    assert details.id_card_number == "ID221331"
+    assert details.id_card_issuer == "Тестовый орган"
+    assert details.id_card_issue_date == "2020-03-02"
+    assert details.account_number == ""
+    assert details.legacy_identity_complete is False
+    with open_readonly(settings.database_directory / settings.archive_database_name) as connection:
+        audit = "\n".join(
+            str(row[0])
+            for row in connection.execute("SELECT changes_json FROM log").fetchall()
+        )
+    assert "ID221331" not in audit
+    assert "Тестовый орган" not in audit
+
+
+def test_extended_import_removes_passport_spaces_and_marks_complete_identity(
+    settings: Settings, initialized_databases,
+) -> None:
+    content = _workbook(
+        settings,
+        {"1": ("Тестовый Клиент", "01.02.2025", "31.12.2026")},
+        identity={
+            "1": (
+                "ID 22 13 31",
+                "Тестовый орган",
+                "02.03.2020",
+                "TEST-ACCOUNT-1",
+            )
+        },
+    )
+
+    preview = preview_legacy_import(
+        settings,
+        content=content,
+        file_name="report.xlsx",
+        as_of_date=OCCURRED_AT.date(),
+    )
+
+    assert preview.ready is True
+    assert preview.identity_complete_count == 1
+    _import(settings, content)
+    with open_readonly(settings.database_directory / settings.working_database_name) as connection:
+        contract = connection.execute(
+            "SELECT * FROM contracts WHERE cell_number='1'"
+        ).fetchone()
+    assert contract["id_card_number"] == "ID221331"
+    assert legacy_status(contract["extra_fields_json"])["legacy_identity_complete"] is True
 
 
 def test_failure_during_import_rolls_back_every_contract_and_block(

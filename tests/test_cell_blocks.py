@@ -89,9 +89,16 @@ def test_manual_occupation_has_custom_label_no_term_and_can_be_released(
         "cell.manual_released",
     ]
     assert all(row["contract_id"] is None for row in logs)
-    assert all(json.loads(row["changes_json"]) == {"block_kind": "manual"} for row in logs)
+    assert all(
+        json.loads(row["changes_json"])
+        == {
+            "block_kind": "manual",
+            "occupation_label": "Внутренняя проверка",
+        }
+        for row in logs
+    )
     assert "Сотрудник" not in "".join(row["changes_json"] for row in logs)
-    assert "Внутренняя проверка" not in "".join(row["changes_json"] for row in logs)
+    assert "Внутренняя проверка" in "".join(row["changes_json"] for row in logs)
 
 
 def test_lost_key_client_is_resolved_from_archive_and_key_restore_frees_cell(

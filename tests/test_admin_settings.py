@@ -85,9 +85,10 @@ def test_password_hash_uses_random_salt_and_never_contains_plaintext():
     assert PASSWORD not in first
     assert verify_password(PASSWORD, first)
     assert not verify_password("WrongPassword-1", first)
+    assert verify_password("7", hash_password("7"))
 
 
-def test_initial_password_is_hashed_audited_and_required_for_settings(
+def test_initial_settings_use_acknowledgement_without_forced_password_setup(
     settings, initialized_databases
 ):
     # A database created before this option existed must stay usable.
@@ -100,10 +101,18 @@ def test_initial_password_is_hashed_audited_and_required_for_settings(
     client = app.test_client()
     assert client.get("/api/admin/status").get_json() == {
         "configured": False,
-        "access_mode": "password",
+        "access_mode": "acknowledgement",
         "recovery_mode": False,
     }
     assert client.get("/api/admin/settings").status_code == 401
+    acknowledged = client.post(
+        "/api/admin/acknowledge",
+        json={"accepted": True},
+    )
+    assert acknowledged.status_code == 200
+    assert _snapshot(client, acknowledged.get_json()["token"])[
+        "password_configured"
+    ] is False
 
     token = _setup(client)
     assert client.get("/api/admin/status").get_json() == {
@@ -127,6 +136,37 @@ def test_initial_password_is_hashed_audited_and_required_for_settings(
     assert stored != PASSWORD and verify_password(PASSWORD, stored)
     assert PASSWORD not in log
     assert "password_hash" not in log
+
+
+def test_simple_password_can_be_created_from_settings_without_current_password(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    acknowledged = client.post(
+        "/api/admin/acknowledge",
+        json={"accepted": True},
+    )
+    token = acknowledged.get_json()["token"]
+
+    created = client.put(
+        "/api/admin/password",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "current_password": "",
+            "new_password": "7",
+            "password_confirmation": "7",
+        },
+    )
+
+    assert created.status_code == 200
+    assert client.get("/api/admin/status").get_json() == {
+        "configured": True,
+        "access_mode": "password",
+        "recovery_mode": False,
+    }
+    assert client.post("/api/admin/login", json={"password": "7"}).status_code == 200
 
 
 def test_shared_password_has_no_attempt_lock(settings, initialized_databases):

@@ -257,7 +257,11 @@ def test_overdue_badge_is_only_added_to_renewal_or_closure(
         occurred_at="2026-07-14T09:00:00+06:00",
         action="cell.manual_occupied",
         cell_number="3",
-        changes={"block_kind": "manual", "penalty_days": 99},
+        changes={
+            "block_kind": "manual",
+            "occupation_label": "Тестовая касса",
+            "penalty_days": 99,
+        },
     )
     _insert_log(
         settings,
@@ -279,11 +283,47 @@ def test_overdue_badge_is_only_added_to_renewal_or_closure(
     overdue = list_journal_entries(settings, action="overdue")
 
     assert manual["is_overdue"] is False
-    assert manual["report_action_label"] == "Занятие без договора"
+    assert manual["report_action_label"] == "Открытие"
+    assert manual["client_full_name"] == "Тестовая касса"
+    assert manual["summary"] == "Открыто без договора и срока."
     assert closed["is_overdue"] is True
     assert closed["report_action_label"] == "Закрытие / Просрочка"
     assert [entry["action"] for entry in overdue["entries"]] == [
         "contract.closed"
+    ]
+    opening = list_journal_entries(settings, action="contract.created")
+    assert [entry["action"] for entry in opening["entries"]] == [
+        "cell.manual_occupied"
+    ]
+    by_label = list_journal_entries(settings, client_name="касса")
+    assert [entry["action"] for entry in by_label["entries"]] == [
+        "cell.manual_occupied"
+    ]
+
+
+def test_manual_release_uses_closing_category_and_saved_label(
+    settings: Settings, initialized_databases
+) -> None:
+    _insert_log(
+        settings,
+        occurred_at="2026-07-14T11:00:00+06:00",
+        action="cell.manual_released",
+        cell_number="5",
+        changes={
+            "block_kind": "manual",
+            "occupation_label": "Тестовая касса",
+        },
+    )
+
+    closing = list_journal_entries(settings, action="contract.closed")
+    by_label = list_journal_entries(settings, client_name="касса")
+
+    assert len(closing["entries"]) == 1
+    assert closing["entries"][0]["action_label"] == "Закрытие"
+    assert closing["entries"][0]["client_full_name"] == "Тестовая касса"
+    assert closing["entries"][0]["summary"] == "Закрыто без договора и срока."
+    assert [entry["action"] for entry in by_label["entries"]] == [
+        "cell.manual_released"
     ]
 
 
@@ -374,8 +414,16 @@ def test_journal_report_downloads_real_filtered_xlsx_without_edits_or_secrets(
     workbook = load_workbook(BytesIO(response.data), read_only=True, data_only=False)
     worksheet = workbook["Журнал ячеек"]
     assert worksheet["A1"].value == "Выписка из журнала сейфовых ячеек"
-    assert worksheet["A5"].value == "Дата и время"
-    assert worksheet["D5"].value == "Клиент"
+    assert tuple(
+        cell.value for cell in worksheet[5]
+    ) == (
+        "Дата и время",
+        "Клиент",
+        "Ячейка",
+        "Действие",
+        "Сведения",
+        "Сотрудник",
+    )
     rows = list(worksheet.iter_rows(min_row=6, values_only=True))
     serialized = json.dumps(rows, ensure_ascii=False)
     assert len(rows) == 3
@@ -426,9 +474,9 @@ def test_journal_report_applies_client_and_employee_filters(
     worksheet = load_workbook(BytesIO(response.data), read_only=True).active
     rows = list(worksheet.iter_rows(min_row=6, values_only=True))
     assert len(rows) == 1
-    assert rows[0][2] == "Продление / Просрочка"
-    assert rows[0][3] == "Тестовый Клиент Семь"
-    assert rows[0][4] == "Второй тестовый сотрудник"
+    assert rows[0][1] == "Тестовый Клиент Семь"
+    assert rows[0][3] == "Продление / Просрочка"
+    assert rows[0][5] == "Второй тестовый сотрудник"
     assert "клиент: клиент семь" in worksheet["A3"].value
     assert "сотрудник: Второй тестовый сотрудник" in worksheet["A3"].value
 
@@ -450,10 +498,10 @@ def test_journal_report_neutralizes_excel_formula_values() -> None:
     )
 
     worksheet = load_workbook(BytesIO(report), data_only=False).active
-    assert worksheet["B6"].value == "'=1+1"
-    assert worksheet["D6"].value.startswith("'=")
-    assert worksheet["E6"].value == "'+Тест"
-    assert worksheet["F6"].value == "'@Тест"
+    assert worksheet["B6"].value.startswith("'=")
+    assert worksheet["C6"].value == "'=1+1"
+    assert worksheet["E6"].value == "'@Тест"
+    assert worksheet["F6"].value == "'+Тест"
 
 
 def test_journal_interface_uses_text_content_and_local_assets(
@@ -476,6 +524,8 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert 'src="/static/js/journal.js"' not in main_html
     assert 'data-journal-url="/api/journal"' in html
     assert 'data-journal-report-url="/api/journal/report"' in html
+    assert 'value="cell.manual_occupied"' not in html
+    assert 'value="cell.manual_released"' not in html
     assert 'src="/static/js/journal.js"' in html
     assert 'id="journalPage"' in html
     assert 'id="journalReport"' in html

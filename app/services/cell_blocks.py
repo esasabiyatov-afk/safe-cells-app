@@ -162,9 +162,14 @@ def _existing_operation(
     )
 
 
-def _audit_changes(block_kind: str) -> str:
+def _audit_changes(
+    block_kind: str, *, occupation_label: str | None = None
+) -> str:
+    changes = {"block_kind": block_kind}
+    if block_kind == "manual" and occupation_label is not None:
+        changes["occupation_label"] = occupation_label
     return json.dumps(
-        {"block_kind": block_kind},
+        changes,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -255,7 +260,8 @@ def occupy_cell_manually(
                 """,
                 (
                     str(uuid4()), operation_id, timestamp, employee_name, action,
-                    cell_number, _audit_changes("manual"),
+                    cell_number,
+                    _audit_changes("manual", occupation_label=occupation_label),
                 ),
             )
             phase = "committing"
@@ -356,7 +362,10 @@ def release_cell_block(
                 (
                     str(uuid4()), operation_id, timestamp, employee_name, action,
                     block["source_contract_id"], cell_number,
-                    _audit_changes(expected_kind),
+                    _audit_changes(
+                        expected_kind,
+                        occupation_label=block["occupation_label"],
+                    ),
                 ),
             )
             phase = "committing"

@@ -630,7 +630,15 @@ def read_recovery_auth(settings: Settings) -> dict[str, str | None]:
         ).fetchone()
     finally:
         connection.close()
+    password_hash = None if password is None else str(password[0])
+    access_mode = (
+        ("password" if password_hash is not None else "acknowledgement")
+        if mode is None
+        else str(mode[0])
+    )
+    if access_mode == "password" and password_hash is None:
+        access_mode = "acknowledgement"
     return {
-        "password_hash": None if password is None else str(password[0]),
-        "access_mode": "password" if mode is None else str(mode[0]),
+        "password_hash": password_hash,
+        "access_mode": access_mode,
     }

@@ -19,6 +19,7 @@ from app.services.statement_import import (
 
 FAKE_NAME = "Вымышленный Тестовый Клиент"
 FAKE_ID = "TEST 00 000001"
+NORMALIZED_FAKE_ID = "TEST00000001"
 FAKE_ISSUER = "ТЕСТОВЫЙ ОРГАН 999-999"
 FAKE_ACCOUNT = "9999000011112222"
 
@@ -61,7 +62,7 @@ def test_extracts_only_the_five_approved_fields() -> None:
 
     assert result.to_dict() == {
         "client_full_name": FAKE_NAME,
-        "id_card_number": FAKE_ID,
+        "id_card_number": NORMALIZED_FAKE_ID,
         "id_card_issuer": FAKE_ISSUER,
         "id_card_issue_date": "2017-09-12",
         "account_number": FAKE_ACCOUNT,

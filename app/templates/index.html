@@ -281,11 +281,11 @@
       <div class="calculation-error" id="adminAuthError" role="alert" hidden></div>
       <label class="contract-field contract-field--wide" id="adminPasswordField">
         <span id="adminPasswordLabel">Общий пароль отдела</span>
-        <input id="adminPassword" type="password" minlength="12" maxlength="256" required autocomplete="current-password">
+        <input id="adminPassword" type="password" minlength="1" maxlength="256" required autocomplete="current-password">
       </label>
       <label class="contract-field contract-field--wide" id="adminPasswordConfirmField" hidden>
         <span>Повторите пароль</span>
-        <input id="adminPasswordConfirm" type="password" minlength="12" maxlength="256" autocomplete="new-password">
+        <input id="adminPasswordConfirm" type="password" minlength="1" maxlength="256" autocomplete="new-password">
       </label>
       <label class="admin-acknowledgement" id="adminAcknowledgementField" hidden>
         <input id="adminAcknowledgement" type="checkbox">
@@ -366,7 +366,7 @@
           <h3>Доступ к настройкам</h3>
           <p class="dialog-note">Выберите удобный для отдела вариант. Оба режима относятся только к этому окну, обычная работа с ячейками не меняется.</p>
           <form id="adminAccessForm" class="admin-access-options">
-            <label class="admin-access-card"><input type="radio" name="adminAccessMode" value="password" id="adminAccessPassword"><span><strong>1. Общий пароль отдела</strong><small>Один пароль для всех, без блокировки попыток и без автоматического выхода по времени.</small></span></label>
+            <label class="admin-access-card"><input type="radio" name="adminAccessMode" value="password" id="adminAccessPassword"><span><strong>1. Общий пароль отдела</strong><small>Простой пароль без требований к длине и составу. Сначала создайте его ниже.</small></span></label>
             <label class="admin-access-card"><input type="radio" name="adminAccessMode" value="acknowledgement" id="adminAccessAcknowledgement"><span><strong>2. Без пароля, с предупреждением</strong><small>Для входа достаточно отметить, что настройки меняет руководитель отдела.</small></span></label>
             <div class="dialog-actions"><button class="primary-button" id="adminAccessSubmit" type="submit">Сохранить способ входа</button></div>
           </form>
@@ -375,9 +375,9 @@
           <h3>Общий пароль отдела</h3>
           <p class="dialog-note">Пароль хранится только как стойкий хеш с солью. Он пригодится, если позже снова выбрать вариант 1.</p>
           <form id="adminPasswordForm" class="admin-password-grid" autocomplete="off">
-            <label class="contract-field"><span>Текущий пароль</span><input id="adminCurrentPassword" type="password" required autocomplete="current-password"></label>
-            <label class="contract-field"><span>Новый пароль</span><input id="adminNewPassword" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
-            <label class="contract-field"><span>Повторите новый пароль</span><input id="adminNewPasswordConfirm" type="password" minlength="12" maxlength="256" required autocomplete="new-password"></label>
+            <label class="contract-field" id="adminCurrentPasswordField"><span>Текущий пароль</span><input id="adminCurrentPassword" type="password" required autocomplete="current-password"></label>
+            <label class="contract-field"><span>Новый пароль</span><input id="adminNewPassword" type="password" minlength="1" maxlength="256" required autocomplete="new-password"></label>
+            <label class="contract-field"><span>Повторите новый пароль</span><input id="adminNewPasswordConfirm" type="password" minlength="1" maxlength="256" required autocomplete="new-password"></label>
             <div class="dialog-actions"><button class="secondary-button" id="adminPasswordSubmit" type="submit">Сменить общий пароль</button></div>
           </form>
         </div>
@@ -448,9 +448,8 @@
         <div class="statement-import__heading">
           <div>
             <strong id="editStatementImportTitle">Заполнить из заявления АБС</strong>
-            <span>DOCX, скачанный при первичном оформлении</span>
+            <span>Выберите DOCX — данные перенесутся сразу</span>
           </div>
-          <button class="secondary-button statement-import__button" id="editStatementImport" type="button">Перенести данные</button>
         </div>
         <div class="statement-import__file-row">
           <label class="secondary-button statement-import__file-button" for="editStatementFile">Выбрать DOCX</label>
@@ -458,7 +457,7 @@
           <input class="visually-hidden" id="editStatementFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
         </div>
         <p class="statement-import__status" id="editStatementImportStatus" role="status" aria-live="polite" hidden></p>
-        <p class="statement-import__note">Данные только подставятся в форму. Сверьте их с заявлением и отдельно укажите фактический залог.</p>
+        <p class="statement-import__note">Данные только подставятся в форму после выбора файла. Сверьте их с заявлением и отдельно укажите фактический залог.</p>
       </section>
       <div class="contract-fields">
         <label class="contract-field contract-field--wide"><span>ФИО клиента *</span><input id="editClientFullName" maxlength="200" required autocomplete="off"></label>
@@ -642,9 +641,8 @@
         <div class="statement-import__heading">
           <div>
             <strong id="statementImportTitle">Заполнить из заявления АБС</strong>
-            <span>DOCX, скачанный при первичном оформлении</span>
+            <span>Выберите DOCX — данные перенесутся сразу</span>
           </div>
-          <button class="secondary-button statement-import__button" id="statementImport" type="button">Перенести данные</button>
         </div>
         <div class="statement-import__file-row">
           <label class="secondary-button statement-import__file-button" for="statementFile">Выбрать DOCX</label>
@@ -652,7 +650,7 @@
           <input class="visually-hidden" id="statementFile" name="statement_file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
         </div>
         <p class="statement-import__status" id="statementImportStatus" role="status" aria-live="polite" hidden></p>
-        <p class="statement-import__note">После переноса обязательно сверьте ФИО, паспорт и номер счёта с заявлением.</p>
+        <p class="statement-import__note">После автоматического переноса обязательно сверьте ФИО, паспорт и номер счёта с заявлением.</p>
       </section>
       <div class="contract-fields">
         <label class="contract-field contract-field--wide">

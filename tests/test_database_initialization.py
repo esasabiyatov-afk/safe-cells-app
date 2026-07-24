@@ -129,7 +129,7 @@ def test_seed_values_are_exact(
         ).fetchone()[0] == 17
         config = dict(connection.execute("SELECT key, value FROM config"))
         assert config == {
-            "admin_access_mode": "password",
+            "admin_access_mode": "acknowledgement",
             "currency_code": "KGS",
             "currency_scale": "0",
             "deposit_amount_minor": "1500",

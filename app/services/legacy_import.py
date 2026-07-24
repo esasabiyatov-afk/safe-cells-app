@@ -94,6 +94,10 @@ class LegacyImportRow:
     start_date: date | None = None
     end_date: date | None = None
     occupation_label: str | None = None
+    id_card_number: str | None = None
+    id_card_issuer: str | None = None
+    id_card_issue_date: date | None = None
+    account_number: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +120,27 @@ class LegacyImportPlan:
         return sum(row.kind == "manual" for row in self.rows)
 
     @property
+    def passport_details_count(self) -> int:
+        return sum(
+            row.kind == "contract"
+            and bool(row.id_card_number)
+            and bool(row.id_card_issuer)
+            and row.id_card_issue_date is not None
+            for row in self.rows
+        )
+
+    @property
+    def identity_complete_count(self) -> int:
+        return sum(
+            row.kind == "contract"
+            and bool(row.id_card_number)
+            and bool(row.id_card_issuer)
+            and row.id_card_issue_date is not None
+            and bool(row.account_number)
+            for row in self.rows
+        )
+
+    @property
     def ready(self) -> bool:
         return not self.issues and not self.database_issues
 
@@ -128,6 +153,8 @@ class LegacyImportPlan:
             "contracts_count": self.contracts_count,
             "free_count": self.free_count,
             "manual_count": self.manual_count,
+            "passport_details_count": self.passport_details_count,
+            "identity_complete_count": self.identity_complete_count,
             "issues": [issue.to_dict() for issue in all_issues],
             "confirmation": IMPORT_CONFIRMATION,
         }
@@ -256,6 +283,184 @@ def _header(value: object) -> str:
     return re.sub(r"[^a-zа-я0-9]+", "", _text(value).casefold().replace("ё", "е"))
 
 
+def _name_key(value: object) -> str:
+    return _header(value)
+
+
+def _id_card_number(value: object) -> str:
+    return re.sub(r"\s+", "", _text(value))
+
+
+def _maximum_column(worksheet, minimum: int) -> int:
+    if worksheet.max_column is None:
+        worksheet.calculate_dimension(force=True)
+    return max(worksheet.max_column or 0, minimum)
+
+
+OPTIONAL_FIRST_SHEET_HEADERS = {
+    "паспорт": "id_card_number",
+    "серияиномерпаспорта": "id_card_number",
+    "серияиномерidкарты": "id_card_number",
+    "серияиномердокумента": "id_card_number",
+    "орган": "id_card_issuer",
+    "кемвыдан": "id_card_issuer",
+    "органвыдачи": "id_card_issuer",
+    "сроквыдачи": "id_card_issue_date",
+    "датавыдачи": "id_card_issue_date",
+    "датавыдачипаспорта": "id_card_issue_date",
+    "номерсчета": "account_number",
+    "счетномер": "account_number",
+}
+
+
+def _optional_first_sheet_columns(header: tuple[object, ...]) -> dict[str, int]:
+    columns: dict[str, int] = {}
+    for index, value in enumerate(header[6:], start=6):
+        field = OPTIONAL_FIRST_SHEET_HEADERS.get(_header(value))
+        if field is None:
+            continue
+        if field in columns:
+            raise LegacyImportValidationError(
+                "В XLSX повторяется столбец с паспортными данными."
+            )
+        columns[field] = index
+    return columns
+
+
+def _second_sheet_identity(
+    workbook,
+) -> tuple[dict[str, tuple[object, object, object, object]], tuple[LegacyImportIssue, ...]]:
+    if len(workbook.sheetnames) < 2:
+        return {}, ()
+    worksheet = workbook[workbook.sheetnames[1]]
+    maximum = _maximum_column(worksheet, 1)
+    header = next(
+        worksheet.iter_rows(min_row=1, max_row=1, max_col=maximum, values_only=True),
+        (),
+    )
+    normalized = [_header(value) for value in header]
+
+    def column(*aliases: str) -> int | None:
+        return next(
+            (index for index, value in enumerate(normalized) if value in aliases),
+            None,
+        )
+
+    name_column = column("фиоклиента", "фио", "клиент")
+    issue_date_column = column("сроквыдачи", "датавыдачи", "датавыдачипаспорта")
+    issuer_column = column("орган", "кемвыдан", "органвыдачи")
+    passport_column = column(
+        "паспорт",
+        "серияиномерпаспорта",
+        "серияиномерidкарты",
+        "серияиномердокумента",
+    )
+    if (
+        name_column is None
+        or issue_date_column is None
+        or issuer_column is None
+        or passport_column is None
+    ):
+        return {}, ()
+    split_passport = (
+        normalized[passport_column] == "паспорт"
+        and passport_column + 1 < len(normalized)
+        and not normalized[passport_column + 1]
+    )
+    lookup: dict[str, tuple[object, object, object, object]] = {}
+    issues: list[LegacyImportIssue] = []
+    for values in worksheet.iter_rows(min_row=2, max_col=maximum, values_only=True):
+        name = _text(values[name_column])
+        if not name:
+            continue
+        key = _name_key(name)
+        raw_passport = values[passport_column]
+        if split_passport:
+            raw_passport = (
+                f"{_text(raw_passport)}{_text(values[passport_column + 1])}"
+            )
+        candidate = (
+            raw_passport,
+            values[issuer_column],
+            values[issue_date_column],
+            None,
+        )
+        previous = lookup.get(key)
+        if previous is not None:
+            comparable_previous = (
+                _id_card_number(previous[0]),
+                _text(previous[1]).casefold(),
+                _text(previous[2]).casefold(),
+            )
+            comparable_candidate = (
+                _id_card_number(candidate[0]),
+                _text(candidate[1]).casefold(),
+                _text(candidate[2]).casefold(),
+            )
+            if comparable_previous != comparable_candidate:
+                issues.append(
+                    LegacyImportIssue(
+                        None,
+                        "На втором листе для одного клиента указаны разные паспортные данные.",
+                    )
+                )
+                continue
+        lookup[key] = candidate
+    return lookup, tuple(issues)
+
+
+def _identity_values(
+    values: tuple[object, ...],
+    columns: dict[str, int],
+    second_sheet: dict[str, tuple[object, object, object, object]],
+    *,
+    client_full_name: str,
+    epoch: datetime,
+    cell_number: str,
+    issues: list[LegacyImportIssue],
+) -> tuple[str | None, str | None, date | None, str | None]:
+    raw = {
+        field: values[index] if index < len(values) else None
+        for field, index in columns.items()
+    }
+    fallback = second_sheet.get(_name_key(client_full_name))
+    if fallback is not None:
+        for field, candidate in zip(
+            (
+                "id_card_number",
+                "id_card_issuer",
+                "id_card_issue_date",
+                "account_number",
+            ),
+            fallback,
+            strict=True,
+        ):
+            if not _text(raw.get(field)):
+                raw[field] = candidate
+
+    number = _id_card_number(raw.get("id_card_number")) or None
+    issuer = _text(raw.get("id_card_issuer")) or None
+    account = _text(raw.get("account_number")) or None
+    issue_date = None
+    if _text(raw.get("id_card_issue_date")):
+        try:
+            issue_date = _date_value(raw["id_card_issue_date"], epoch=epoch)
+        except (TypeError, ValueError, OverflowError):
+            issues.append(
+                LegacyImportIssue(cell_number, "Некорректная дата выдачи паспорта.")
+            )
+    for value, maximum, label in (
+        (number, 100, "Серия и номер паспорта"),
+        (issuer, 200, "Орган выдачи паспорта"),
+        (account, 100, "Номер счёта"),
+    ):
+        if value is not None and len(value) > maximum:
+            issues.append(
+                LegacyImportIssue(cell_number, f"Поле «{label}» слишком длинное.")
+            )
+    return number, issuer, issue_date, account
+
+
 def _parse_workbook(content: bytes) -> LegacyImportPlan:
     _check_xlsx_container(content)
     digest = sha256(content).hexdigest()
@@ -271,14 +476,25 @@ def _parse_workbook(content: bytes) -> LegacyImportPlan:
         if not workbook.sheetnames:
             raise LegacyImportValidationError("В XLSX-файле нет листов.")
         worksheet = workbook[workbook.sheetnames[0]]
-        header = next(worksheet.iter_rows(min_row=1, max_row=1, max_col=6, values_only=True), None)
+        maximum = _maximum_column(worksheet, 6)
+        header = next(
+            worksheet.iter_rows(
+                min_row=1, max_row=1, max_col=maximum, values_only=True
+            ),
+            None,
+        )
         expected = ("№", "Размер", "0 - свободен", "Ф.И.О. Клиента", "дата открытия", "Срок окончания")
-        if header is None or tuple(_header(value) for value in header) != tuple(_header(value) for value in expected):
+        if header is None or tuple(_header(value) for value in header[:6]) != tuple(_header(value) for value in expected):
             raise LegacyImportValidationError(
                 "Столбцы XLSX не совпадают с утверждённым отчётом по ячейкам."
             )
+        optional_columns = _optional_first_sheet_columns(tuple(header))
+        second_sheet, second_sheet_issues = _second_sheet_identity(workbook)
+        issues.extend(second_sheet_issues)
         seen: set[str] = set()
-        for values in worksheet.iter_rows(min_row=2, max_col=6, values_only=True):
+        for values in worksheet.iter_rows(
+            min_row=2, max_col=maximum, values_only=True
+        ):
             if not any(value is not None and _text(value) for value in values):
                 continue
             number = _cell_number(values[0])
@@ -292,7 +508,13 @@ def _parse_workbook(content: bytes) -> LegacyImportPlan:
             if len(number) > 50:
                 issues.append(LegacyImportIssue(number[:50], "Номер ячейки длиннее 50 символов."))
                 continue
-            if any(isinstance(value, str) and value.lstrip().startswith("=") for value in values):
+            checked_columns = (*range(6), *optional_columns.values())
+            if any(
+                isinstance(values[index], str)
+                and values[index].lstrip().startswith("=")
+                for index in checked_columns
+                if index < len(values)
+            ):
                 issues.append(LegacyImportIssue(number, "Формулы в обязательных столбцах запрещены."))
                 continue
             status = _status(values[2])
@@ -317,7 +539,16 @@ def _parse_workbook(content: bytes) -> LegacyImportPlan:
                 end_invalid = True
                 issues.append(LegacyImportIssue(number, "Некорректная дата окончания аренды."))
             if status == 0:
-                if name or start is not None or end is not None:
+                if (
+                    name
+                    or start is not None
+                    or end is not None
+                    or any(
+                        _text(values[index])
+                        for index in optional_columns.values()
+                        if index < len(values)
+                    )
+                ):
                     issues.append(LegacyImportIssue(number, "Свободная ячейка содержит данные договора."))
                 rows.append(LegacyImportRow(number, "free"))
                 continue
@@ -334,7 +565,26 @@ def _parse_workbook(content: bytes) -> LegacyImportPlan:
                 issues.append(LegacyImportIssue(number, "Не указана дата окончания аренды."))
             if start is not None and end is not None and end < start:
                 issues.append(LegacyImportIssue(number, "Дата окончания раньше даты начала."))
-            rows.append(LegacyImportRow(number, "contract", name or None, start, end))
+            identity = _identity_values(
+                tuple(values),
+                optional_columns,
+                second_sheet,
+                client_full_name=name,
+                epoch=workbook.epoch,
+                cell_number=number,
+                issues=issues,
+            )
+            rows.append(
+                LegacyImportRow(
+                    number,
+                    "contract",
+                    name or None,
+                    start,
+                    end,
+                    None,
+                    *identity,
+                )
+            )
     finally:
         workbook.close()
     return LegacyImportPlan(digest, tuple(rows), tuple(issues))
@@ -369,6 +619,17 @@ def _database_issues(
     for row in plan.rows:
         if row.kind == "contract" and row.start_date is not None and row.start_date > as_of_date:
             issues.append(LegacyImportIssue(row.cell_number, "Дата начала активного договора находится в будущем."))
+        if (
+            row.kind == "contract"
+            and row.id_card_issue_date is not None
+            and row.id_card_issue_date > as_of_date
+        ):
+            issues.append(
+                LegacyImportIssue(
+                    row.cell_number,
+                    "Дата выдачи паспорта находится в будущем.",
+                )
+            )
     return tuple(issues)
 
 
@@ -445,8 +706,22 @@ def _insert_plan(
                 """,
                 (
                     contract_id, row.cell_number, row.client_full_name,
-                    LEGACY_MISSING_TEXT, LEGACY_MISSING_TEXT, LEGACY_MISSING_DATE,
-                    LEGACY_MISSING_TEXT, legacy_extra_fields(),
+                    row.id_card_number or LEGACY_MISSING_TEXT,
+                    row.id_card_issuer or LEGACY_MISSING_TEXT,
+                    (
+                        row.id_card_issue_date.isoformat()
+                        if row.id_card_issue_date is not None
+                        else LEGACY_MISSING_DATE
+                    ),
+                    row.account_number or LEGACY_MISSING_TEXT,
+                    legacy_extra_fields(
+                        identity_complete=bool(
+                            row.id_card_number
+                            and row.id_card_issuer
+                            and row.id_card_issue_date is not None
+                            and row.account_number
+                        )
+                    ),
                     row.start_date.isoformat(), row.end_date.isoformat(), rent_days,
                     created_at, IMPORT_ACTOR, timestamp, IMPORT_ACTOR,
                 ),
@@ -494,7 +769,15 @@ def _insert_plan(
                 (
                     str(uuid4()), row_operation, timestamp, IMPORT_ACTOR,
                     row.cell_number,
-                    json.dumps({"source": "legacy_register"}, sort_keys=True, separators=(",", ":")),
+                    json.dumps(
+                        {
+                            "source": "legacy_register",
+                            "occupation_label": row.occupation_label,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 ),
             )
         if after_insert is not None:

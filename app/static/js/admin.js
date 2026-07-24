@@ -2,7 +2,7 @@
 
 (() => {
   const body = document.body;
-  const state = {configured: null, accessMode: "password", recoveryMode: false, token: null, snapshot: null, backups: null, legacyPreview: null, busy: false};
+  const state = {configured: null, accessMode: "acknowledgement", recoveryMode: false, token: null, snapshot: null, backups: null, legacyPreview: null, busy: false};
   const elements = {
     open: document.getElementById("adminOpen"), dialog: document.getElementById("adminDialog"), close: document.getElementById("adminDialogClose"),
     authForm: document.getElementById("adminAuthForm"), authNote: document.getElementById("adminAuthNote"), authError: document.getElementById("adminAuthError"),
@@ -20,7 +20,7 @@
     employeeRows: document.getElementById("adminEmployeeRows"), employeeAddForm: document.getElementById("adminEmployeeAddForm"),
     employeeName: document.getElementById("adminEmployeeName"), employeeAdd: document.getElementById("adminEmployeeAdd"),
     accessForm: document.getElementById("adminAccessForm"), accessPassword: document.getElementById("adminAccessPassword"), accessAcknowledgement: document.getElementById("adminAccessAcknowledgement"), accessSubmit: document.getElementById("adminAccessSubmit"),
-    passwordForm: document.getElementById("adminPasswordForm"), currentPassword: document.getElementById("adminCurrentPassword"), newPassword: document.getElementById("adminNewPassword"), newPasswordConfirm: document.getElementById("adminNewPasswordConfirm"), passwordSubmit: document.getElementById("adminPasswordSubmit"),
+    passwordForm: document.getElementById("adminPasswordForm"), currentPasswordField: document.getElementById("adminCurrentPasswordField"), currentPassword: document.getElementById("adminCurrentPassword"), newPassword: document.getElementById("adminNewPassword"), newPasswordConfirm: document.getElementById("adminNewPasswordConfirm"), passwordSubmit: document.getElementById("adminPasswordSubmit"),
     backupStatus: document.getElementById("adminBackupStatus"), backupRows: document.getElementById("adminBackupRows"), backupCheck: document.getElementById("adminBackupCheck"),
     legacyPreviewForm: document.getElementById("adminLegacyPreviewForm"), legacyFile: document.getElementById("adminLegacyFile"), legacyPreviewButton: document.getElementById("adminLegacyPreview"),
     legacyResult: document.getElementById("adminLegacyResult"), legacySummary: document.getElementById("adminLegacySummary"), legacyIssues: document.getElementById("adminLegacyIssues"),
@@ -85,7 +85,7 @@
       elements.passwordLabel.textContent = "Создайте общий пароль отдела";
       elements.password.autocomplete = "new-password";
       elements.authSubmit.textContent = "Создать пароль и открыть настройки";
-      elements.authNote.textContent = "Первый вход: задайте один общий пароль не короче 12 символов с буквами и цифрами.";
+      elements.authNote.textContent = "При желании задайте любой непустой общий пароль.";
     } else {
       elements.passwordLabel.textContent = "Общий пароль отдела";
       elements.password.autocomplete = "current-password";
@@ -208,6 +208,13 @@
     state.accessMode = state.snapshot.access_mode;
     elements.accessPassword.checked = state.accessMode === "password";
     elements.accessAcknowledgement.checked = state.accessMode === "acknowledgement";
+    const passwordConfigured = state.snapshot.password_configured === true;
+    elements.accessPassword.disabled = !passwordConfigured;
+    elements.currentPasswordField.hidden = !passwordConfigured;
+    elements.currentPassword.required = passwordConfigured;
+    elements.passwordSubmit.textContent = passwordConfigured
+      ? "Сменить общий пароль"
+      : "Создать и включить пароль";
     renderTariffs(); renderTemplates(); renderEmployees();
   }
 
@@ -402,8 +409,9 @@
   async function changePassword(event) {
     event.preventDefault(); if (state.busy) return; state.busy = true; elements.passwordSubmit.disabled = true; clearMessages();
     try {
+      const creating = state.snapshot.password_configured !== true;
       const payload = await jsonRequest(body.dataset.adminPasswordUrl, {method: "PUT", body: JSON.stringify({operation_id: operationId(), current_password: elements.currentPassword.value, new_password: elements.newPassword.value, password_confirmation: elements.newPasswordConfirm.value})});
-      state.token = payload.token; elements.passwordForm.reset(); showSuccess(payload.warning || "Общий пароль отдела изменён.");
+      state.token = payload.token; elements.passwordForm.reset(); await loadSettings(); selectTab("access"); showSuccess(payload.warning || (creating ? "Общий пароль создан и включён." : "Общий пароль отдела изменён."));
     } catch (error) { if (error.status === 401) return sessionEnded(error); showError(elements.error, error.message); }
     finally { state.busy = false; elements.passwordSubmit.disabled = false; }
   }
@@ -429,7 +437,7 @@
     state.legacyPreview = payload;
     elements.legacyIssues.replaceChildren();
     elements.legacyResult.hidden = false;
-    elements.legacySummary.textContent = `Всего ячеек: ${payload.cells_count}. Договоров: ${payload.contracts_count}. Свободных: ${payload.free_count}. Служебно занятых: ${payload.manual_count}.`;
+    elements.legacySummary.textContent = `Всего ячеек: ${payload.cells_count}. Договоров: ${payload.contracts_count}. Свободных: ${payload.free_count}. Служебно занятых: ${payload.manual_count}. Строк с паспортными данными: ${payload.passport_details_count}.`;
     for (const issue of payload.issues) {
       const item = document.createElement("li");
       item.textContent = issue.cell_number ? `Ячейка № ${issue.cell_number}: ${issue.message}` : issue.message;

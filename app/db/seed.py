@@ -40,7 +40,7 @@ TARIFF_PERIODS: tuple[tuple[int, int | None], ...] = (
 INITIAL_CONFIG: dict[str, str] = {
     "expiring_soon_days": "7",
     "deposit_amount_minor": "1500",
-    "admin_access_mode": "password",
+    "admin_access_mode": "acknowledgement",
     "employees_json": "[]",
     "currency_code": "KGS",
     "currency_scale": "0",

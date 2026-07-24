@@ -22,11 +22,11 @@ ACTION_LABELS = {
     "contract.created": "Открытие",
     "contract.renewed": "Продление",
     "contract.closed": "Закрытие",
-    "cell.manual_occupied": "Занятие без договора",
-    "cell.manual_released": "Освобождение ячейки",
+    "cell.manual_occupied": "Открытие",
+    "cell.manual_released": "Закрытие",
     # Legacy actions stay readable after the explicit schema 4→5 migration.
-    "cell.bank_occupied": "Занятие без договора",
-    "cell.bank_released": "Освобождение ячейки",
+    "cell.bank_occupied": "Открытие",
+    "cell.bank_released": "Закрытие",
     "cell.key_restored": "Ключ восстановлен",
 }
 FILTER_LABELS = {
@@ -34,8 +34,6 @@ FILTER_LABELS = {
     "contract.renewed": "Продление",
     "contract.closed": "Закрытие",
     "overdue": "Просрочка",
-    "cell.manual_occupied": "Занятие без договора",
-    "cell.manual_released": "Освобождение ячейки",
     "cell.key_restored": "Ключ восстановлен",
 }
 DEFAULT_PAGE_SIZE = 50
@@ -164,9 +162,9 @@ def _summary(action: str, raw_changes: object) -> str:
         return "; ".join(parts) or "Договор закрыт, ячейка освобождена."
 
     if action in {"cell.manual_occupied", "cell.bank_occupied"}:
-        return "Ячейка занята без договора и срока."
+        return "Открыто без договора и срока."
     if action in {"cell.manual_released", "cell.bank_released"}:
-        return "Ячейка освобождена."
+        return "Закрыто без договора и срока."
     if action == "cell.key_restored":
         return "Ключ восстановлен, ячейка свободна."
 
@@ -226,10 +224,16 @@ def _where_clause(
             "ELSE 0 END > 0"
         )
         parameters.append("$.penalty_days")
-    elif action_code == "cell.manual_occupied":
-        clauses.append("log.action IN ('cell.manual_occupied', 'cell.bank_occupied')")
-    elif action_code == "cell.manual_released":
-        clauses.append("log.action IN ('cell.manual_released', 'cell.bank_released')")
+    elif action_code == "contract.created":
+        clauses.append(
+            "log.action IN ('contract.created', 'cell.manual_occupied', "
+            "'cell.bank_occupied')"
+        )
+    elif action_code == "contract.closed":
+        clauses.append(
+            "log.action IN ('contract.closed', 'cell.manual_released', "
+            "'cell.bank_released')"
+        )
     elif action_code is not None:
         clauses.append("log.action = ?")
         parameters.append(action_code)
@@ -242,9 +246,14 @@ def _where_clause(
     if client_name is not None:
         clauses.append(
             "instr(casefold(COALESCE(active.client_full_name, "
-            "archived.client_full_name, '')), casefold(?)) > 0"
+            "archived.client_full_name, CASE WHEN "
+            "log.action IN ('cell.manual_occupied', 'cell.manual_released', "
+            "'cell.bank_occupied', 'cell.bank_released') "
+            "AND json_valid(log.changes_json) "
+            "THEN CAST(json_extract(log.changes_json, ?) AS TEXT) "
+            "ELSE '' END, '')), casefold(?)) > 0"
         )
-        parameters.append(client_name)
+        parameters.extend(("$.occupation_label", client_name))
     if employee is not None:
         clauses.append("log.employee = ?")
         parameters.append(employee)
@@ -259,6 +268,11 @@ def _entry(row: sqlite3.Row) -> dict[str, Any]:
     client_name = str(row["client_full_name"] or "").strip()
     action = str(row["action"])
     changes = _safe_changes(row["changes_json"])
+    manual_label = changes.get("occupation_label")
+    if not isinstance(manual_label, str) or not (1 <= len(manual_label.strip()) <= 80):
+        manual_label = ""
+    else:
+        manual_label = manual_label.strip()
     penalty_days = _safe_nonnegative_integer(changes.get("penalty_days"))
     is_overdue = action in {"contract.renewed", "contract.closed"} and bool(
         penalty_days
@@ -270,6 +284,7 @@ def _entry(row: sqlite3.Row) -> dict[str, Any]:
         "cell_number": str(row["cell_number"]),
         "client_full_name": (
             client_name
+            or manual_label
             or (
                 "Без договора"
                 if action.startswith(("cell.manual_", "cell.bank_"))
