@@ -68,6 +68,8 @@ def _workbook(
     occupied: dict[str, tuple[str, object, object]] | None = None,
     manual: dict[str, str] | None = None,
     identity: dict[str, tuple[object, object, object, object]] | None = None,
+    deposits: dict[str, object] | None = None,
+    account_header: str = "Номер счёта",
     second_sheet_identity: list[
         tuple[str, object, object, object, object]
     ] | None = None,
@@ -75,21 +77,30 @@ def _workbook(
     occupied = occupied or {}
     manual = manual or {}
     identity = identity or {}
+    deposits = deposits or {}
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Лист2"
-    sheet.append((*HEADERS, *IDENTITY_HEADERS) if identity else HEADERS)
+    optional_headers = (
+        (*IDENTITY_HEADERS[:3], account_header) if identity else ()
+    )
+    if deposits:
+        optional_headers = (*optional_headers, "Сумма залога")
+    sheet.append((*HEADERS, *optional_headers))
     for number in _cell_numbers(settings):
         if number in occupied:
             name, start, end = occupied[number]
             row = (number, "100×220×330", 1, name, start, end)
-            sheet.append((*row, *identity.get(number, (None, None, None, None))))
         elif number in manual:
             row = (number, "100×220×330", 1, manual[number], None, None)
-            sheet.append((*row, *identity.get(number, (None, None, None, None))))
         else:
             row = (number, "100×220×330", 0, None, None, None)
-            sheet.append((*row, *identity.get(number, (None, None, None, None))))
+        optional_values = (
+            identity.get(number, (None, None, None, None)) if identity else ()
+        )
+        if deposits:
+            optional_values = (*optional_values, deposits.get(number))
+        sheet.append((*row, *optional_values))
     if second_sheet_identity is not None:
         second = workbook.create_sheet("Паспортные данные")
         second.append(("№", "Ф.И.О. Клиента", "срок выдачи", "орган", "паспорт", None))
@@ -299,6 +310,98 @@ def test_extended_import_removes_passport_spaces_and_marks_complete_identity(
         ).fetchone()
     assert contract["id_card_number"] == "ID221331"
     assert legacy_status(contract["extra_fields_json"])["legacy_identity_complete"] is True
+
+
+def test_import_uses_contract_number_as_account_and_known_deposit_for_follow_on_actions(
+    settings: Settings, initialized_databases,
+) -> None:
+    content = _workbook(
+        settings,
+        {"1": ("Тестовый Клиент", "01.02.2025", "31.12.2026")},
+        identity={
+            "1": (
+                "ID 22 13 31",
+                "Тестовый орган",
+                "02.03.2020",
+                "TEST-ACCOUNT-1",
+            )
+        },
+        deposits={"1": 1500},
+        account_header="Номер договора",
+    )
+
+    preview = preview_legacy_import(
+        settings,
+        content=content,
+        file_name="report.xlsx",
+        as_of_date=OCCURRED_AT.date(),
+    )
+
+    assert preview.ready is True
+    assert preview.identity_complete_count == 1
+    assert preview.deposit_known_count == 1
+    _import(settings, content)
+    with open_readonly(settings.database_directory / settings.working_database_name) as connection:
+        contract = connection.execute(
+            "SELECT * FROM contracts WHERE cell_number='1'"
+        ).fetchone()
+    assert contract["account_number"] == "TEST-ACCOUNT-1"
+    assert int(contract["deposit_amount_minor"]) == 1500
+    assert legacy_status(contract["extra_fields_json"]) == {
+        "legacy_imported": True,
+        "legacy_identity_complete": True,
+        "legacy_deposit_known": True,
+        "legacy_rent_terms_known": False,
+    }
+    quote = calculate_renewal_quote(
+        settings,
+        cell_number="1",
+        contract_ref=str(contract["contract_id"]),
+        renewal_date=OCCURRED_AT.date(),
+        renewal_days_value=30,
+    )
+    closure = calculate_closure_quote(
+        settings,
+        cell_number="1",
+        contract_ref=str(contract["contract_id"]),
+        close_date=OCCURRED_AT.date(),
+        reason_code="standard",
+    )
+    assert quote.renewal_days == 30
+    assert closure.deposit_amount == 1500
+
+
+def test_import_treats_without_number_as_missing_and_rejects_invalid_deposit(
+    settings: Settings, initialized_databases,
+) -> None:
+    content = _workbook(
+        settings,
+        {"1": ("Тестовый Клиент Один", "01.02.2025", "31.12.2026")},
+        identity={
+            "1": (
+                "ID221331",
+                "Тестовый орган",
+                "02.03.2020",
+                "без номера",
+            )
+        },
+        deposits={"1": "полторы тысячи"},
+        account_header="Номер договора",
+    )
+
+    preview = preview_legacy_import(
+        settings,
+        content=content,
+        file_name="report.xlsx",
+        as_of_date=OCCURRED_AT.date(),
+    )
+
+    assert preview.ready is False
+    assert preview.identity_complete_count == 0
+    assert preview.deposit_known_count == 0
+    assert {(issue.cell_number, issue.message) for issue in preview.issues} == {
+        ("1", "Некорректная сумма залога.")
+    }
 
 
 def test_failure_during_import_rolls_back_every_contract_and_block(

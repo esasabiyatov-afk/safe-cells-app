@@ -98,6 +98,7 @@ class LegacyImportRow:
     id_card_issuer: str | None = None
     id_card_issue_date: date | None = None
     account_number: str | None = None
+    deposit_amount_minor: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +142,13 @@ class LegacyImportPlan:
         )
 
     @property
+    def deposit_known_count(self) -> int:
+        return sum(
+            row.kind == "contract" and row.deposit_amount_minor is not None
+            for row in self.rows
+        )
+
+    @property
     def ready(self) -> bool:
         return not self.issues and not self.database_issues
 
@@ -155,6 +163,7 @@ class LegacyImportPlan:
             "manual_count": self.manual_count,
             "passport_details_count": self.passport_details_count,
             "identity_complete_count": self.identity_complete_count,
+            "deposit_known_count": self.deposit_known_count,
             "issues": [issue.to_dict() for issue in all_issues],
             "confirmation": IMPORT_CONFIRMATION,
         }
@@ -291,6 +300,32 @@ def _id_card_number(value: object) -> str:
     return re.sub(r"\s+", "", _text(value))
 
 
+def _account_number(value: object) -> str | None:
+    normalized = _text(value)
+    if not normalized or _header(normalized) == "безномера":
+        return None
+    return normalized
+
+
+def _deposit_amount(value: object) -> int | None:
+    if value is None or _text(value) in {"", "-", "—"}:
+        return None
+    if isinstance(value, bool):
+        raise ValueError
+    if isinstance(value, (int, float)):
+        if not float(value).is_integer():
+            raise ValueError
+        result = int(value)
+    else:
+        normalized = _text(value).replace(" ", "")
+        if not normalized.isdecimal():
+            raise ValueError
+        result = int(normalized)
+    if not 0 <= result <= 10_000_000:
+        raise ValueError
+    return result
+
+
 def _maximum_column(worksheet, minimum: int) -> int:
     if worksheet.max_column is None:
         worksheet.calculate_dimension(force=True)
@@ -310,6 +345,9 @@ OPTIONAL_FIRST_SHEET_HEADERS = {
     "датавыдачипаспорта": "id_card_issue_date",
     "номерсчета": "account_number",
     "счетномер": "account_number",
+    "номердоговора": "account_number",
+    "суммазалога": "deposit_amount_minor",
+    "залог": "deposit_amount_minor",
 }
 
 
@@ -418,7 +456,7 @@ def _identity_values(
     epoch: datetime,
     cell_number: str,
     issues: list[LegacyImportIssue],
-) -> tuple[str | None, str | None, date | None, str | None]:
+) -> tuple[str | None, str | None, date | None, str | None, int | None]:
     raw = {
         field: values[index] if index < len(values) else None
         for field, index in columns.items()
@@ -440,7 +478,15 @@ def _identity_values(
 
     number = _id_card_number(raw.get("id_card_number")) or None
     issuer = _text(raw.get("id_card_issuer")) or None
-    account = _text(raw.get("account_number")) or None
+    account = _account_number(raw.get("account_number"))
+    deposit = None
+    if _text(raw.get("deposit_amount_minor")):
+        try:
+            deposit = _deposit_amount(raw["deposit_amount_minor"])
+        except (TypeError, ValueError, OverflowError):
+            issues.append(
+                LegacyImportIssue(cell_number, "Некорректная сумма залога.")
+            )
     issue_date = None
     if _text(raw.get("id_card_issue_date")):
         try:
@@ -458,7 +504,7 @@ def _identity_values(
             issues.append(
                 LegacyImportIssue(cell_number, f"Поле «{label}» слишком длинное.")
             )
-    return number, issuer, issue_date, account
+    return number, issuer, issue_date, account, deposit
 
 
 def _parse_workbook(content: bytes) -> LegacyImportPlan:
@@ -702,7 +748,7 @@ def _insert_plan(
                     extra_fields_json, start_date, end_date, rent_days,
                     price_per_day_minor, rent_price_minor, deposit_amount_minor,
                     created_at, created_by, updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
                 """,
                 (
                     contract_id, row.cell_number, row.client_full_name,
@@ -720,9 +766,11 @@ def _insert_plan(
                             and row.id_card_issuer
                             and row.id_card_issue_date is not None
                             and row.account_number
-                        )
+                        ),
+                        deposit_known=row.deposit_amount_minor is not None,
                     ),
                     row.start_date.isoformat(), row.end_date.isoformat(), rent_days,
+                    row.deposit_amount_minor or 0,
                     created_at, IMPORT_ACTOR, timestamp, IMPORT_ACTOR,
                 ),
             )

@@ -18,6 +18,8 @@ from app.config import Settings
 INSTANCE_DIRECTORY_NAME = ".safe_cells_instances"
 MAINTENANCE_FILE_NAME = "maintenance.lock"
 WRITE_FILE_NAME = "database-write.lock"
+LOCK_INITIALIZATION_RETRY_SECONDS = 0.5
+LOCK_INITIALIZATION_RETRY_INTERVAL_SECONDS = 0.01
 
 
 class InstanceCoordinationError(RuntimeError):
@@ -57,11 +59,19 @@ def _unlock_file(handle: BinaryIO) -> None:
 
 
 def _open_lock(path: Path) -> BinaryIO:
-    handle = path.open("a+b")
-    if path.stat().st_size == 0:
-        handle.write(b"0")
-        handle.flush()
-    return handle
+    deadline = time.monotonic() + LOCK_INITIALIZATION_RETRY_SECONDS
+    while True:
+        handle = path.open("a+b")
+        try:
+            if os.fstat(handle.fileno()).st_size == 0:
+                handle.write(b"0")
+                handle.flush()
+            return handle
+        except OSError:
+            handle.close()
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(LOCK_INITIALIZATION_RETRY_INTERVAL_SECONDS)
 
 
 @dataclass(frozen=True, slots=True)

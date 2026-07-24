@@ -441,7 +441,7 @@
     <p class="section-kicker">Исправление данных</p>
     <h2 id="editDialogTitle">Ячейка № —</h2>
     <p class="dialog-note">Срок аренды и стоимость аренды здесь не изменяются.</p>
-    <p class="legacy-contract-note" id="editLegacyNote" hidden>Это договор из старого отчёта. Заполните реквизиты по бумажному договору. Фактический залог нужен для безопасного закрытия.</p>
+    <p class="legacy-contract-note" id="editLegacyNote" hidden>Это договор из старого отчёта. Проверьте реквизиты по бумажному договору. Если залог уже перенесён из Excel, повторно вводить его не требуется.</p>
     <form id="editForm" novalidate>
       <div class="calculation-error" id="editError" role="alert" hidden></div>
       <section class="statement-import" id="editStatementImportSection" aria-labelledby="editStatementImportTitle" hidden>
@@ -457,7 +457,7 @@
           <input class="visually-hidden" id="editStatementFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
         </div>
         <p class="statement-import__status" id="editStatementImportStatus" role="status" aria-live="polite" hidden></p>
-        <p class="statement-import__note">Данные только подставятся в форму после выбора файла. Сверьте их с заявлением и отдельно укажите фактический залог.</p>
+        <p class="statement-import__note">Данные только подставятся в форму после выбора файла. Сверьте их с заявлением. Если поле залога пустое, отдельно укажите фактическую сумму.</p>
       </section>
       <div class="contract-fields">
         <label class="contract-field contract-field--wide"><span>ФИО клиента *</span><input id="editClientFullName" maxlength="200" required autocomplete="off"></label>

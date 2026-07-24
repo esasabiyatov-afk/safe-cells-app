@@ -10,7 +10,9 @@ LEGACY_MISSING_TEXT = "__LEGACY_DATA_NOT_AVAILABLE__"
 LEGACY_MISSING_DATE = "1900-01-01"
 
 
-def legacy_extra_fields(*, identity_complete: bool = False) -> str:
+def legacy_extra_fields(
+    *, identity_complete: bool = False, deposit_known: bool = False
+) -> str:
     """Build explicit unknown-value markers without pretending that zero is known."""
 
     return json.dumps(
@@ -18,7 +20,7 @@ def legacy_extra_fields(*, identity_complete: bool = False) -> str:
             "legacy_import": {
                 "version": 1,
                 "identity_complete": bool(identity_complete),
-                "deposit_known": False,
+                "deposit_known": bool(deposit_known),
                 "rent_terms_known": False,
             }
         },

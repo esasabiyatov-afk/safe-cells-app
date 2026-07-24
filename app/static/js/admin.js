@@ -437,7 +437,7 @@
     state.legacyPreview = payload;
     elements.legacyIssues.replaceChildren();
     elements.legacyResult.hidden = false;
-    elements.legacySummary.textContent = `Всего ячеек: ${payload.cells_count}. Договоров: ${payload.contracts_count}. Свободных: ${payload.free_count}. Служебно занятых: ${payload.manual_count}. Строк с паспортными данными: ${payload.passport_details_count}.`;
+    elements.legacySummary.textContent = `Всего ячеек: ${payload.cells_count}. Договоров: ${payload.contracts_count}. Свободных: ${payload.free_count}. Служебно занятых: ${payload.manual_count}. Строк с паспортными данными: ${payload.passport_details_count}. Полных реквизитов: ${payload.identity_complete_count}. Известных залогов: ${payload.deposit_known_count}.`;
     for (const issue of payload.issues) {
       const item = document.createElement("li");
       item.textContent = issue.cell_number ? `Ячейка № ${issue.cell_number}: ${issue.message}` : issue.message;
