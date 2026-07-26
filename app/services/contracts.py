@@ -26,6 +26,10 @@ from app.services.rental_calculator import (
     calculate_rental_quote_in_connection,
     parse_iso_date,
 )
+from app.services.phone_numbers import (
+    PhoneNumberValidationError,
+    normalize_whatsapp_phone,
+)
 
 
 BUSY_MESSAGE = (
@@ -66,6 +70,7 @@ class ContractData:
     operation_id: str
     cell_number: str
     client_full_name: str
+    client_phone: str
     id_card_number: str
     id_card_issuer: str
     id_card_issue_date: str
@@ -152,6 +157,14 @@ def validate_contract_payload(payload: object) -> ContractData:
     except RentalValidationError as exc:
         raise ContractValidationError(str(exc)) from exc
 
+    client_phone = _required_text(
+        payload.get("client_phone"), label="Номер телефона", maximum=50
+    )
+    try:
+        normalize_whatsapp_phone(client_phone)
+    except PhoneNumberValidationError as exc:
+        raise ContractValidationError(str(exc)) from exc
+
     return ContractData(
         operation_id=_operation_id(payload.get("operation_id")),
         cell_number=_required_text(
@@ -163,6 +176,7 @@ def validate_contract_payload(payload: object) -> ContractData:
             maximum=200,
             collapse_spaces=True,
         ),
+        client_phone=client_phone,
         id_card_number=_required_text(
             payload.get("id_card_number"), label="Серия и номер ID-карты", maximum=100
         ),
@@ -316,17 +330,18 @@ def create_contract(
                 """
                 INSERT INTO contracts(
                     contract_id, cell_number, client_full_name,
-                    id_card_number, id_card_issuer,
+                    client_phone, id_card_number, id_card_issuer,
                     id_card_issue_date, account_number, extra_fields_json,
                     start_date, end_date, rent_days, price_per_day_minor,
                     rent_price_minor, deposit_amount_minor, created_at, created_by,
                     updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     contract_id,
                     quote.cell_number,
                     data.client_full_name,
+                    data.client_phone,
                     data.id_card_number,
                     data.id_card_issuer,
                     data.id_card_issue_date,

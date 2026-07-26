@@ -24,7 +24,11 @@ def _settings() -> Settings:
 def cells_list():
     today_provider = current_app.config["TODAY_PROVIDER"]
     try:
-        payload = list_cells(_settings(), as_of_date=today_provider())
+        payload = list_cells(
+            _settings(),
+            as_of_date=today_provider(),
+            as_of_datetime=current_app.config["NOW_PROVIDER"](),
+        )
     except CellsReadError as exc:
         return jsonify({"message": str(exc)}), 503
     except InvalidStoredDataError:

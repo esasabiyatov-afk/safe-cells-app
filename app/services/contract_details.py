@@ -49,6 +49,7 @@ class RenewalDetails:
 class PrivateContractDetails:
     cell_number: str
     client_full_name: str
+    client_phone: str
     id_card_number: str
     id_card_issuer: str
     id_card_issue_date: str
@@ -130,7 +131,7 @@ def get_private_contract_details(
                 """
                 SELECT
                     contract_id, cell_number, client_full_name, id_card_number,
-                    id_card_issuer, id_card_issue_date,
+                    client_phone, id_card_issuer, id_card_issue_date,
                     account_number, extra_fields_json, deposit_amount_minor,
                     created_at, created_by
                 FROM contracts
@@ -182,6 +183,7 @@ def get_private_contract_details(
     return PrivateContractDetails(
         cell_number=str(contract["cell_number"]),
         client_full_name=str(contract["client_full_name"]),
+        client_phone=str(contract["client_phone"] or ""),
         id_card_number=(
             str(contract["id_card_number"])
             if contract["id_card_number"] != LEGACY_MISSING_TEXT

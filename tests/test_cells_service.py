@@ -50,6 +50,9 @@ def test_list_cells_returns_only_approved_client_display_name(
         "total_days",
             "client_display_name",
             "days_remaining",
+            "last_reminded_at",
+            "reminder_count",
+            "reminder_status",
             "legacy_imported",
             "legacy_identity_complete",
             "legacy_deposit_known",
@@ -167,4 +170,27 @@ def test_invalid_expiring_config_is_safe_integrity_error(
         connection.close()
 
     with pytest.raises(InvalidStoredDataError, match="порог"):
+        list_cells(settings, as_of_date=AS_OF)
+
+
+def test_invalid_reminder_timestamp_is_safe_integrity_error(
+    settings: Settings,
+    insert_test_contract: Callable[..., None],
+) -> None:
+    insert_test_contract(cell_number="1", end_date="2026-07-01")
+    paths = DatabasePaths.from_settings(settings)
+    connection = sqlite3.connect(paths.working)
+    try:
+        connection.execute(
+            """
+            UPDATE contracts
+            SET last_reminded_at='bad-time', reminder_count=1
+            WHERE cell_number='1'
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with pytest.raises(InvalidStoredDataError, match="оповещения"):
         list_cells(settings, as_of_date=AS_OF)

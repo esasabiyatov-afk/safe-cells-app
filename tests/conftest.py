@@ -42,6 +42,7 @@ def insert_test_contract(
         end_date: str,
         start_date: str | None = None,
         client_name: str = "Тестовый Клиент",
+        client_phone: str = "+996 (555) 123-456",
         account_number: str = "TEST-ACCOUNT",
     ) -> None:
         identifier = f"contract-test-{cell_number}"
@@ -50,6 +51,7 @@ def insert_test_contract(
             identifier,
             cell_number,
             client_name,
+            client_phone,
             f"TEST-ID-{cell_number}",
             "Тестовый орган",
             "2017-09-12",
@@ -71,11 +73,11 @@ def insert_test_contract(
                 """
                 INSERT INTO contracts(
                     contract_id, cell_number, client_full_name,
-                    id_card_number, id_card_issuer, id_card_issue_date,
+                    client_phone, id_card_number, id_card_issuer, id_card_issue_date,
                     account_number, start_date, end_date, rent_days,
                     price_per_day_minor, rent_price_minor, deposit_amount_minor,
                     created_at, created_by, updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )

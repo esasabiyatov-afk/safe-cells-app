@@ -12,6 +12,7 @@ from app.db.migrations import (
     migrate_v2_to_v3,
     migrate_v3_to_v4,
     migrate_v4_to_v5,
+    migrate_v5_to_v6,
 )
 from app.db.schema import DatabaseInitializationError, initialize_databases
 from app.db.seed import SeedDataError
@@ -21,6 +22,7 @@ CONFIRMATION_TEXT = "INITIALIZE"
 MIGRATION_CONFIRMATION_TEXT = "MIGRATE-TO-3"
 MIGRATION_V4_CONFIRMATION_TEXT = "MIGRATE-TO-4"
 MIGRATION_V5_CONFIRMATION_TEXT = "MIGRATE-TO-5"
+MIGRATION_V6_CONFIRMATION_TEXT = "MIGRATE-TO-6"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_v5_parser.add_argument("--config", type=Path, required=True)
     migrate_v5_parser.add_argument("--confirm", required=True)
+    migrate_v6_parser = subparsers.add_parser(
+        "migrate-v6", description="Явно обновить обе базы со схемы 5 до схемы 6."
+    )
+    migrate_v6_parser.add_argument("--config", type=Path, required=True)
+    migrate_v6_parser.add_argument("--confirm", required=True)
     return parser
 
 
@@ -116,6 +123,21 @@ def main(argv: list[str] | None = None) -> int:
         except (ConfigError, DatabaseMigrationError) as exc:
             parser.error(str(exc))
         action = "обновлены" if result.changed else "уже соответствуют версии 5"
+        print(f"Базы {action}. Версия схемы: {result.to_version}.")
+        return 0
+    if args.command == "migrate-v6":
+        if args.confirm != MIGRATION_V6_CONFIRMATION_TEXT:
+            parser.error(
+                f"Для миграции укажите --confirm {MIGRATION_V6_CONFIRMATION_TEXT}."
+            )
+        try:
+            settings = load_settings(args.config)
+            result = migrate_v5_to_v6(
+                settings, occurred_at=datetime.now().astimezone()
+            )
+        except (ConfigError, DatabaseMigrationError) as exc:
+            parser.error(str(exc))
+        action = "обновлены" if result.changed else "уже соответствуют версии 6"
         print(f"Базы {action}. Версия схемы: {result.to_version}.")
         return 0
     parser.error("Неизвестная команда.")

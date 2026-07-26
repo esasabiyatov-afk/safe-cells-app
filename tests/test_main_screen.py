@@ -45,6 +45,7 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-client-name-url="/api/contracts/client-name"' in html
     assert 'data-renewal-quote-url="/api/renewals/calculate"' in html
     assert 'data-renewal-url="/api/renewals"' in html
+    assert 'data-reminder-url="/api/reminders"' in html
     assert 'data-closure-quote-url="/api/closures/calculate"' in html
     assert 'data-closure-url="/api/closures"' in html
     assert 'data-document-download-url="/api/documents/download"' in html
@@ -61,6 +62,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert '<section class="deposit-panel rental-deposit" aria-label="Залог">' in html
     assert "<span>Залог</span>" in html
     assert 'id="renewAction" type="button">Продлить' in html
+    assert 'id="reminderPanel" aria-label="Напоминание клиенту" hidden' in html
+    assert 'id="reminderAction" type="button">Напомнить' in html
     assert 'id="renewalDialog"' in html
     assert 'id="renewalSubmit" type="submit" disabled' in html
     assert 'id="renewalPenaltyPanel" aria-label="Расчёт штрафа" hidden' in html
@@ -104,6 +107,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="statementImport"' not in html
     assert "После автоматического переноса обязательно сверьте" in html
     assert 'name="client_full_name"' in html
+    assert 'name="client_phone"' in html
+    assert 'id="editClientPhone"' in html
     assert 'name="id_card_number"' in html
     assert 'name="account_number"' in html
     assert 'id="privateDetails" hidden' in html
@@ -275,6 +280,12 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "hidePrivateDetails" in script
         assert "clearPrivateValues" in script
         assert "renderRenewals" in script
+        assert "sendWhatsAppReminder" in script
+        assert '["expiring", "overdue"].includes(reminderSection)' in script
+        assert "cell.reminder_count > 0" in script
+        assert 'window.open("about:blank", "_blank")' in script
+        assert ".cell-reminder-button" in stylesheet
+        assert ".reminder-panel" in stylesheet
         assert "privateCreatedBy" in script
         assert "renewal.created_by" in script
         assert "renewalStartDateValue" in script

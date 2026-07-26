@@ -18,6 +18,10 @@ from app.db.connections import (
 )
 from app.services.backups import create_backup_pair
 from app.services.legacy_contracts import complete_legacy_details, legacy_status
+from app.services.phone_numbers import (
+    PhoneNumberValidationError,
+    normalize_whatsapp_phone,
+)
 
 
 BUSY_MESSAGE = "База сейчас занята другим сотрудником. Повторите позже."
@@ -38,6 +42,7 @@ class EditingData:
     contract_ref: str
     cell_number: str
     client_full_name: str
+    client_phone: str | None
     id_card_number: str
     id_card_issuer: str
     id_card_issue_date: str
@@ -68,7 +73,7 @@ def _text(value: object, label: str, maximum: int) -> str:
 def validate_editing_payload(payload: object) -> EditingData:
     if not isinstance(payload, dict):
         raise EditingValidationError("Переданы неверные данные формы.")
-    allowed = {"operation_id", "contract_ref", "cell_number", "client_full_name", "id_card_number", "id_card_issuer", "id_card_issue_date", "account_number", "deposit_amount"}
+    allowed = {"operation_id", "contract_ref", "cell_number", "client_full_name", "client_phone", "id_card_number", "id_card_issuer", "id_card_issue_date", "account_number", "deposit_amount"}
     if set(payload) - allowed:
         raise EditingValidationError("Попытка изменить запрещённое поле.")
     operation_id = _text(payload.get("operation_id"), "Операция", 100)
@@ -84,11 +89,19 @@ def validate_editing_payload(payload: object) -> EditingData:
         raise EditingValidationError("Укажите корректный фактический залог.")
     else:
         deposit_amount = deposit_value
+    client_phone = None
+    if "client_phone" in payload:
+        client_phone = _text(payload.get("client_phone"), "Номер телефона", 50)
+        try:
+            normalize_whatsapp_phone(client_phone)
+        except PhoneNumberValidationError as exc:
+            raise EditingValidationError(str(exc)) from exc
     return EditingData(
         operation_id=operation_id,
         contract_ref=_text(payload.get("contract_ref"), "Договор", 100),
         cell_number=_text(payload.get("cell_number"), "Номер ячейки", 50),
         client_full_name=_text(payload.get("client_full_name"), "ФИО клиента", 200),
+        client_phone=client_phone,
         id_card_number=_text(payload.get("id_card_number"), "Номер ID-карты", 100),
         id_card_issuer=_text(payload.get("id_card_issuer"), "Орган выдачи", 200),
         id_card_issue_date=issue_date,
@@ -129,18 +142,31 @@ def edit_contract(settings: Settings, *, payload: object, employee: str, occurre
                 raise EditingValidationError("Залог обычного договора здесь не изменяется.")
             if legacy["legacy_imported"] and not legacy["legacy_deposit_known"] and data.deposit_amount is None:
                 raise EditingValidationError("Для старого договора укажите фактический залог.")
-            fields = ("client_full_name", "id_card_number", "id_card_issuer", "id_card_issue_date", "account_number")
-            new_values = {name: getattr(data, name) for name in fields}
+            fields = ("client_full_name", "client_phone", "id_card_number", "id_card_issuer", "id_card_issue_date", "account_number")
+            new_values = {
+                name: (
+                    row["client_phone"]
+                    if name == "client_phone" and data.client_phone is None
+                    else getattr(data, name)
+                )
+                for name in fields
+            }
             if legacy["legacy_imported"]:
                 changes = {}
-                if not legacy["legacy_identity_complete"] or any(str(row[name]) != new_values[name] for name in fields):
+                if not legacy["legacy_identity_complete"] or any(
+                    row[name] != new_values[name] for name in fields
+                ):
                     changes["legacy_identity_details"] = {"completed": True}
                 if data.deposit_amount is not None and (
                     not legacy["legacy_deposit_known"] or int(row["deposit_amount_minor"]) != data.deposit_amount
                 ):
                     changes["legacy_deposit"] = {"completed": True}
             else:
-                changes = {name: {"old": str(row[name]), "new": new_values[name]} for name in fields if str(row[name]) != new_values[name]}
+                changes = {
+                    name: {"old": row[name], "new": new_values[name]}
+                    for name in fields
+                    if row[name] != new_values[name]
+                }
             if not changes:
                 raise EditingValidationError("Данные не изменены.")
             effective_deposit = int(row["deposit_amount_minor"]) if data.deposit_amount is None else data.deposit_amount
@@ -150,7 +176,7 @@ def edit_contract(settings: Settings, *, payload: object, employee: str, occurre
                 deposit_known=legacy["legacy_deposit_known"] or data.deposit_amount is not None,
             )
             connection.execute(
-                """UPDATE contracts SET client_full_name=?, id_card_number=?, id_card_issuer=?,
+                """UPDATE contracts SET client_full_name=?, client_phone=?, id_card_number=?, id_card_issuer=?,
                    id_card_issue_date=?, account_number=?, deposit_amount_minor=?,
                    extra_fields_json=?, updated_at=?, updated_by=?
                    WHERE contract_id=? AND cell_number=?""",

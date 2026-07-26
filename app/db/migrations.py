@@ -200,8 +200,8 @@ def migrate_v4_to_v5(
 ) -> MigrationResult:
     """Replace the bank-only block with a labelled manual occupation."""
 
-    if SCHEMA_VERSION != 5:
-        raise DatabaseMigrationError("Эта миграция предназначена только для схемы 5.")
+    if SCHEMA_VERSION < 5:
+        raise DatabaseMigrationError("Эта миграция требует схему приложения не ниже 5.")
     if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
         raise DatabaseMigrationError("Время миграции должно содержать часовой пояс.")
     try:
@@ -322,4 +322,100 @@ def migrate_v4_to_v5(
     except Exception as exc:
         raise DatabaseMigrationError(
             "Не удалось безопасно обновить базы до версии 5. Изменения отменены."
+        ) from exc
+
+
+def migrate_v5_to_v6(
+    settings: Settings,
+    *,
+    occurred_at: datetime,
+    after_working_change: Callable[[], None] | None = None,
+) -> MigrationResult:
+    """Add client phone and per-contract WhatsApp reminder state."""
+
+    if SCHEMA_VERSION != 6:
+        raise DatabaseMigrationError("Эта миграция предназначена только для схемы 6.")
+    if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
+        raise DatabaseMigrationError("Время миграции должно содержать часовой пояс.")
+    try:
+        with open_write(settings, attach_archive=True) as connection:
+            versions = (
+                int(connection.execute(
+                    "SELECT version FROM main.schema_version WHERE singleton=1"
+                ).fetchone()[0]),
+                int(connection.execute(
+                    "SELECT version FROM archive.schema_version WHERE singleton=1"
+                ).fetchone()[0]),
+            )
+            if versions == (6, 6):
+                return MigrationResult(6, 6, False, None)
+            if versions != (5, 5):
+                raise DatabaseMigrationError(
+                    "Версии рабочей и архивной баз не соответствуют миграции 5→6."
+                )
+
+            backup = create_backup_pair(
+                connection,
+                settings,
+                operation_id="before-schema-v6",
+                occurred_at=occurred_at,
+            )
+            timestamp = occurred_at.isoformat(timespec="seconds")
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("ALTER TABLE main.contracts ADD COLUMN client_phone TEXT")
+            connection.execute(
+                "ALTER TABLE main.contracts ADD COLUMN last_reminded_at TEXT"
+            )
+            connection.execute(
+                """
+                ALTER TABLE main.contracts
+                ADD COLUMN reminder_count INTEGER NOT NULL DEFAULT 0
+                CHECK(reminder_count >= 0)
+                """
+            )
+            if after_working_change is not None:
+                after_working_change()
+            connection.execute(
+                "ALTER TABLE archive.contracts_archive ADD COLUMN client_phone TEXT"
+            )
+            connection.execute(
+                """
+                ALTER TABLE archive.contracts_archive
+                ADD COLUMN last_reminded_at TEXT
+                """
+            )
+            connection.execute(
+                """
+                ALTER TABLE archive.contracts_archive
+                ADD COLUMN reminder_count INTEGER NOT NULL DEFAULT 0
+                CHECK(reminder_count >= 0)
+                """
+            )
+            connection.execute(
+                "UPDATE main.schema_version SET version=6, applied_at=? WHERE singleton=1",
+                (timestamp,),
+            )
+            connection.execute(
+                "UPDATE archive.schema_version SET version=6, applied_at=? WHERE singleton=1",
+                (timestamp,),
+            )
+            connection.commit()
+            if connection.execute("PRAGMA main.quick_check").fetchone()[0] != "ok":
+                raise DatabaseMigrationError(
+                    "Рабочая база не прошла проверку после миграции."
+                )
+            if connection.execute("PRAGMA archive.quick_check").fetchone()[0] != "ok":
+                raise DatabaseMigrationError(
+                    "Архивная база не прошла проверку после миграции."
+                )
+            return MigrationResult(5, 6, True, backup)
+    except DatabaseMigrationError:
+        raise
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise DatabaseMigrationError(
+            "Не удалось безопасно обновить базы до версии 6. Изменения отменены."
+        ) from exc
+    except Exception as exc:
+        raise DatabaseMigrationError(
+            "Не удалось безопасно обновить базы до версии 6. Изменения отменены."
         ) from exc

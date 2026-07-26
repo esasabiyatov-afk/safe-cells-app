@@ -11,6 +11,7 @@ from app.db.migrations import (
     migrate_v2_to_v3,
     migrate_v3_to_v4,
     migrate_v4_to_v5,
+    migrate_v5_to_v6,
 )
 
 
@@ -87,6 +88,27 @@ def _downgrade_fixture_to_v4(settings) -> None:
         )
         connection.execute("UPDATE main.schema_version SET version=4")
         connection.execute("UPDATE archive.schema_version SET version=4")
+        connection.commit()
+
+
+def _downgrade_fixture_to_v5(settings) -> None:
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for database, table in (
+            ("main", "contracts"),
+            ("archive", "contracts_archive"),
+        ):
+            connection.execute(
+                f"ALTER TABLE {database}.{table} DROP COLUMN reminder_count"
+            )
+            connection.execute(
+                f"ALTER TABLE {database}.{table} DROP COLUMN last_reminded_at"
+            )
+            connection.execute(
+                f"ALTER TABLE {database}.{table} DROP COLUMN client_phone"
+            )
+        connection.execute("UPDATE main.schema_version SET version=5")
+        connection.execute("UPDATE archive.schema_version SET version=5")
         connection.commit()
 
 
@@ -246,3 +268,82 @@ def test_v5_migration_rolls_back_pair_after_partial_failure(
     assert versions == (4, 4)
     assert "occupation_label" not in columns
     assert block_kind == "bank"
+
+
+def test_explicit_v6_migration_preserves_existing_contracts_and_adds_reminders(
+    settings, initialized_databases, insert_test_contract
+):
+    insert_test_contract(cell_number="41", end_date="2026-07-30")
+    _downgrade_fixture_to_v5(settings)
+
+    result = migrate_v5_to_v6(settings, occurred_at=WHEN)
+
+    assert result.changed and result.from_version == 5 and result.to_version == 6
+    assert result.backup is not None
+    with open_write(settings, attach_archive=True) as connection:
+        versions = (
+            connection.execute(
+                "SELECT version FROM main.schema_version"
+            ).fetchone()[0],
+            connection.execute(
+                "SELECT version FROM archive.schema_version"
+            ).fetchone()[0],
+        )
+        main_columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA main.table_info(contracts)"
+            )
+        }
+        archive_columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA archive.table_info(contracts_archive)"
+            )
+        }
+        contract = connection.execute(
+            """
+            SELECT client_full_name, client_phone, last_reminded_at, reminder_count
+            FROM main.contracts WHERE cell_number='41'
+            """
+        ).fetchone()
+    assert versions == (6, 6)
+    assert {"client_phone", "last_reminded_at", "reminder_count"} <= main_columns
+    assert {"client_phone", "last_reminded_at", "reminder_count"} <= archive_columns
+    assert tuple(contract) == ("Тестовый Клиент", None, None, 0)
+
+
+def test_v6_migration_rolls_back_both_databases_after_partial_failure(
+    settings, initialized_databases
+):
+    _downgrade_fixture_to_v5(settings)
+
+    with pytest.raises(DatabaseMigrationError):
+        migrate_v5_to_v6(
+            settings,
+            occurred_at=WHEN,
+            after_working_change=lambda: (_ for _ in ()).throw(
+                RuntimeError("test")
+            ),
+        )
+
+    with open_write(settings, attach_archive=True) as connection:
+        versions = (
+            connection.execute(
+                "SELECT version FROM main.schema_version"
+            ).fetchone()[0],
+            connection.execute(
+                "SELECT version FROM archive.schema_version"
+            ).fetchone()[0],
+        )
+        main_columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA main.table_info(contracts)"
+            )
+        }
+        archive_columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA archive.table_info(contracts_archive)"
+            )
+        }
+    assert versions == (5, 5)
+    assert "client_phone" not in main_columns
+    assert "client_phone" not in archive_columns

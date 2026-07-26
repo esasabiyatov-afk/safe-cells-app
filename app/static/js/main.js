@@ -43,6 +43,8 @@ const state = {
   manualOperationId: null,
   blockOperationId: null,
   blockSubmitting: false,
+  reminderOperationIds: new Map(),
+  reminderSubmittingContracts: new Set(),
 };
 
 const elements = {
@@ -82,10 +84,14 @@ const elements = {
   blockedCardActions: document.getElementById("blockedCardActions"),
   blockedActionError: document.getElementById("blockedActionError"),
   blockReleaseAction: document.getElementById("blockReleaseAction"),
+  reminderPanel: document.getElementById("reminderPanel"),
+  reminderStatus: document.getElementById("reminderStatus"),
+  reminderAction: document.getElementById("reminderAction"),
   privateToggle: document.getElementById("privateToggle"),
   privateError: document.getElementById("privateError"),
   privateDetails: document.getElementById("privateDetails"),
   privateIdCardNumber: document.getElementById("privateIdCardNumber"),
+  privateClientPhone: document.getElementById("privateClientPhone"),
   privateIdCardIssuer: document.getElementById("privateIdCardIssuer"),
   privateIdCardIssueDate: document.getElementById("privateIdCardIssueDate"),
   privateAccountNumber: document.getElementById("privateAccountNumber"),
@@ -125,6 +131,7 @@ const elements = {
   editForm: document.getElementById("editForm"),
   editError: document.getElementById("editError"),
   editClientFullName: document.getElementById("editClientFullName"),
+  editClientPhone: document.getElementById("editClientPhone"),
   editAccountNumber: document.getElementById("editAccountNumber"),
   editIdCardNumber: document.getElementById("editIdCardNumber"),
   editIdCardIssuer: document.getElementById("editIdCardIssuer"),
@@ -214,6 +221,7 @@ const elements = {
   statementFileState: document.getElementById("statementFileState"),
   statementImportStatus: document.getElementById("statementImportStatus"),
   clientFullName: document.getElementById("clientFullName"),
+  clientPhone: document.getElementById("clientPhone"),
   accountNumber: document.getElementById("accountNumber"),
   idCardNumber: document.getElementById("idCardNumber"),
   idCardIssuer: document.getElementById("idCardIssuer"),
@@ -546,6 +554,7 @@ function renderOccupiedOperationalDetails(cell) {
     elements.dialogRentDays.textContent = "Без срока";
     elements.dialogDays.textContent = "Не применяется";
     elements.privateCardSection.hidden = true;
+    elements.reminderPanel.hidden = true;
     elements.contractCardActions.hidden = true;
     elements.blockedCardActions.hidden = false;
     elements.blockedActionError.hidden = true;
@@ -562,6 +571,15 @@ function renderOccupiedOperationalDetails(cell) {
   elements.dialogEndDate.textContent = formatDate(cell.end_date);
   elements.dialogRentDays.textContent = `${cell.total_days} дн.`;
   elements.dialogDays.textContent = daysLabel(cell);
+  const reminderEligible = cell.status === "expiring" || cell.status === "overdue";
+  elements.reminderPanel.hidden = !reminderEligible;
+  elements.reminderStatus.textContent = cell.reminder_status || "Не оповещён";
+  elements.reminderAction.textContent = cell.reminder_count > 0
+    ? "Напомнить повторно"
+    : "Напомнить";
+  elements.reminderAction.disabled = state.reminderSubmittingContracts.has(
+    cell.contract_ref,
+  );
   elements.privateCardSection.hidden = false;
   elements.contractCardActions.hidden = false;
   elements.blockedCardActions.hidden = true;
@@ -677,6 +695,7 @@ function formatDateTime(value) {
 
 function clearPrivateValues() {
   elements.privateIdCardNumber.textContent = "";
+  elements.privateClientPhone.textContent = "";
   elements.privateIdCardIssuer.textContent = "";
   elements.privateIdCardIssueDate.textContent = "";
   elements.privateAccountNumber.textContent = "";
@@ -756,6 +775,7 @@ async function togglePrivateDetails() {
       return;
     }
     elements.privateIdCardNumber.textContent = payload.id_card_number || "Не указано";
+    elements.privateClientPhone.textContent = payload.client_phone || "Не указано";
     elements.privateIdCardIssuer.textContent = payload.id_card_issuer || "Не указано";
     elements.privateIdCardIssueDate.textContent = payload.id_card_issue_date ? formatDate(payload.id_card_issue_date) : "Не указано";
     elements.privateAccountNumber.textContent = payload.account_number || "Не указано";
@@ -901,6 +921,7 @@ async function importEditStatementData() {
       || !elements.editDialog.open
     ) return;
     elements.editClientFullName.value = payload.client_full_name;
+    elements.editClientPhone.value = payload.client_phone;
     elements.editAccountNumber.value = payload.account_number;
     elements.editIdCardNumber.value = payload.id_card_number;
     elements.editIdCardIssuer.value = payload.id_card_issuer;
@@ -976,6 +997,7 @@ async function submitEdit(event) {
   try {
     const editPayload = {operation_id: state.editOperationId, contract_ref: cell.contract_ref,
       cell_number: cell.number, client_full_name: elements.editClientFullName.value,
+      client_phone: elements.editClientPhone.value,
       account_number: elements.editAccountNumber.value, id_card_number: elements.editIdCardNumber.value,
       id_card_issuer: elements.editIdCardIssuer.value, id_card_issue_date: dateInputIso(elements.editIdCardIssueDate)};
     if (cell.legacy_imported) editPayload.deposit_amount = Number(elements.editDepositAmount.value);
@@ -1965,6 +1987,7 @@ async function submitContract(event) {
         operation_id: state.activeOperationId,
         cell_number: cell.number,
         client_full_name: elements.clientFullName.value,
+        client_phone: elements.clientPhone.value,
         id_card_number: elements.idCardNumber.value,
         id_card_issuer: elements.idCardIssuer.value,
         id_card_issue_date: dateInputIso(elements.idCardIssueDate),
@@ -2029,11 +2052,111 @@ function createCellButton(cell) {
   return button;
 }
 
+function reminderButtonText(cell) {
+  return cell.reminder_count > 0 ? "Напомнить повторно" : "Напомнить";
+}
+
+function showReminderError(message) {
+  if (
+    elements.dialog.open
+    && state.activeOccupiedCell
+    && (state.activeOccupiedCell.status === "expiring"
+      || state.activeOccupiedCell.status === "overdue")
+  ) {
+    elements.privateError.textContent = message;
+    elements.privateError.hidden = false;
+    return;
+  }
+  elements.errorMessage.textContent = message;
+  elements.errorBanner.hidden = false;
+}
+
+async function sendWhatsAppReminder(cell) {
+  if (
+    !cell?.contract_ref
+    || state.reminderSubmittingContracts.has(cell.contract_ref)
+  ) {
+    return;
+  }
+  const whatsappWindow = window.open("about:blank", "_blank");
+  if (!whatsappWindow) {
+    showReminderError(
+      "Браузер заблокировал новое окно. Разрешите всплывающие окна и повторите.",
+    );
+    return;
+  }
+  const operationId = state.reminderOperationIds.get(cell.contract_ref)
+    || createOperationId();
+  state.reminderOperationIds.set(cell.contract_ref, operationId);
+  state.reminderSubmittingContracts.add(cell.contract_ref);
+  renderGrid();
+  if (state.activeOccupiedCell?.contract_ref === cell.contract_ref) {
+    renderOccupiedOperationalDetails(state.activeOccupiedCell);
+  }
+  try {
+    const response = await fetch(elements.body.dataset.reminderUrl, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        operation_id: operationId,
+        cell_number: cell.number,
+        contract_ref: cell.contract_ref,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.message || "Не удалось сохранить оповещение");
+    }
+    state.reminderOperationIds.delete(cell.contract_ref);
+    whatsappWindow.location.replace(payload.whatsapp_url);
+    await refreshCells();
+    showSuccess(
+      payload.warning
+        ? `${payload.reminder_status}. ${payload.warning}`
+        : payload.reminder_status,
+    );
+  } catch (error) {
+    whatsappWindow.close();
+    showReminderError(errorMessage(error, "Не удалось подготовить напоминание"));
+  } finally {
+    state.reminderSubmittingContracts.delete(cell.contract_ref);
+    renderGrid();
+    if (state.activeOccupiedCell?.contract_ref === cell.contract_ref) {
+      renderOccupiedOperationalDetails(state.activeOccupiedCell);
+    }
+  }
+}
+
+function createCellItem(cell) {
+  const cellButton = createCellButton(cell);
+  const reminderSection = elements.status.value;
+  if (
+    !["expiring", "overdue"].includes(reminderSection)
+    || cell.status !== reminderSection
+    || cell.block_kind
+  ) {
+    return cellButton;
+  }
+  const item = document.createElement("div");
+  item.className = `cell-reminder-item ${cell.status}`;
+  const status = document.createElement("span");
+  status.className = "cell-reminder-status";
+  status.textContent = cell.reminder_status || "Не оповещён";
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "cell-reminder-button";
+  action.textContent = reminderButtonText(cell);
+  action.disabled = state.reminderSubmittingContracts.has(cell.contract_ref);
+  action.addEventListener("click", () => sendWhatsAppReminder(cell));
+  item.append(cellButton, status, action);
+  return item;
+}
+
 function renderGrid() {
   const cells = filteredCells();
   const fragment = document.createDocumentFragment();
   for (const cell of cells) {
-    fragment.appendChild(createCellButton(cell));
+    fragment.appendChild(createCellItem(cell));
   }
   elements.grid.replaceChildren(fragment);
   elements.grid.setAttribute("aria-busy", "false");
@@ -2166,6 +2289,11 @@ elements.blockReleaseAction.addEventListener("click", releaseBlockedCell);
 elements.privateToggle.addEventListener("click", togglePrivateDetails);
 elements.historyToggle.addEventListener("click", toggleRenewalHistory);
 elements.renewAction.addEventListener("click", openRenewalDialog);
+elements.reminderAction.addEventListener("click", () => {
+  if (state.activeOccupiedCell) {
+    sendWhatsAppReminder(state.activeOccupiedCell);
+  }
+});
 elements.closeAction.addEventListener("click", openClosureDialog);
 elements.editAction.addEventListener("click", openEditDialog);
 elements.documentAction.addEventListener("click", openDocumentDialog);

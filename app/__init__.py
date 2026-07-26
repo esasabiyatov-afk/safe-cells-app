@@ -22,6 +22,7 @@ from app.routes import (
     main_blueprint,
     rental_blueprint,
     renewals_blueprint,
+    reminders_blueprint,
     system_blueprint,
     statement_import_blueprint,
 )
@@ -80,6 +81,7 @@ def create_app(
     app.register_blueprint(documents_blueprint)
     app.register_blueprint(rental_blueprint)
     app.register_blueprint(renewals_blueprint)
+    app.register_blueprint(reminders_blueprint)
     app.register_blueprint(system_blueprint)
     app.register_blueprint(statement_import_blueprint)
 

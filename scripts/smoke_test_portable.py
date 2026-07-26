@@ -217,6 +217,7 @@ def main() -> int:
                     "operation_id": str(uuid4()),
                     "cell_number": "1",
                     "client_full_name": "Тестовый Клиент Portable",
+                    "client_phone": "+996 (555) 000-001",
                     "id_card_number": "TEST-ID-PORTABLE",
                     "id_card_issuer": "Тестовый орган",
                     "id_card_issue_date": "2017-09-12",

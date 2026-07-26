@@ -18,6 +18,7 @@
 | ТЗ 15, D-030 | Разрешённое редактирование и аудит | `services/editing.py`, `routes/editing.py`, `log`, UI | Этап 8; whitelist/audit/API/browser |
 | ТЗ 12, 15, D-053–D-060 | Отдельная вкладка общего журнала с ФИО и XLSX-выпиской, особая занятость и импорт заявления АБС | `services/journal.py`, `services/journal_reports.py`, `services/cell_blocks.py`, `services/statement_import.py`, routes/templates/static | Этап 11.5; 17 тестов журнала, 8 особой занятости, 13 импорта заявления, API и браузер |
 | ТЗ 16 | Сетка, поиск, фильтры, счётчики | templates/static/routes | Этап 2; UI и ручное одобрение |
+| Требование 26.07.2026, D-078 | WhatsApp-напоминание только для истекающей/просроченной аренды, телефон, точное время и счётчик конкретного договора | `services/reminders.py`, `services/phone_numbers.py`, reminder route, schema/migration 5→6, templates/static | 9 профильных тестов, миграция/rollback, полный `pytest`, portable smoke |
 | ТЗ 17 | Невозможные переходы | service validators + DB constraints | Этапы 4, 6, 7; negative tests |
 | ТЗ 18 | Не добавлять ячейки в этой версии | admin routes | Этап 10; отсутствие endpoint/UI |
 | AGENTS 6 | Нет реальных ПДн, параметризованный SQL, секреты вне Git | все слои | Все этапы; log/SQL/.gitignore tests |

@@ -36,6 +36,7 @@ def contract_payload(**overrides) -> dict:
         "operation_id": str(uuid4()),
         "cell_number": "1",
         "client_full_name": "Тестовый Клиент",
+        "client_phone": "+996 (555) 123-456",
         "id_card_number": "TEST-ID-001",
         "id_card_issuer": "Тестовый орган выдачи",
         "id_card_issue_date": "2017-09-12",
@@ -187,6 +188,7 @@ def test_create_contract_saves_active_row_audit_and_verified_backups(
         row = connection.execute("SELECT * FROM contracts").fetchone()
         assert row["cell_number"] == "1"
         assert row["client_full_name"] == "Тестовый Клиент"
+        assert row["client_phone"] == "+996 (555) 123-456"
         assert row["rent_price_minor"] == 450
         assert row["deposit_amount_minor"] == 1500
         assert row["created_by"] == "test-user"
@@ -302,6 +304,7 @@ def test_concurrent_requests_leave_one_active_contract(
     ("field", "value", "message"),
     [
         ("client_full_name", "", "ФИО клиента"),
+        ("client_phone", "", "Номер телефона"),
         ("id_card_number", "", "ID-карты"),
         ("id_card_issuer", "", "Орган выдачи"),
         ("id_card_issue_date", "", "дату выдачи ID-карты"),

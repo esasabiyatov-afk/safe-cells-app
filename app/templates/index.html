@@ -19,6 +19,7 @@
   data-edit-url="{{ url_for('editing.edit') }}"
   data-renewal-quote-url="{{ url_for('renewals.calculate') }}"
   data-renewal-url="{{ url_for('renewals.confirm') }}"
+  data-reminder-url="{{ url_for('reminders.send') }}"
   data-closure-quote-url="{{ url_for('closures.calculate') }}"
   data-closure-url="{{ url_for('closures.confirm') }}"
   data-cell-block-manual-url="{{ url_for('cell_blocks.occupy_manual') }}"
@@ -193,6 +194,14 @@
       </div>
     </dl>
 
+    <section class="reminder-panel" id="reminderPanel" aria-label="Напоминание клиенту" hidden>
+      <div>
+        <span>Оповещение через WhatsApp</span>
+        <strong id="reminderStatus">Не оповещён</strong>
+      </div>
+      <button class="whatsapp-button" id="reminderAction" type="button">Напомнить</button>
+    </section>
+
     <p class="legacy-contract-note" id="legacyContractNote" hidden>Договор перенесён из старого отчёта. Сумма оплаты и применённый тариф неизвестны. Перед продлением или закрытием заполните недостающие реквизиты через «Редактировать данные».</p>
 
     <section class="private-card-section" id="privateCardSection" aria-labelledby="privateSectionTitle">
@@ -206,6 +215,7 @@
       <div class="calculation-error" id="privateError" role="alert" hidden></div>
       <dl class="private-details" id="privateDetails" hidden>
         <div><dt>Серия и номер ID-карты</dt><dd id="privateIdCardNumber"></dd></div>
+        <div><dt>Номер телефона</dt><dd id="privateClientPhone"></dd></div>
         <div><dt>Орган выдачи</dt><dd id="privateIdCardIssuer"></dd></div>
         <div><dt>Дата выдачи ID-карты</dt><dd id="privateIdCardIssueDate"></dd></div>
         <div><dt>Номер счёта из АБС</dt><dd id="privateAccountNumber"></dd></div>
@@ -461,6 +471,7 @@
       </section>
       <div class="contract-fields">
         <label class="contract-field contract-field--wide"><span>ФИО клиента *</span><input id="editClientFullName" maxlength="200" required autocomplete="off"></label>
+        <label class="contract-field"><span>Номер телефона *</span><input id="editClientPhone" type="tel" maxlength="50" placeholder="+996 (___) ___-___" required autocomplete="off"></label>
         <label class="contract-field"><span>Номер счёта из АБС *</span><input id="editAccountNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Серия и номер ID-карты *</span><input id="editIdCardNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Орган выдачи *</span><input id="editIdCardIssuer" maxlength="200" required autocomplete="off"></label>
@@ -656,6 +667,10 @@
         <label class="contract-field contract-field--wide">
           <span>ФИО клиента *</span>
           <input id="clientFullName" name="client_full_name" type="text" maxlength="200" required autocomplete="off">
+        </label>
+        <label class="contract-field">
+          <span>Номер телефона *</span>
+          <input id="clientPhone" name="client_phone" type="tel" maxlength="50" placeholder="+996 (___) ___-___" required autocomplete="off">
         </label>
         <label class="contract-field">
           <span>Номер счёта из АБС *</span>

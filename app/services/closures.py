@@ -401,23 +401,24 @@ def close_contract(
                 """
                 INSERT INTO archive.contracts_archive(
                     contract_id, cell_number, client_full_name,
-                    id_card_number, id_card_issuer,
+                    client_phone, id_card_number, id_card_issuer,
                     id_card_issue_date, account_number, extra_fields_json,
                     start_date, end_date, rent_days, price_per_day_minor,
                     rent_price_minor, deposit_amount_minor, created_at, created_by,
-                    updated_at, updated_by, closed_at, close_date, close_reason,
+                    updated_at, updated_by, last_reminded_at, reminder_count,
+                    closed_at, close_date, close_reason,
                     close_kind, unused_days, penalty_days, penalty_rate_minor,
                     penalty_amount_minor, deposit_refund_minor, closed_by, operation_id
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 tuple(contract[key] for key in (
                     "contract_id", "cell_number", "client_full_name",
-                    "id_card_number", "id_card_issuer",
+                    "client_phone", "id_card_number", "id_card_issuer",
                     "id_card_issue_date", "account_number", "extra_fields_json",
                     "start_date", "end_date", "rent_days", "price_per_day_minor",
                     "rent_price_minor", "deposit_amount_minor", "created_at", "created_by",
-                    "updated_at", "updated_by",
+                    "updated_at", "updated_by", "last_reminded_at", "reminder_count",
                 )) + (
                     timestamp, quote.close_date, quote.close_reason, quote.close_kind,
                     quote.unused_days, quote.penalty_days, quote.penalty_rate,

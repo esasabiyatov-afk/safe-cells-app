@@ -18,7 +18,7 @@ def test_health_reports_schema_versions(
     assert response.status_code == 200
     assert response.get_json() == {
         "status": "ok",
-        "schema_versions": {"archive": 5, "working": 5},
+        "schema_versions": {"archive": 6, "working": 6},
     }
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time
 import sqlite3
 from typing import Any
 
@@ -16,6 +16,7 @@ from app.db.connections import (
 )
 from app.services.statuses import calculate_status
 from app.services.legacy_contracts import legacy_status
+from app.services.reminders import ReminderValidationError, reminder_status_text
 
 
 class CellsReadError(RuntimeError):
@@ -80,7 +81,12 @@ def _archived_client_names(
     return {str(row["contract_id"]): str(row["client_full_name"]) for row in rows}
 
 
-def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
+def list_cells(
+    settings: Settings,
+    *,
+    as_of_date: date,
+    as_of_datetime: datetime | None = None,
+) -> dict[str, Any]:
     """Return operational fields plus the explicitly approved abbreviated name."""
 
     try:
@@ -102,6 +108,8 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                     contracts.rent_days,
                     contracts.client_full_name,
                     contracts.extra_fields_json,
+                    contracts.last_reminded_at,
+                    contracts.reminder_count,
                     cell_blocks.block_kind,
                     cell_blocks.source_contract_id,
                     cell_blocks.occupation_label
@@ -128,6 +136,9 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
     except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
         raise CellsReadError(NETWORK_ERROR_MESSAGE) from exc
 
+    effective_now = as_of_datetime or datetime.combine(
+        as_of_date, time.min
+    ).astimezone()
     cells: list[dict[str, Any]] = []
     counts = {
         "free": 0,
@@ -188,6 +199,14 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
             display_name = client_display_name(row["client_full_name"])
         legacy = legacy_status(row["extra_fields_json"])
         counts[status_value] += 1
+        try:
+            notification_status = reminder_status_text(
+                row["last_reminded_at"], as_of=effective_now
+            )
+        except ReminderValidationError as exc:
+            raise InvalidStoredDataError(
+                "Некорректное время оповещения договора."
+            ) from exc
         cells.append(
             {
                 "number": row["number"],
@@ -205,6 +224,9 @@ def list_cells(settings: Settings, *, as_of_date: date) -> dict[str, Any]:
                 "total_days": total_days,
                 "client_display_name": display_name,
                 "days_remaining": days_remaining,
+                "last_reminded_at": row["last_reminded_at"],
+                "reminder_count": int(row["reminder_count"] or 0),
+                "reminder_status": notification_status,
                 **legacy,
             }
         )

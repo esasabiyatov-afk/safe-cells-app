@@ -19,7 +19,7 @@ from app.db.connections import (
 from app.db.seed import load_cell_seed, seed_working_database
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class DatabaseInitializationError(RuntimeError):
@@ -107,6 +107,7 @@ WORKING_SCHEMA: tuple[str, ...] = (
         contract_id TEXT PRIMARY KEY,
         cell_number TEXT NOT NULL UNIQUE REFERENCES cells(number),
         client_full_name TEXT NOT NULL CHECK(length(trim(client_full_name)) > 0),
+        client_phone TEXT,
         id_card_number TEXT NOT NULL CHECK(length(trim(id_card_number)) > 0),
         id_card_issuer TEXT NOT NULL CHECK(length(trim(id_card_issuer)) > 0),
         id_card_issue_date TEXT NOT NULL,
@@ -123,7 +124,9 @@ WORKING_SCHEMA: tuple[str, ...] = (
         created_at TEXT NOT NULL,
         created_by TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        updated_by TEXT NOT NULL
+        updated_by TEXT NOT NULL,
+        last_reminded_at TEXT,
+        reminder_count INTEGER NOT NULL DEFAULT 0 CHECK(reminder_count >= 0)
     )
     """,
     """
@@ -181,6 +184,7 @@ ARCHIVE_SCHEMA: tuple[str, ...] = (
         contract_id TEXT PRIMARY KEY,
         cell_number TEXT NOT NULL,
         client_full_name TEXT NOT NULL,
+        client_phone TEXT,
         id_card_number TEXT NOT NULL,
         id_card_issuer TEXT NOT NULL,
         id_card_issue_date TEXT NOT NULL,
@@ -196,6 +200,8 @@ ARCHIVE_SCHEMA: tuple[str, ...] = (
         created_by TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         updated_by TEXT NOT NULL,
+        last_reminded_at TEXT,
+        reminder_count INTEGER NOT NULL DEFAULT 0 CHECK(reminder_count >= 0),
         closed_at TEXT NOT NULL,
         close_date TEXT NOT NULL,
         close_reason TEXT NOT NULL,

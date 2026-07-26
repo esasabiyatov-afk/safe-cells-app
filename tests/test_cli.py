@@ -176,3 +176,40 @@ def test_v5_migration_cli_requires_confirmation_and_updates_both_versions(
         "migrate-v5", "--config", str(config_path), "--confirm", "MIGRATE-TO-5"
     ]) == 0
     assert "Версия схемы: 5" in capsys.readouterr().out
+
+
+def test_v6_migration_cli_requires_confirmation_and_updates_both_versions(
+    settings: Settings, initialized_databases, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "config-v6.json"
+    config_path.write_text(
+        json.dumps({"database_directory": str(settings.database_directory)}),
+        encoding="utf-8",
+    )
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for database, table in (
+            ("main", "contracts"),
+            ("archive", "contracts_archive"),
+        ):
+            connection.execute(
+                f"ALTER TABLE {database}.{table} DROP COLUMN reminder_count"
+            )
+            connection.execute(
+                f"ALTER TABLE {database}.{table} DROP COLUMN last_reminded_at"
+            )
+            connection.execute(
+                f"ALTER TABLE {database}.{table} DROP COLUMN client_phone"
+            )
+        connection.execute("UPDATE main.schema_version SET version=5")
+        connection.execute("UPDATE archive.schema_version SET version=5")
+        connection.commit()
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["migrate-v6", "--config", str(config_path), "--confirm", "WRONG"])
+    assert exc_info.value.code == 2
+    assert main([
+        "migrate-v6", "--config", str(config_path), "--confirm", "MIGRATE-TO-6"
+    ]) == 0
+    assert "Версия схемы: 6" in capsys.readouterr().out

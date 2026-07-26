@@ -12,6 +12,7 @@ from app.routes.journal import journal_blueprint
 from app.routes.main import main_blueprint
 from app.routes.rental import rental_blueprint
 from app.routes.renewals import renewals_blueprint
+from app.routes.reminders import reminders_blueprint
 from app.routes.system import system_blueprint
 from app.routes.statement_import import statement_import_blueprint
 
@@ -28,6 +29,7 @@ __all__ = [
     "main_blueprint",
     "rental_blueprint",
     "renewals_blueprint",
+    "reminders_blueprint",
     "system_blueprint",
     "statement_import_blueprint",
 ]
