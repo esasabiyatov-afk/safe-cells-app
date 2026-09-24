@@ -16,12 +16,19 @@ from app.db.connections import (
     open_readonly,
     validate_database_pair,
 )
+from app.services.ui_preferences import (
+    DEFAULT_UI_PREFERENCES,
+    UI_PREFERENCE_KEYS,
+    UiPreferenceError,
+    parse_config_bool,
+)
 
 
 ACTION_LABELS = {
     "contract.created": "Открытие",
     "contract.renewed": "Продление",
     "contract.closed": "Закрытие",
+    "contract.action_cancelled": "Отмена",
     "cell.manual_occupied": "Открытие",
     "cell.manual_released": "Закрытие",
     # Legacy actions stay readable after the explicit schema 4→5 migration.
@@ -33,6 +40,7 @@ FILTER_LABELS = {
     "contract.created": "Открытие",
     "contract.renewed": "Продление",
     "contract.closed": "Закрытие",
+    "contract.action_cancelled": "Отмена",
     "overdue": "Просрочка",
     "cell.key_restored": "Ключ восстановлен",
 }
@@ -96,13 +104,32 @@ def _safe_changes(raw_value: object) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _display_date(value: object) -> str | None:
+RUSSIAN_MONTHS = (
+    "",
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+)
+
+
+def _display_date(value: object, *, words: bool) -> str | None:
     if not isinstance(value, str):
         return None
     try:
         parsed = date.fromisoformat(value)
     except ValueError:
         return None
+    if words:
+        return f"{parsed.day} {RUSSIAN_MONTHS[parsed.month]} {parsed.year} года"
     return parsed.strftime("%d.%m.%Y")
 
 
@@ -116,13 +143,13 @@ def _safe_nonnegative_integer(value: object) -> int | None:
     return normalized if normalized >= 0 else None
 
 
-def _summary(action: str, raw_changes: object) -> str:
+def _summary(action: str, raw_changes: object, *, date_words: bool) -> str:
     """Build a summary from an explicit allow-list; never return raw audit values."""
 
     changes = _safe_changes(raw_changes)
     if action == "contract.created":
-        start = _display_date(changes.get("start_date"))
-        end = _display_date(changes.get("end_date"))
+        start = _display_date(changes.get("start_date"), words=date_words)
+        end = _display_date(changes.get("end_date"), words=date_words)
         days = _safe_nonnegative_integer(changes.get("rent_days"))
         parts = []
         if start and end:
@@ -132,8 +159,8 @@ def _summary(action: str, raw_changes: object) -> str:
         return "; ".join(parts) or "Открыт новый договор аренды."
 
     if action == "contract.renewed":
-        new_start = _display_date(changes.get("new_start_date"))
-        new_end = _display_date(changes.get("new_end_date"))
+        new_start = _display_date(changes.get("new_start_date"), words=date_words)
+        new_end = _display_date(changes.get("new_end_date"), words=date_words)
         days = _safe_nonnegative_integer(changes.get("renewal_days"))
         penalty_days = _safe_nonnegative_integer(changes.get("penalty_days"))
         parts = []
@@ -160,6 +187,23 @@ def _summary(action: str, raw_changes: object) -> str:
         if penalty_days:
             parts.append(f"Просрочка: {penalty_days} дн.")
         return "; ".join(parts) or "Договор закрыт, ячейка освобождена."
+
+    if action == "contract.action_cancelled":
+        original_action = changes.get("original_action")
+        cancelled_label = {
+            "contract.created": "Отменено открытие",
+            "contract.renewed": "Отменено продление",
+            "contract.closed": "Отменено закрытие",
+        }.get(original_action, "Отменено действие")
+        reason = changes.get("reason")
+        allowed_reasons = {
+            "Клиент изменил решение",
+            "Нужно изменить срок",
+            "Ошибка при вводе",
+        }
+        if reason in allowed_reasons:
+            return f"{cancelled_label}; причина: {reason}."
+        return f"{cancelled_label}."
 
     if action in {"cell.manual_occupied", "cell.bank_occupied"}:
         return "Открыто без договора и срока."
@@ -264,7 +308,7 @@ def _readonly_uri(path: Path) -> str:
     return f"{path.absolute().as_uri()}?mode=ro"
 
 
-def _entry(row: sqlite3.Row) -> dict[str, Any]:
+def _entry(row: sqlite3.Row, *, date_words: bool) -> dict[str, Any]:
     client_name = str(row["client_full_name"] or "").strip()
     action = str(row["action"])
     changes = _safe_changes(row["changes_json"])
@@ -297,7 +341,7 @@ def _entry(row: sqlite3.Row) -> dict[str, Any]:
             f"{action_label} / Просрочка" if is_overdue else action_label
         ),
         "is_overdue": is_overdue,
-        "summary": _summary(action, row["changes_json"]),
+        "summary": _summary(action, row["changes_json"], date_words=date_words),
     }
 
 
@@ -308,7 +352,8 @@ def _read_entries(
     parameters: list[object],
     limit: int,
     offset: int = 0,
-) -> tuple[int, list[dict[str, Any]], list[str]]:
+    use_stored_preferences: bool = True,
+) -> tuple[int, list[dict[str, Any]], list[str], dict[str, bool]]:
     paths = validate_database_pair(settings)
     with open_readonly(
         paths.archive, busy_timeout_ms=settings.busy_timeout_ms
@@ -320,6 +365,20 @@ def _read_entries(
             "ATTACH DATABASE ? AS working", (_readonly_uri(paths.working),)
         )
         connection.execute("BEGIN")
+        preferences = dict(DEFAULT_UI_PREFERENCES)
+        if use_stored_preferences:
+            preference_rows = connection.execute(
+                f"""SELECT key, value FROM working.config
+                    WHERE key IN ({','.join('?' for _ in UI_PREFERENCE_KEYS)})""",
+                tuple(sorted(UI_PREFERENCE_KEYS)),
+            ).fetchall()
+            for preference_row in preference_rows:
+                key = str(preference_row["key"])
+                preferences[key] = parse_config_bool(
+                    preference_row["value"], key=key
+                )
+        else:
+            preferences["display_date_words"] = False
         rows = connection.execute(
             f"""
             SELECT
@@ -368,7 +427,15 @@ def _read_entries(
             ).fetchall()
         ]
         connection.rollback()
-    return total, [_entry(row) for row in rows], employees
+    return (
+        total,
+        [
+            _entry(row, date_words=preferences["display_date_words"])
+            for row in rows
+        ],
+        employees,
+        preferences,
+    )
 
 
 def list_journal_entries(
@@ -402,20 +469,21 @@ def list_journal_entries(
     )
 
     try:
-        total, entries, employees = _read_entries(
+        total, entries, employees, preferences = _read_entries(
             settings,
             where_sql=where_sql,
             parameters=parameters,
             limit=size,
             offset=(page_number - 1) * size,
         )
-    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+    except (DatabaseUnavailableError, UiPreferenceError, OSError, sqlite3.Error) as exc:
         raise JournalReadError(NETWORK_ERROR_MESSAGE) from exc
 
     page_count = max(1, math.ceil(total / size))
     return {
         "entries": entries,
         "filters": {"employees": employees},
+        "ui_preferences": preferences,
         "pagination": {
             "page": page_number,
             "page_size": size,
@@ -451,13 +519,14 @@ def list_journal_report_entries(
         cell, action_code, start, end, client, employee_name
     )
     try:
-        total, entries, _employees = _read_entries(
+        total, entries, _employees, _preferences = _read_entries(
             settings,
             where_sql=where_sql,
             parameters=parameters,
             limit=MAX_REPORT_ROWS + 1,
+            use_stored_preferences=False,
         )
-    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+    except (DatabaseUnavailableError, UiPreferenceError, OSError, sqlite3.Error) as exc:
         raise JournalReadError(NETWORK_ERROR_MESSAGE) from exc
     if total > MAX_REPORT_ROWS:
         raise JournalValidationError(

@@ -37,6 +37,27 @@ def test_edit_updates_active_contract_and_writes_full_audit(
         changes = json.loads(audit["changes_json"])
         assert changes["client_full_name"] == {"old": "Тестовый Клиент", "new": "Исправленный Клиент"}
 
+
+def test_edit_can_link_abs_id_but_cannot_replace_it(settings, insert_test_contract):
+    insert_test_contract(cell_number="1", end_date="2026-07-20")
+    edit_contract(
+        settings,
+        payload=payload(abs_customer_id="777"),
+        employee="editor",
+        occurred_at=WHEN,
+    )
+    with pytest.raises(EditingConflictError, match="другому ID"):
+        edit_contract(
+            settings,
+            payload=payload(
+                operation_id=str(uuid4()),
+                client_full_name="Ещё одно имя",
+                abs_customer_id="778",
+            ),
+            employee="editor",
+            occurred_at=WHEN,
+        )
+
 def test_edit_rejects_forbidden_financial_or_date_field(settings, initialized_databases):
     with pytest.raises(EditingValidationError, match="запрещённое"):
         edit_contract(settings, payload=payload(end_date="2030-01-01"), employee="editor", occurred_at=WHEN)

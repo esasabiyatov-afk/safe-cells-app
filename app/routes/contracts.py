@@ -25,6 +25,7 @@ from app.services.contract_details import (
     get_contract_client_name,
     get_private_contract_details,
 )
+from app.services.payment_details import build_payment_copy
 
 
 contracts_blueprint = Blueprint("contracts", __name__, url_prefix="/api/contracts")
@@ -45,7 +46,13 @@ def _private_request_payload():
 def create():
     settings: Settings = current_app.extensions["safe_cells_settings"]
     employee = current_app.config["EMPLOYEE_PROVIDER"]()
-    payload = request.get_json(silent=True)
+    raw_payload = request.get_json(silent=True)
+    payload = dict(raw_payload) if isinstance(raw_payload, dict) else raw_payload
+    document_employee = current_app.config["DOCUMENT_EMPLOYEE_PROVIDER"](
+        payload.pop("document_employee_id", None)
+        if isinstance(payload, dict)
+        else None
+    )
     timestamp_provider = current_app.config.get(
         "TIMESTAMP_PROVIDER", lambda: datetime.now().astimezone()
     )
@@ -69,11 +76,26 @@ def create():
         return jsonify({"message": str(exc)}), 500
     status = 200 if result.repeated else 201
     response = result.to_dict()
+    response["payment_copy"] = build_payment_copy(
+        action_kind="opening",
+        client_full_name=result.client_full_name,
+        cell_number=result.cell_number,
+        rent_days=result.rent_days,
+        rent_amount=result.rent_price,
+    )
+    if not result.repeated and isinstance(payload, dict):
+        response["undo"] = {
+            "original_operation_id": str(payload.get("operation_id")),
+            "contract_ref": result.contract_id,
+            "cell_number": result.cell_number,
+            "action_kind": "opening",
+        }
     response.update(
         document_event_payload(
             event_type="opening",
             contract_ref=result.contract_id,
             event_ref=None,
+            employee=document_employee,
         )
     )
     return jsonify(response), status

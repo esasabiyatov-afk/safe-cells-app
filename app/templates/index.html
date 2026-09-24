@@ -19,6 +19,7 @@
   data-edit-url="{{ url_for('editing.edit') }}"
   data-renewal-quote-url="{{ url_for('renewals.calculate') }}"
   data-renewal-url="{{ url_for('renewals.confirm') }}"
+  data-action-cancel-url="{{ url_for('action_cancellations.cancel') }}"
   data-reminder-url="{{ url_for('reminders.send') }}"
   data-closure-quote-url="{{ url_for('closures.calculate') }}"
   data-closure-url="{{ url_for('closures.confirm') }}"
@@ -29,8 +30,14 @@
   data-document-generate-url="{{ url_for('documents.generate') }}"
   data-document-download-url="{{ url_for('documents.download') }}"
   data-statement-import-url="{{ url_for('statement_import.extract') }}"
+  data-abs-status-url="{{ url_for('abs_integration.status') }}"
+  data-abs-login-url="{{ url_for('abs_integration.login') }}"
+  data-abs-refresh-url="{{ url_for('abs_integration.refresh_linked') }}"
+  data-abs-search-url="{{ url_for('abs_integration.search') }}"
+  data-abs-customer-url="{{ url_for('abs_integration.customer') }}"
   data-employee-directory-url="{{ url_for('employee.directory') }}"
   data-employee-select-url="{{ url_for('employee.select') }}"
+  data-admin-select-url="{{ url_for('employee.select_admin') }}"
   data-private-token="{{ private_token }}"
   data-runtime-enabled="{{ 'true' if runtime_enabled else 'false' }}"
   data-runtime-heartbeat-url="{{ url_for('system.runtime_heartbeat') }}"
@@ -42,6 +49,9 @@
   data-admin-acknowledge-url="{{ url_for('admin.acknowledge') }}"
   data-admin-logout-url="{{ url_for('admin.logout') }}"
   data-admin-settings-url="{{ url_for('admin.settings_view') }}"
+  data-admin-reminder-templates-url="{{ url_for('admin.reminder_templates_update') }}"
+  data-admin-cells-url="{{ url_for('admin.cell_create') }}"
+  data-admin-cells-lifecycle-url="{{ url_for('admin.cell_lifecycle_update') }}"
   data-admin-access-url="{{ url_for('admin.access_update') }}"
   data-admin-password-url="{{ url_for('admin.password_change') }}"
   data-admin-templates-url="{{ url_for('admin.template_upload') }}"
@@ -55,8 +65,8 @@
 >
   <header class="page-header">
     <div class="brand-block">
-      <p class="eyebrow">ЗАО АКБ «Толубай»</p>
       <h1>Депозитарий</h1>
+      <p class="eyebrow">ЗАО АКБ «Толубай»</p>
     </div>
 
     <section class="stats" aria-label="Сводка по ячейкам">
@@ -67,7 +77,6 @@
       <article class="stat-card stat-occupied">
         <div class="occupied-total"><span class="stat-label">Занято</span><strong id="statOccupied">—</strong></div>
         <div class="occupied-breakdown">
-          <span class="normal"><small>В норме</small><b id="statNormal">—</b></span>
           <span class="expiring"><small>Истекает</small><b id="statExpiring">—</b></span>
           <span class="overdue"><small>Просрочено</small><b id="statOverdue">—</b></span>
         </div>
@@ -85,7 +94,7 @@
         <span class="connection-dot" aria-hidden="true"></span>
         <span>Проверка данных…</span>
       </div>
-      <button class="settings-icon-button" id="adminOpen" type="button" title="Настройки" aria-label="Настройки">⚙</button>
+      <button class="settings-icon-button" id="adminOpen" type="button" title="Настройки" aria-label="Настройки" hidden>⚙</button>
       <button class="runtime-exit-button" type="button" data-runtime-exit {% if not runtime_enabled %}hidden{% endif %}>Выйти</button>
     </div>
   </header>
@@ -128,6 +137,10 @@
           Журнал ячеек
         </a>
 
+        <button class="secondary-button abs-refresh-button" id="absRefreshClients" type="button" title="Обновляет ФИО, телефоны и данные ID-карты только у договоров с сохранённым ID клиента АБС">
+          Обновить клиентов из АБС
+        </button>
+
       </div>
 
       <div class="status-row">
@@ -166,6 +179,7 @@
 
   <dialog class="cell-dialog occupied-card" id="cellDialog" aria-labelledby="dialogTitle">
     <button class="dialog-close" id="dialogClose" type="button" aria-label="Закрыть карточку">×</button>
+    <button class="quiet-card-action" id="occupiedUndoAction" type="button" hidden>Отменить последнее действие</button>
     <p class="section-kicker" id="cellDialogKicker">Карточка занятой ячейки</p>
     <div class="occupied-card-heading">
       <div><h2 id="dialogTitle">—</h2><p class="dialog-dimensions" id="dialogSize">—</p></div>
@@ -216,6 +230,7 @@
       <dl class="private-details" id="privateDetails" hidden>
         <div><dt>Серия и номер ID-карты</dt><dd id="privateIdCardNumber"></dd></div>
         <div><dt>Номер телефона</dt><dd id="privateClientPhone"></dd></div>
+        <div><dt>Номер WhatsApp</dt><dd id="privateClientWhatsappPhone"></dd></div>
         <div><dt>Орган выдачи</dt><dd id="privateIdCardIssuer"></dd></div>
         <div><dt>Дата выдачи ID-карты</dt><dd id="privateIdCardIssueDate"></dd></div>
         <div><dt>Номер счёта из АБС</dt><dd id="privateAccountNumber"></dd></div>
@@ -262,23 +277,167 @@
     <form id="employeeForm">
       <div class="calculation-error" id="employeeError" role="alert" hidden></div>
       <div class="employee-choice-grid" id="employeeChoices" role="group" aria-label="Выбор сотрудника"></div>
+      <section class="admin-startup-login" id="employeeAdminLogin" hidden>
+        <h3 id="employeeAdminLoginTitle">Вход администратора</h3>
+        <p class="dialog-note" id="employeeAdminLoginNote">Введите пароль. Он потребуется только один раз до закрытия приложения.</p>
+        <label class="contract-field contract-field--wide" id="employeeAdminNameField" hidden>
+          <span>ФИО администратора *</span>
+          <input id="employeeAdminName" maxlength="128" autocomplete="name">
+        </label>
+        <label class="contract-field contract-field--wide">
+          <span>Пароль администратора *</span>
+          <input id="employeeAdminPassword" type="password" maxlength="256" autocomplete="current-password">
+        </label>
+        <label class="contract-field contract-field--wide" id="employeeAdminPasswordConfirmField" hidden>
+          <span>Повторите пароль *</span>
+          <input id="employeeAdminPasswordConfirm" type="password" maxlength="256" autocomplete="new-password">
+        </label>
+        <div class="dialog-actions">
+          <button class="secondary-button" id="employeeAdminBack" type="button">Назад</button>
+          <button class="primary-button" id="employeeAdminSubmit" type="button">Войти</button>
+        </div>
+      </section>
       <div class="dialog-actions">
         <button class="secondary-button" id="employeeOpenSettings" type="button" hidden>Открыть настройки</button>
       </div>
     </form>
   </dialog>
 
+  <dialog class="contract-dialog" id="executorDialog" aria-labelledby="executorDialogTitle">
+    <p class="section-kicker">Документы</p>
+    <h2 id="executorDialogTitle">Выберите исполнителя</h2>
+    <p class="dialog-note">Операция будет записана от имени администратора. В документы будет подставлен выбранный сотрудник.</p>
+    <div class="calculation-error" id="executorError" role="alert" hidden></div>
+    <div class="employee-choice-grid" id="executorChoices" role="group" aria-label="Исполнитель для документов"></div>
+    <div class="dialog-actions">
+      <button class="secondary-button" id="executorCancel" type="button">Отмена</button>
+    </div>
+  </dialog>
+
+  <dialog class="contract-dialog abs-login-dialog" id="absLoginDialog" aria-labelledby="absLoginDialogTitle">
+    <p class="section-kicker">Подключение к АБС</p>
+    <h2 id="absLoginDialogTitle">Вход в АБС</h2>
+    <p class="dialog-note">Введите данные один раз после запуска приложения. Логин и пароль не сохраняются.</p>
+    <form id="absLoginForm" autocomplete="off">
+      <div class="calculation-error" id="absLoginError" role="alert" hidden></div>
+      <label class="contract-field contract-field--wide">
+        <span>Логин АБС *</span>
+        <input id="absLoginName" type="text" maxlength="200" autocomplete="off" required>
+      </label>
+      <label class="contract-field contract-field--wide">
+        <span>Пароль АБС *</span>
+        <input id="absLoginPassword" type="password" maxlength="300" autocomplete="off" required>
+      </label>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="absLoginLater" type="button">Позже</button>
+        <button class="primary-button" id="absLoginSubmit" type="submit">Войти</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="contract-dialog reminder-phone-dialog" id="reminderPhoneDialog" aria-labelledby="reminderPhoneTitle">
+    <p class="section-kicker">Напоминание через WhatsApp</p>
+    <h2 id="reminderPhoneTitle">Выберите номер клиента</h2>
+    <p class="dialog-note">WhatsApp Web откроется только после выбора номера.</p>
+    <div class="calculation-error" id="reminderPhoneError" role="alert" hidden></div>
+    <div class="reminder-phone-options" id="reminderPhoneOptions"></div>
+    <div class="dialog-actions">
+      <button class="secondary-button" id="reminderPhoneCancel" type="button">Отмена</button>
+    </div>
+  </dialog>
+
   <dialog class="contract-dialog operation-result-dialog" id="operationResultDialog" aria-labelledby="operationResultTitle">
     <p class="section-kicker">Операция завершена</p>
     <h2 id="operationResultTitle">Готово</h2>
     <p class="operation-result-summary" id="operationResultSummary"></p>
+    <section class="payment-copy-panel" id="paymentCopyPanel" aria-labelledby="paymentCopyTitle" hidden>
+      <div class="payment-copy-heading">
+        <div>
+          <h3 id="paymentCopyTitle">Для проводки в АБС</h3>
+          <p>Поля доступны только до закрытия этого окна.</p>
+        </div>
+        <span id="paymentCopyStatus" role="status" aria-live="polite"></span>
+      </div>
+      <div class="payment-copy-group">
+        <label>
+          <span>Назначение платежа</span>
+          <span class="payment-copy-control">
+            <input id="paymentRentPurpose" type="text" readonly>
+            <button class="copy-field-button" type="button" data-copy-target="paymentRentPurpose">Копировать</button>
+          </span>
+        </label>
+        <label>
+          <span id="paymentRentAmountLabel">Сумма аренды</span>
+          <span class="payment-copy-control payment-copy-control--amount">
+            <input id="paymentRentAmount" type="text" inputmode="numeric" readonly>
+            <button class="copy-field-button" type="button" data-copy-target="paymentRentAmount">Копировать</button>
+          </span>
+        </label>
+      </div>
+      <div class="payment-copy-group payment-copy-penalty" id="paymentPenaltyGroup" hidden>
+        <label>
+          <span>Назначение штрафа</span>
+          <span class="payment-copy-control">
+            <input id="paymentPenaltyPurpose" type="text" readonly>
+            <button class="copy-field-button" type="button" data-copy-target="paymentPenaltyPurpose">Копировать</button>
+          </span>
+        </label>
+        <label>
+          <span>Сумма штрафа</span>
+          <span class="payment-copy-control payment-copy-control--amount">
+            <input id="paymentPenaltyAmount" type="text" inputmode="numeric" readonly>
+            <button class="copy-field-button" type="button" data-copy-target="paymentPenaltyAmount">Копировать</button>
+          </span>
+        </label>
+      </div>
+    </section>
     <section class="operation-documents-result" id="operationDocumentsSuccess">
       <h3>Документы сформированы</h3>
       <p>Скачайте готовые копии через браузер. Исходные шаблоны не изменяются.</p>
       <ul id="operationDocumentList"></ul>
     </section>
     <div class="calculation-error" id="operationDocumentsWarning" role="alert" hidden></div>
-    <div class="dialog-actions"><button class="primary-button" id="operationResultClose" type="button">Понятно</button></div>
+    <section class="operation-undo-panel" id="operationUndoPanel" hidden>
+      <h3>Отмена последнего действия</h3>
+      <p>Состояние договора вернётся назад, но запись останется в журнале. Уже скачанные документы нужно удалить и не использовать.</p>
+      <label class="contract-field">
+        <span>Причина отмены</span>
+        <select id="operationUndoReason">
+          <option value="client_changed">Клиент изменил решение</option>
+          <option value="change_term">Нужно изменить срок</option>
+          <option value="input_error">Ошибка при вводе</option>
+        </select>
+      </label>
+      <div class="calculation-error" id="operationUndoError" role="alert" hidden></div>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="operationUndoBack" type="button">Не отменять</button>
+        <button class="danger-button" id="operationUndoConfirm" type="button">Да, вернуть состояние назад</button>
+      </div>
+    </section>
+    <div class="dialog-actions">
+      <button class="secondary-button" id="operationUndoOpen" type="button" hidden>Отменить действие</button>
+      <button class="primary-button" id="operationResultClose" type="button">Понятно</button>
+    </div>
+  </dialog>
+
+  <dialog class="contract-dialog action-cancellation-dialog" id="cardUndoDialog" aria-labelledby="cardUndoTitle">
+    <p class="section-kicker">Возврат состояния</p>
+    <h2 id="cardUndoTitle">Отменить последнее действие?</h2>
+    <p class="dialog-note" id="cardUndoNote">Состояние договора вернётся назад, а обе операции останутся в журнале.</p>
+    <label class="contract-field contract-field--wide">
+      <span>Причина отмены</span>
+      <select id="cardUndoReason">
+        <option value="client_changed">Клиент изменил решение</option>
+        <option value="change_term">Нужно изменить срок</option>
+        <option value="input_error">Ошибка при вводе</option>
+      </select>
+    </label>
+    <div class="calculation-error" id="cardUndoError" role="alert" hidden></div>
+    <p class="action-cancellation-warning">Уже скачанные документы нужно удалить и не использовать.</p>
+    <div class="dialog-actions">
+      <button class="secondary-button" id="cardUndoBack" type="button">Назад</button>
+      <button class="danger-button" id="cardUndoConfirm" type="button">Да, вернуть состояние назад</button>
+    </div>
   </dialog>
 
   <dialog class="admin-dialog" id="adminDialog" aria-labelledby="adminDialogTitle">
@@ -307,7 +466,7 @@
     <div id="adminContent" hidden>
       <div class="admin-heading-actions">
         <p class="dialog-note">Изменения сохраняются в общей базе и фиксируются в журнале.</p>
-        <button class="secondary-button" id="adminLogout" type="button">Закрыть доступ</button>
+        <button class="secondary-button" id="adminLogout" type="button">Закрыть настройки</button>
       </div>
       <div class="calculation-error" id="adminError" role="alert" hidden></div>
       <div class="success-banner" id="adminSuccess" role="status" hidden></div>
@@ -316,9 +475,10 @@
         <button type="button" class="admin-tab is-active" data-admin-tab="general" aria-selected="true">Общие</button>
         <button type="button" class="admin-tab" data-admin-tab="tariffs" aria-selected="false">Тарифы</button>
         <button type="button" class="admin-tab" data-admin-tab="templates" aria-selected="false">Шаблоны</button>
+        <button type="button" class="admin-tab" data-admin-tab="dictionary" aria-selected="false">Словарь</button>
+        <button type="button" class="admin-tab" data-admin-tab="cells" aria-selected="false">Ячейки</button>
         <button type="button" class="admin-tab" data-admin-tab="employees" aria-selected="false">Сотрудники</button>
-        <button type="button" class="admin-tab" data-admin-tab="legacy-import" aria-selected="false">Перенос старых договоров</button>
-        <button type="button" class="admin-tab" data-admin-tab="backups" aria-selected="false">Резервные копии</button>
+        <button type="button" class="admin-tab" data-admin-tab="service" aria-selected="false">Дополнительно</button>
         <button type="button" class="admin-tab" data-admin-tab="access" aria-selected="false">Доступ</button>
       </nav>
 
@@ -329,6 +489,17 @@
           <div class="admin-config-grid">
             <label class="contract-field"><span>Считать договор истекающим за, дней</span><input id="adminExpiringDays" type="number" min="1" max="365" required><small>Выделяет приближающиеся окончания на главном экране.</small></label>
             <label class="contract-field"><span>Залог за ключ, сом</span><input id="adminDeposit" type="number" min="0" max="10000000" required><small>Подставляется при открытии и закрытии договора.</small></label>
+            <label class="contract-field"><span>Сеанс АБС, минут</span><input id="adminAbsSessionMinutes" type="number" min="1" max="1440" required><small>После этого времени приложение снова запросит логин и пароль АБС.</small></label>
+          </div>
+          <div class="admin-display-options">
+            <label class="admin-option-card">
+              <input id="adminDisplayDateWords" type="checkbox">
+              <span><strong>Месяц в датах прописью</strong><small>Только в приложении: например, 27 июля 2026 года. Хранение данных и документы не меняются.</small></span>
+            </label>
+            <label class="admin-option-card">
+              <input id="adminShowUiHints" type="checkbox">
+              <span><strong>Показывать мелкие подсказки</strong><small>Можно отключить вспомогательные пояснения под полями и формами.</small></span>
+            </label>
           </div>
           <div class="dialog-actions"><button class="primary-button" id="adminGeneralSubmit" type="submit">Сохранить общие параметры</button></div>
         </form>
@@ -337,25 +508,50 @@
       <section class="admin-panel" data-admin-panel="tariffs" hidden>
         <form id="adminTariffsForm" class="admin-section">
           <h3>Тарифы, сом за день</h3>
-          <p class="dialog-note">Срок и высота уже утверждены. Меняется только ставка за один день.</p>
+          <p class="dialog-note">Размер указывается полностью: высота × ширина × глубина. Диапазоны сроков едины для всех размеров и не меняют уже оформленные договоры.</p>
+          <div class="admin-range-editor">
+            <div class="admin-backup-heading">
+              <div>
+                <h4>Диапазоны срока аренды</h4>
+                <p class="dialog-note">Первый диапазон начинается с 1 дня, последний действует без ограничения. Пропуски и пересечения не допускаются.</p>
+              </div>
+              <button class="secondary-button" id="adminTariffPeriodAdd" type="button">Добавить диапазон</button>
+            </div>
+            <div id="adminTariffPeriodRows" class="admin-range-rows"></div>
+          </div>
           <section class="admin-penalty-section" aria-labelledby="adminPenaltyTitle">
             <h4 id="adminPenaltyTitle">Штрафные ставки</h4>
-            <p class="dialog-note">Выберите единое правило для всех высот. Новая настройка применяется только к следующим продлениям и закрытиям.</p>
+            <p class="dialog-note">Выберите единое правило для всех размеров. Новая настройка применяется только к следующим продлениям и закрытиям.</p>
             <div class="admin-penalty-mode-options">
-              <label class="admin-penalty-mode-card"><input id="adminPenaltyLinked" type="radio" name="penaltyRateMode" value="linked"><span><strong>Тариф 1–30 дней</strong><small>Штрафная ставка автоматически следует за обычным тарифом 1–30 дней для каждой высоты.</small></span></label>
+              <label class="admin-penalty-mode-card"><input id="adminPenaltyLinked" type="radio" name="penaltyRateMode" value="linked"><span><strong>Первый диапазон тарифа</strong><small>Штрафная ставка автоматически следует за обычным тарифом первого диапазона для каждого размера.</small></span></label>
               <label class="admin-penalty-mode-card"><input id="adminPenaltyManual" type="radio" name="penaltyRateMode" value="manual"><span><strong>Ручная ставка</strong><small>Отдельные значения штрафа, не связанные с обычными тарифами аренды.</small></span></label>
             </div>
             <div class="admin-penalty-manual" id="adminPenaltyManualFields" hidden>
-              <p class="dialog-note">Укажите отдельную ставку штрафа за один день для каждой высоты.</p>
+              <p class="dialog-note">Укажите отдельную ставку штрафа за один день для каждого размера.</p>
               <div class="admin-penalty-grid" id="adminPenaltyRows"></div>
             </div>
           </section>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Высота</th><th>Срок</th><th>Ставка</th></tr></thead><tbody id="adminTariffRows"></tbody></table></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Размер, мм</th><th>Срок</th><th>Ставка</th></tr></thead><tbody id="adminTariffRows"></tbody></table></div>
           <div class="dialog-actions"><button class="primary-button" id="adminTariffsSubmit" type="submit">Сохранить тарифы</button></div>
         </form>
       </section>
 
       <section class="admin-panel" data-admin-panel="templates" hidden>
+        <form id="adminReminderTemplatesForm" class="admin-section">
+          <h3>Тексты WhatsApp</h3>
+          <p class="dialog-note">Текст полностью редактируется. Подстановки можно добавлять и удалять; доступные коды перечислены во вкладке «Словарь».</p>
+          <div class="admin-reminder-template-grid">
+            <label class="contract-field contract-field--wide">
+              <span>Истекающая аренда</span>
+              <textarea id="adminReminderExpiring" maxlength="4000" rows="11" required></textarea>
+            </label>
+            <label class="contract-field contract-field--wide">
+              <span>Просроченная аренда</span>
+              <textarea id="adminReminderOverdue" maxlength="4000" rows="12" required></textarea>
+            </label>
+          </div>
+          <div class="dialog-actions"><button class="primary-button" id="adminReminderTemplatesSubmit" type="submit">Сохранить тексты WhatsApp</button></div>
+        </form>
         <div class="admin-section">
           <h3>Шаблоны DOCX</h3>
           <p class="dialog-note">Здесь видно, для какой операции используется каждый файл и какие данные он заполняет. Если полей нет, документ просто копируется как готовый файл — его можно получить и распечатать.</p>
@@ -371,11 +567,19 @@
         </div>
       </section>
 
+      <section class="admin-panel" data-admin-panel="dictionary" hidden>
+        <div class="admin-section">
+          <h3>Общий словарь данных</h3>
+          <p class="dialog-note">Один и тот же простой формат <strong>[Раздел.Поле]</strong> используется в текстах WhatsApp и шаблонах DOCX. Нажмите код, чтобы скопировать. Возле специальных полей указано, где они доступны.</p>
+          <div class="admin-placeholder-dictionary" id="adminReminderDictionary"></div>
+        </div>
+      </section>
+
       <section class="admin-panel" data-admin-panel="access" hidden>
         <div class="admin-section">
           <h3>Доступ к настройкам</h3>
-          <p class="dialog-note">Выберите удобный для отдела вариант. Оба режима относятся только к этому окну, обычная работа с ячейками не меняется.</p>
-          <form id="adminAccessForm" class="admin-access-options">
+          <p class="dialog-note">В настройки входит только администратор. Пароль запрашивается один раз при выборе администратора и действует до закрытия приложения.</p>
+          <form id="adminAccessForm" class="admin-access-options" hidden>
             <label class="admin-access-card"><input type="radio" name="adminAccessMode" value="password" id="adminAccessPassword"><span><strong>1. Общий пароль отдела</strong><small>Простой пароль без требований к длине и составу. Сначала создайте его ниже.</small></span></label>
             <label class="admin-access-card"><input type="radio" name="adminAccessMode" value="acknowledgement" id="adminAccessAcknowledgement"><span><strong>2. Без пароля, с предупреждением</strong><small>Для входа достаточно отметить, что настройки меняет руководитель отдела.</small></span></label>
             <div class="dialog-actions"><button class="primary-button" id="adminAccessSubmit" type="submit">Сохранить способ входа</button></div>
@@ -405,42 +609,128 @@
         </div>
       </section>
 
-      <section class="admin-panel" data-admin-panel="backups" hidden>
+      <section class="admin-panel" data-admin-panel="cells" hidden>
         <div class="admin-section">
-          <div class="admin-backup-heading">
-            <div>
-              <h3>Резервные копии и целостность</h3>
-              <p class="dialog-note">Приложение не восстанавливает базы автоматически. Восстановление доступно только при подтверждённом повреждении и после закрытия других экземпляров.</p>
-            </div>
-            <button class="secondary-button" id="adminBackupCheck" type="button">Проверить сейчас</button>
+          <h3>Изменение состава сейфовых ячеек</h3>
+          <p class="dialog-note">Редкая административная операция после фактической установки или демонтажа сейфов. Действующих ячеек: <strong id="adminCellCount">—</strong>. Выведено из эксплуатации: <strong id="adminRetiredCellCount">—</strong>.</p>
+          <div class="admin-warning">
+            Сначала подготовьте весь список. До итогового подтверждения база не изменяется. Если в одной строке будет ошибка, не сохранится ни одна ячейка.
           </div>
-          <div class="admin-backup-status" id="adminBackupStatus" role="status"></div>
-          <div class="admin-backup-list" id="adminBackupRows"></div>
+          <form id="adminCellAddForm" class="admin-cell-add-form">
+            <label class="contract-field">
+              <span>Номер ячейки</span>
+              <input id="adminCellNumber" type="number" min="1" max="999999" step="1" required autocomplete="off">
+            </label>
+            <label class="contract-field">
+              <span>Высота</span>
+              <input id="adminCellHeight" type="number" min="1" max="10000" step="1" required>
+            </label>
+            <label class="contract-field">
+              <span>Ширина</span>
+              <input id="adminCellWidth" type="number" min="1" max="10000" step="1" required>
+            </label>
+            <label class="contract-field">
+              <span>Глубина</span>
+              <input id="adminCellDepth" type="number" min="1" max="10000" step="1" required>
+            </label>
+            <div class="dialog-actions"><button class="secondary-button" id="adminCellAdd" type="submit">Добавить в список</button></div>
+          </form>
+          <p class="dialog-note">Если такого полного размера ещё нет, после добавления строк появятся поля тарифов. База изменится только после итогового сохранения всей партии.</p>
+          <div id="adminCellDraft" class="admin-cell-draft" hidden>
+            <div class="admin-backup-heading">
+              <div>
+                <h4>Предварительный список</h4>
+                <p class="dialog-note" id="adminCellDraftSummary"></p>
+              </div>
+              <button class="secondary-button" id="adminCellDraftClear" type="button">Очистить список</button>
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Номер</th><th>Размер, мм</th><th></th></tr></thead>
+                <tbody id="adminCellDraftRows"></tbody>
+              </table>
+            </div>
+            <section id="adminCellNewTariffs" class="admin-new-size-tariffs" hidden>
+              <h4>Тарифы для новых размеров</h4>
+              <p class="dialog-note">Эти размеры впервые появляются в базе. Заполните цену за день для каждого действующего диапазона.</p>
+              <div id="adminCellNewTariffRows"></div>
+            </section>
+            <div class="dialog-actions">
+              <button class="primary-button" id="adminCellSaveBatch" type="button">Проверить и сохранить всю партию</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <h3>Действующие и выведенные ячейки</h3>
+          <p class="dialog-note">Свободную ячейку можно вывести из эксплуатации. Ошибочно добавленную через настройки ячейку можно окончательно удалить только пока у неё не было договоров.</p>
+          <label class="contract-field admin-cell-search">
+            <span>Найти номер</span>
+            <input id="adminCellSearch" type="search" autocomplete="off" placeholder="Например, 127">
+          </label>
+          <div class="admin-table-wrap admin-cell-list-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Номер</th><th>Размер, мм</th><th>Состояние</th><th>Действие</th></tr></thead>
+              <tbody id="adminCellRows"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
-      <section class="admin-panel" data-admin-panel="legacy-import" hidden>
+      <section class="admin-panel" data-admin-panel="service" hidden>
         <div class="admin-section">
-          <h3>Перенос старых договоров из Excel</h3>
-          <p class="dialog-note">Функция предназначена только для первичного заполнения пустой рабочей базы. Сначала файл проверяется без записи. ФИО и даты не сохраняются во временные файлы и не попадают в технические сообщения.</p>
-          <form id="adminLegacyPreviewForm" class="admin-upload-form">
-            <label class="contract-field contract-field--wide">
-              <span>Отчёт по занятым и свободным ячейкам, XLSX</span>
-              <input id="adminLegacyFile" type="file" accept=".xlsx" required>
-              <small>Нужны столбцы: номер ячейки, статус, ФИО, дата начала и дата окончания.</small>
-            </label>
-            <div class="dialog-actions"><button class="secondary-button" id="adminLegacyPreview" type="submit">Проверить файл без записи</button></div>
-          </form>
-          <div class="admin-legacy-result" id="adminLegacyResult" hidden>
-            <h4>Результат проверки</h4>
-            <p id="adminLegacySummary"></p>
-            <ul id="adminLegacyIssues" class="admin-legacy-issues"></ul>
-            <label class="admin-acknowledgement" id="adminLegacyConfirmationField" hidden>
-              <input id="adminLegacyConfirmation" type="checkbox">
-              <span>Я проверил итог. Перенести все договоры одним действием. Понимаю, что суммы, тарифы, паспортные данные и номера счетов останутся помечены как неизвестные.</span>
-            </label>
-            <div class="dialog-actions"><button class="primary-button" id="adminLegacyImport" type="button" disabled>Перенести старые договоры</button></div>
-          </div>
+          <h3>Дополнительные инструменты</h3>
+          <p class="dialog-note">В обычной работе эти функции не требуются. Открывайте их только при первичной настройке или по указанию администратора.</p>
+
+          <details class="admin-tool-details" id="adminLegacyDetails">
+            <summary>Первичный перенос старых договоров</summary>
+            <div class="admin-tool-details__content">
+              <p class="dialog-note">Функция предназначена только для первичного заполнения пустой рабочей базы. Сначала файл проверяется без записи. ФИО и даты не сохраняются во временные файлы и не попадают в технические сообщения.</p>
+              <form id="adminLegacyPreviewForm" class="admin-upload-form">
+                <label class="contract-field contract-field--wide">
+                  <span>Отчёт по занятым и свободным ячейкам, XLSX</span>
+                  <input id="adminLegacyFile" type="file" accept=".xlsx" required>
+                  <small>Нужны столбцы: номер ячейки, статус, ФИО, дата начала и дата окончания.</small>
+                </label>
+                <div class="dialog-actions"><button class="secondary-button" id="adminLegacyPreview" type="submit">Проверить файл без записи</button></div>
+              </form>
+              <div class="admin-legacy-result" id="adminLegacyResult" hidden>
+                <h4>Результат проверки</h4>
+                <p id="adminLegacySummary"></p>
+                <ul id="adminLegacyIssues" class="admin-legacy-issues"></ul>
+                <section id="adminLegacyAbsSection" hidden>
+                  <h4>Привязка клиентов к АБС</h4>
+                  <p class="dialog-note">Поиск выполняется по ФИО. При нескольких совпадениях выберите нужного клиента. Счёт останется таким, как указан в Excel.</p>
+                  <div class="dialog-actions"><button class="secondary-button" id="adminLegacyAbsMatch" type="button">Найти клиентов и телефоны в АБС</button></div>
+                  <p id="adminLegacyAbsStatus" class="dialog-note" role="status"></p>
+                  <div id="adminLegacyAbsRows" class="admin-template-list"></div>
+                  <label class="admin-acknowledgement">
+                    <input id="adminLegacySkipAbs" type="checkbox">
+                    <span>Перенести без полной привязки к АБС. Для несопоставленных договоров ID и телефоны останутся пустыми.</span>
+                  </label>
+                </section>
+                <label class="admin-acknowledgement" id="adminLegacyConfirmationField" hidden>
+                  <input id="adminLegacyConfirmation" type="checkbox">
+                  <span>Я проверил итог и выбранных клиентов. Перенести все договоры одним действием.</span>
+                </label>
+                <div class="dialog-actions"><button class="primary-button" id="adminLegacyImport" type="button" disabled>Перенести старые договоры</button></div>
+              </div>
+            </div>
+          </details>
+
+          <details class="admin-tool-details" id="adminBackupDetails">
+            <summary>Резервные копии и восстановление</summary>
+            <div class="admin-tool-details__content">
+              <div class="admin-backup-heading">
+                <div>
+                  <p class="dialog-note">Приложение создаёт резервные копии автоматически. Восстановление доступно только при подтверждённом повреждении и после закрытия других экземпляров.</p>
+                </div>
+                <button class="secondary-button" id="adminBackupCheck" type="button">Проверить сейчас</button>
+              </div>
+              <div class="admin-backup-status" id="adminBackupStatus" role="status"></div>
+              <div class="admin-backup-list" id="adminBackupRows"></div>
+            </div>
+          </details>
         </div>
       </section>
     </div>
@@ -454,6 +744,22 @@
     <p class="legacy-contract-note" id="editLegacyNote" hidden>Это договор из старого отчёта. Проверьте реквизиты по бумажному договору. Если залог уже перенесён из Excel, повторно вводить его не требуется.</p>
     <form id="editForm" novalidate>
       <div class="calculation-error" id="editError" role="alert" hidden></div>
+      <section class="statement-import" aria-labelledby="editAbsImportTitle">
+        <div class="statement-import__heading">
+          <div>
+            <strong id="editAbsImportTitle">Получить актуальные данные из АБС</strong>
+            <span id="editAbsImportHint">Введите ID клиента или ФИО</span>
+          </div>
+        </div>
+        <div class="abs-customer-search">
+          <input id="editAbsSearch" type="search" maxlength="200" autocomplete="off" placeholder="ID клиента или ФИО">
+          <button class="secondary-button" id="editAbsSearchButton" type="button">Найти клиента</button>
+        </div>
+        <p class="statement-import__status" id="editAbsStatus" role="status" aria-live="polite" hidden></p>
+        <div class="abs-customer-results" id="editAbsResults" role="list"></div>
+        <div class="abs-account-results" id="editAbsAccounts" aria-label="Счета клиента"></div>
+        <p class="statement-import__note">Изменения сохранятся только после кнопки «Сохранить изменения». При ошибке текущие данные договора не меняются.</p>
+      </section>
       <section class="statement-import" id="editStatementImportSection" aria-labelledby="editStatementImportTitle" hidden>
         <div class="statement-import__heading">
           <div>
@@ -471,7 +777,8 @@
       </section>
       <div class="contract-fields">
         <label class="contract-field contract-field--wide"><span>ФИО клиента *</span><input id="editClientFullName" maxlength="200" required autocomplete="off"></label>
-        <label class="contract-field"><span>Номер телефона *</span><input id="editClientPhone" type="tel" maxlength="50" placeholder="+996 (___) ___-___" required autocomplete="off"></label>
+        <label class="contract-field"><span>Мобильный номер *</span><input id="editClientPhone" type="tel" maxlength="50" placeholder="+996 (___) ___-___" required autocomplete="off"></label>
+        <label class="contract-field"><span>Номер WhatsApp</span><input id="editClientWhatsappPhone" type="tel" maxlength="50" placeholder="+996 (___) ___-___" autocomplete="off"></label>
         <label class="contract-field"><span>Номер счёта из АБС *</span><input id="editAccountNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Серия и номер ID-карты *</span><input id="editIdCardNumber" maxlength="100" required autocomplete="off"></label>
         <label class="contract-field"><span>Орган выдачи *</span><input id="editIdCardIssuer" maxlength="200" required autocomplete="off"></label>
@@ -565,6 +872,7 @@
 
   <dialog class="rental-dialog" id="rentalDialog" aria-labelledby="rentalDialogTitle">
     <button class="dialog-close" id="rentalDialogClose" type="button" aria-label="Закрыть калькулятор">×</button>
+    <button class="quiet-card-action" id="rentalUndoAction" type="button" hidden>Отменить последнее действие</button>
     <p class="section-kicker">Расчёт аренды</p>
     <h2 id="rentalDialogTitle">Ячейка № —</h2>
     <p class="rental-cell-summary" id="rentalCellSummary">—</p>
@@ -648,6 +956,22 @@
 
     <form id="contractForm" autocomplete="off" novalidate>
       <div class="calculation-error" id="contractError" role="alert" hidden></div>
+      <section class="statement-import abs-customer-import" aria-labelledby="absCustomerImportTitle">
+        <div class="statement-import__heading">
+          <div>
+            <strong id="absCustomerImportTitle">Импорт клиента из АБС</strong>
+            <span>Найдите клиента по его ID или ФИО</span>
+          </div>
+        </div>
+        <div class="abs-customer-search">
+          <input id="absCustomerSearch" type="search" maxlength="200" autocomplete="off" placeholder="ID клиента или ФИО">
+          <button class="secondary-button" id="absCustomerSearchButton" type="button">Найти</button>
+        </div>
+        <p class="statement-import__status" id="absCustomerSearchStatus" role="status" aria-live="polite" hidden></p>
+        <div class="abs-customer-results" id="absCustomerResults" role="list"></div>
+        <div class="abs-account-results" id="absAccountResults" aria-label="Счета клиента"></div>
+        <p class="statement-import__note">После выбора клиента обязательно сверьте заполненные поля перед сохранением договора.</p>
+      </section>
       <section class="statement-import" aria-labelledby="statementImportTitle">
         <div class="statement-import__heading">
           <div>
@@ -669,8 +993,12 @@
           <input id="clientFullName" name="client_full_name" type="text" maxlength="200" required autocomplete="off">
         </label>
         <label class="contract-field">
-          <span>Номер телефона *</span>
+          <span>Мобильный номер *</span>
           <input id="clientPhone" name="client_phone" type="tel" maxlength="50" placeholder="+996 (___) ___-___" required autocomplete="off">
+        </label>
+        <label class="contract-field">
+          <span>Номер WhatsApp</span>
+          <input id="clientWhatsappPhone" name="client_whatsapp_phone" type="tel" maxlength="50" placeholder="+996 (___) ___-___" autocomplete="off">
         </label>
         <label class="contract-field">
           <span>Номер счёта из АБС *</span>

@@ -46,7 +46,13 @@ def calculate():
 @closures_blueprint.post("")
 def confirm():
     settings: Settings = current_app.extensions["safe_cells_settings"]
-    payload = request.get_json(silent=True)
+    raw_payload = request.get_json(silent=True)
+    payload = dict(raw_payload) if isinstance(raw_payload, dict) else raw_payload
+    document_employee = current_app.config["DOCUMENT_EMPLOYEE_PROVIDER"](
+        payload.pop("document_employee_id", None)
+        if isinstance(payload, dict)
+        else None
+    )
     timestamp_provider = current_app.config.get(
         "TIMESTAMP_PROVIDER", lambda: datetime.now().astimezone()
     )
@@ -69,11 +75,19 @@ def confirm():
     except ClosureWriteError as exc:
         return jsonify({"message": str(exc)}), 500
     response = result.to_dict()
+    if not result.repeated and isinstance(payload, dict):
+        response["undo"] = {
+            "original_operation_id": str(payload.get("operation_id")),
+            "contract_ref": result.contract_ref,
+            "cell_number": result.cell_number,
+            "action_kind": "closure",
+        }
     response.update(
         document_event_payload(
             event_type="closing",
             contract_ref=result.contract_ref,
             event_ref=str(payload.get("operation_id")) if isinstance(payload, dict) else None,
+            employee=document_employee,
         )
     )
     return jsonify(response), 200 if result.repeated else 201

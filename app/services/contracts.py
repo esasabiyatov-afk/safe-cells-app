@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 import json
+import re
 import sqlite3
 from typing import Any
 from uuid import UUID, uuid4
@@ -71,10 +72,12 @@ class ContractData:
     cell_number: str
     client_full_name: str
     client_phone: str
+    client_whatsapp_phone: str | None
     id_card_number: str
     id_card_issuer: str
     id_card_issue_date: str
     account_number: str
+    abs_customer_id: str | None
     start_date: str
     end_date: str
     rent_days: int
@@ -84,6 +87,7 @@ class ContractData:
 class ContractCreationResult:
     contract_id: str
     cell_number: str
+    client_full_name: str
     start_date: str
     end_date: str
     rent_days: int
@@ -95,7 +99,9 @@ class ContractCreationResult:
     warning: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload.pop("client_full_name")
+        return payload
 
 
 def _required_text(
@@ -133,6 +139,30 @@ def _operation_id(value: object) -> str:
         raise ContractValidationError(
             "Не удалось подготовить операцию. Обновите форму."
         ) from exc
+
+
+def _abs_customer_id(value: object) -> str | None:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise ContractValidationError("Некорректный ID клиента АБС.")
+    normalized = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,50}", normalized):
+        raise ContractValidationError("Некорректный ID клиента АБС.")
+    return normalized
+
+
+def _optional_phone(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or len(value.strip()) > 50:
+        raise ContractValidationError("Некорректный номер WhatsApp.")
+    normalized = value.strip()
+    try:
+        normalize_whatsapp_phone(normalized)
+    except PhoneNumberValidationError as exc:
+        raise ContractValidationError(str(exc)) from exc
+    return normalized
 
 
 def validate_contract_payload(payload: object) -> ContractData:
@@ -177,6 +207,9 @@ def validate_contract_payload(payload: object) -> ContractData:
             collapse_spaces=True,
         ),
         client_phone=client_phone,
+        client_whatsapp_phone=_optional_phone(
+            payload.get("client_whatsapp_phone")
+        ),
         id_card_number=_required_text(
             payload.get("id_card_number"), label="Серия и номер ID-карты", maximum=100
         ),
@@ -187,6 +220,7 @@ def validate_contract_payload(payload: object) -> ContractData:
         account_number=_required_text(
             payload.get("account_number"), label="Номер счёта", maximum=100
         ),
+        abs_customer_id=_abs_customer_id(payload.get("abs_customer_id")),
         start_date=start_date,
         end_date=end_date,
         rent_days=rent_days,
@@ -203,6 +237,7 @@ def _result_from_row(
     return ContractCreationResult(
         contract_id=str(row["contract_id"]),
         cell_number=str(row["cell_number"]),
+        client_full_name=str(row["client_full_name"]),
         start_date=str(row["start_date"]),
         end_date=str(row["end_date"]),
         rent_days=int(row["rent_days"]),
@@ -234,6 +269,17 @@ def _existing_operation_result(
     ):
         raise ContractConflictError(
             "Этот идентификатор операции уже использован. Обновите форму."
+        )
+    cancelled = connection.execute(
+        """
+        SELECT 1 FROM archive.operation_cancellations
+        WHERE original_operation_id=?
+        """,
+        (data.operation_id,),
+    ).fetchone()
+    if cancelled is not None:
+        raise ContractConflictError(
+            "Это открытие уже отменено. Начните оформление заново."
         )
     row = connection.execute(
         "SELECT * FROM contracts WHERE contract_id = ? AND cell_number = ?",
@@ -330,22 +376,25 @@ def create_contract(
                 """
                 INSERT INTO contracts(
                     contract_id, cell_number, client_full_name,
-                    client_phone, id_card_number, id_card_issuer,
-                    id_card_issue_date, account_number, extra_fields_json,
+                    client_phone, client_whatsapp_phone, id_card_number, id_card_issuer,
+                    id_card_issue_date, account_number, abs_customer_id,
+                    extra_fields_json,
                     start_date, end_date, rent_days, price_per_day_minor,
                     rent_price_minor, deposit_amount_minor, created_at, created_by,
                     updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     contract_id,
                     quote.cell_number,
                     data.client_full_name,
                     data.client_phone,
+                    data.client_whatsapp_phone,
                     data.id_card_number,
                     data.id_card_issuer,
                     data.id_card_issue_date,
                     data.account_number,
+                    data.abs_customer_id,
                     quote.start_date,
                     quote.end_date,
                     quote.rent_days,

@@ -17,6 +17,7 @@ from app.db.connections import (
 from app.services.statuses import calculate_status
 from app.services.legacy_contracts import legacy_status
 from app.services.reminders import ReminderValidationError, reminder_status_text
+from app.services.ui_preferences import UiPreferenceError, get_ui_preferences
 
 
 class CellsReadError(RuntimeError):
@@ -81,6 +82,58 @@ def _archived_client_names(
     return {str(row["contract_id"]): str(row["client_full_name"]) for row in rows}
 
 
+def _latest_cancellable_actions(
+    settings: Settings,
+    paths: DatabasePaths,
+    *,
+    as_of_date: date,
+) -> dict[str, dict[str, Any]]:
+    """Return only the latest same-day state-changing candidate for each cell."""
+
+    with open_readonly(
+        paths.archive, busy_timeout_ms=settings.busy_timeout_ms
+    ) as connection:
+        rows = connection.execute(
+            """
+            WITH ranked AS (
+                SELECT
+                    rowid AS audit_rowid,
+                    operation_id,
+                    occurred_at,
+                    action,
+                    contract_id,
+                    cell_number,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY cell_number ORDER BY rowid DESC
+                    ) AS position
+                FROM log
+                WHERE cell_number IS NOT NULL
+                  AND (
+                    action LIKE 'contract.%'
+                    OR action LIKE 'cell.%'
+                    OR action LIKE 'admin.cell.%'
+                  )
+            )
+            SELECT
+                ranked.*,
+                closed.operation_id AS archived_closure_operation,
+                closed.close_reason AS archived_close_reason
+            FROM ranked
+            LEFT JOIN contracts_archive AS closed
+              ON closed.operation_id=ranked.operation_id
+             AND closed.contract_id=ranked.contract_id
+             AND closed.cell_number=ranked.cell_number
+            WHERE ranked.position=1
+              AND ranked.action IN (
+                'contract.created', 'contract.renewed', 'contract.closed'
+              )
+              AND substr(ranked.occurred_at, 1, 10)=?
+            """,
+            (as_of_date.isoformat(),),
+        ).fetchall()
+    return {str(row["cell_number"]): dict(row) for row in rows}
+
+
 def list_cells(
     settings: Settings,
     *,
@@ -95,6 +148,10 @@ def list_cells(
             paths.working, busy_timeout_ms=settings.busy_timeout_ms
         ) as connection:
             threshold = _expiring_threshold(connection)
+            try:
+                ui_preferences = get_ui_preferences(connection)
+            except UiPreferenceError as exc:
+                raise InvalidStoredDataError(str(exc)) from exc
             rows = connection.execute(
                 """
                 SELECT
@@ -117,7 +174,7 @@ def list_cells(
                 CROSS JOIN vault_defaults
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
                 LEFT JOIN cell_blocks ON cell_blocks.cell_number = cells.number
-                WHERE vault_defaults.id = 1
+                WHERE vault_defaults.id = 1 AND cells.is_active = 1
                 ORDER BY CAST(cells.number AS INTEGER), cells.number
                 """
             ).fetchall()
@@ -130,6 +187,11 @@ def list_cells(
                 if row["block_kind"] == "lost_key"
                 and row["source_contract_id"] is not None
             },
+        )
+        cancellation_candidates = _latest_cancellable_actions(
+            settings,
+            paths,
+            as_of_date=as_of_date,
         )
     except InvalidStoredDataError:
         raise
@@ -207,6 +269,50 @@ def list_cells(
             raise InvalidStoredDataError(
                 "Некорректное время оповещения договора."
             ) from exc
+        raw_candidate = cancellation_candidates.get(str(row["number"]))
+        cancellable_action = None
+        if raw_candidate is not None:
+            action = str(raw_candidate["action"])
+            candidate_contract = str(raw_candidate["contract_id"] or "")
+            active_contract = str(row["contract_id"] or "")
+            if (
+                action in {"contract.created", "contract.renewed"}
+                and block_kind is None
+                and active_contract == candidate_contract
+            ):
+                cancellable_action = {
+                    "original_operation_id": str(raw_candidate["operation_id"]),
+                    "contract_ref": candidate_contract,
+                    "cell_number": str(row["number"]),
+                    "action_kind": (
+                        "opening"
+                        if action == "contract.created"
+                        else "renewal"
+                    ),
+                }
+            elif (
+                action == "contract.closed"
+                and row["contract_id"] is None
+                and raw_candidate["archived_closure_operation"] is not None
+            ):
+                lost_key_closure = (
+                    str(raw_candidate["archived_close_reason"]) == "Потеря ключа"
+                )
+                state_matches = (
+                    block_kind == "lost_key"
+                    and str(row["source_contract_id"] or "") == candidate_contract
+                    if lost_key_closure
+                    else block_kind is None
+                )
+                if state_matches:
+                    cancellable_action = {
+                        "original_operation_id": str(
+                            raw_candidate["operation_id"]
+                        ),
+                        "contract_ref": candidate_contract,
+                        "cell_number": str(row["number"]),
+                        "action_kind": "closure",
+                    }
         cells.append(
             {
                 "number": row["number"],
@@ -227,6 +333,7 @@ def list_cells(
                 "last_reminded_at": row["last_reminded_at"],
                 "reminder_count": int(row["reminder_count"] or 0),
                 "reminder_status": notification_status,
+                "cancellable_action": cancellable_action,
                 **legacy,
             }
         )
@@ -234,6 +341,7 @@ def list_cells(
     return {
         "as_of_date": as_of_date.isoformat(),
         "expiring_soon_days": threshold,
+        "ui_preferences": ui_preferences,
         "counts": counts,
         "cells": cells,
     }
@@ -263,6 +371,7 @@ def search_cell_numbers(settings: Settings, *, query: str) -> list[str]:
                 FROM cells
                 LEFT JOIN contracts ON contracts.cell_number = cells.number
                 LEFT JOIN cell_blocks ON cell_blocks.cell_number = cells.number
+                WHERE cells.is_active = 1
                 ORDER BY CAST(cells.number AS INTEGER), cells.number
                 """
             ).fetchall()

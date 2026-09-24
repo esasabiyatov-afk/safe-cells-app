@@ -167,9 +167,13 @@ def calculate_closure_quote_in_connection(
     reason = _reason_code(reason_code)
     row = connection.execute(
         """
-        SELECT contracts.*, cells.height_mm
+        SELECT contracts.*, cells.height_mm,
+               COALESCE(cells.width_mm, defaults.width_mm) AS width_mm,
+               COALESCE(cells.depth_mm, defaults.depth_mm) AS depth_mm
         FROM contracts JOIN cells ON cells.number = contracts.cell_number
+        CROSS JOIN vault_defaults defaults
         WHERE contracts.cell_number = ? AND contracts.contract_id = ?
+          AND defaults.id = 1
         """,
         (cell, ref),
     ).fetchone()
@@ -188,7 +192,10 @@ def calculate_closure_quote_in_connection(
     penalty_days = closing_penalty_days(close_date=close_date, end_date=end)
     try:
         penalty_rate = resolve_penalty_rate(
-            connection, height_mm=int(row["height_mm"])
+            connection,
+            height_mm=int(row["height_mm"]),
+            width_mm=int(row["width_mm"]),
+            depth_mm=int(row["depth_mm"]),
         )
     except PenaltyRateConfigurationError as exc:
         raise ClosureWriteError(str(exc)) from exc
@@ -279,6 +286,17 @@ def _existing_result(
     settings: Settings,
     *, operation_id: str, cell_number: str, contract_ref: str,
 ) -> ClosureResult | None:
+    cancelled = connection.execute(
+        """
+        SELECT 1 FROM archive.operation_cancellations
+        WHERE original_operation_id=? AND original_action='contract.closed'
+        """,
+        (operation_id,),
+    ).fetchone()
+    if cancelled is not None:
+        raise ClosureConflictError(
+            "Это закрытие уже отменено. Выполните новый расчёт."
+        )
     row = connection.execute(
         "SELECT * FROM archive.contracts_archive WHERE operation_id = ?",
         (operation_id,),
@@ -401,8 +419,9 @@ def close_contract(
                 """
                 INSERT INTO archive.contracts_archive(
                     contract_id, cell_number, client_full_name,
-                    client_phone, id_card_number, id_card_issuer,
-                    id_card_issue_date, account_number, extra_fields_json,
+                    client_phone, client_whatsapp_phone, id_card_number, id_card_issuer,
+                    id_card_issue_date, account_number, abs_customer_id,
+                    extra_fields_json,
                     start_date, end_date, rent_days, price_per_day_minor,
                     rent_price_minor, deposit_amount_minor, created_at, created_by,
                     updated_at, updated_by, last_reminded_at, reminder_count,
@@ -410,12 +429,13 @@ def close_contract(
                     close_kind, unused_days, penalty_days, penalty_rate_minor,
                     penalty_amount_minor, deposit_refund_minor, closed_by, operation_id
                 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 tuple(contract[key] for key in (
                     "contract_id", "cell_number", "client_full_name",
-                    "client_phone", "id_card_number", "id_card_issuer",
-                    "id_card_issue_date", "account_number", "extra_fields_json",
+                    "client_phone", "client_whatsapp_phone", "id_card_number", "id_card_issuer",
+                    "id_card_issue_date", "account_number", "abs_customer_id",
+                    "extra_fields_json",
                     "start_date", "end_date", "rent_days", "price_per_day_minor",
                     "rent_price_minor", "deposit_amount_minor", "created_at", "created_by",
                     "updated_at", "updated_by", "last_reminded_at", "reminder_count",

@@ -33,6 +33,13 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="employeeDialog"' in html
     assert 'id="operationResultDialog"' in html
     assert 'id="operationDocumentList"' in html
+    assert 'id="paymentCopyPanel"' in html
+    assert 'data-copy-target="paymentRentPurpose"' in html
+    assert 'data-copy-target="paymentRentAmount"' in html
+    assert 'id="paymentPenaltyGroup" hidden' in html
+    assert 'id="occupiedUndoAction" type="button" hidden' in html
+    assert 'id="rentalUndoAction" type="button" hidden' in html
+    assert 'id="cardUndoDialog"' in html
     assert "http://" not in html
     assert "https://" not in html
     assert 'src="/static/js/main.js"' in html
@@ -52,6 +59,15 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'data-cell-block-manual-url="/api/cell-blocks/manual"' in html
     assert 'data-lost-key-client-url="/api/cell-blocks/lost-key-client"' in html
     assert 'data-statement-import-url="/api/contract-statements/extract"' in html
+    assert 'data-abs-login-url="/api/abs/login"' in html
+    assert 'data-abs-search-url="/api/abs/search"' in html
+    assert 'data-abs-customer-url="/api/abs/customer"' in html
+    assert 'id="absLoginDialog"' in html
+    assert 'id="absCustomerSearch"' in html
+    assert "Импорт клиента из АБС" in html
+    assert 'id="absAccountResults"' in html
+    assert 'id="editAbsSearchButton"' in html
+    assert "Получить актуальные данные из АБС" in html
     assert 'data-private-token="' in html
     assert 'id="rentalContinue"' in html
     assert (
@@ -82,6 +98,8 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'name="occupation_label"' in html
     assert 'id="statLostKey"' not in html
     assert 'id="statBank"' not in html
+    assert 'id="statNormal"' not in html
+    assert html.index("<h1>Депозитарий</h1>") < html.index("ЗАО АКБ «Толубай»")
     assert 'id="blockedActionError" role="alert" hidden' in html
     assert 'id="employeeChoices"' in html
     assert 'id="employeeDialogSelect"' not in html
@@ -91,7 +109,26 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="adminPenaltyManual"' in html
     assert 'data-admin-legacy-preview-url="/api/admin/legacy-import/preview"' in html
     assert 'data-admin-legacy-confirm-url="/api/admin/legacy-import/confirm"' in html
-    assert 'data-admin-tab="legacy-import"' in html
+    assert 'data-admin-reminder-templates-url="/api/admin/reminder-templates"' in html
+    assert 'data-admin-cells-url="/api/admin/cells"' in html
+    assert 'data-admin-tab="service"' in html
+    assert 'data-admin-tab="legacy-import"' not in html
+    assert 'data-admin-tab="backups"' not in html
+    assert '<details class="admin-tool-details" id="adminLegacyDetails">' in html
+    assert '<details class="admin-tool-details" id="adminBackupDetails">' in html
+    assert 'id="adminReminderTemplatesForm"' in html
+    assert 'id="adminReminderExpiring"' in html
+    assert 'id="adminReminderOverdue"' in html
+    assert 'data-admin-tab="dictionary"' in html
+    assert 'id="adminReminderDictionary"' in html
+    assert 'id="adminDisplayDateWords"' in html
+    assert 'id="adminShowUiHints"' in html
+    assert 'id="adminCellAddForm"' in html
+    assert 'id="adminCellNumber"' in html
+    assert 'id="adminCellHeight"' in html
+    assert 'id="adminCellDraftRows"' in html
+    assert 'id="adminCellSaveBatch"' in html
+    assert 'id="adminCellRows"' in html
     assert 'id="adminLegacyPreviewForm"' in html
     assert 'id="adminLegacyImport" type="button" disabled' in html
     assert 'id="legacyContractNote" hidden' in html
@@ -100,7 +137,10 @@ def test_main_page_uses_only_local_assets_and_security_headers(
     assert 'id="editStatementFile" type="file"' in html
     assert 'id="editStatementImport"' not in html
     assert "данные перенесутся сразу" in html
-    assert "Тариф 1–30 дней" in html
+    assert "Первый диапазон тарифа" in html
+    assert 'id="executorDialog"' in html
+    assert 'id="adminCellWidth"' in html
+    assert 'id="adminCellDepth"' in html
     assert "Ручная ставка" in html
     assert 'id="contractForm"' in html
     assert 'id="statementFile"' in html
@@ -284,6 +324,9 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert '["expiring", "overdue"].includes(reminderSection)' in script
         assert "cell.reminder_count > 0" in script
         assert 'window.open("about:blank", "_blank")' in script
+        assert "finishReminderPhoneSelection" in script
+        assert "refreshAbsClients" in script
+        assert ".reminder-phone-option" in stylesheet
         assert ".cell-reminder-button" in stylesheet
         assert ".reminder-panel" in stylesheet
         assert "privateCreatedBy" in script
@@ -292,6 +335,12 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert "dayAfterOldEnd > renewalDate" in script
         assert "elements.renewalPenaltyPanel.hidden = true" in script
         assert "showOperationResult" in script
+        assert "showPaymentCopy" in script
+        assert "copyPaymentField" in script
+        assert "openCardUndo" in script
+        assert "submitCardUndo" in script
+        assert ".quiet-card-action" in stylesheet
+        assert ".payment-copy-panel" in stylesheet
         assert "downloadGeneratedDocument" in script
         assert "documentDownloadUrl" in script
         assert 'download.textContent = "Скачать"' in script
@@ -312,7 +361,10 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert 'elements.dialog.addEventListener("cancel", event => event.preventDefault())' in admin_script
         assert "refreshButton" not in script
         assert "min-width: 1180px" in stylesheet
-        assert "grid-template-columns: 260px 546px minmax(370px, 1fr)" in stylesheet
+        assert (
+            "grid-template-columns: minmax(250px, 1fr) minmax(420px, 500px) "
+            "minmax(370px, 1fr)"
+        ) in stylesheet
         assert "@media (max-width: 1600px)" not in stylesheet
         assert ".occupied-total strong" in stylesheet
         assert 'setConnection("online", "Онлайн")' in script
@@ -320,7 +372,10 @@ def test_frontend_assets_are_available_and_contain_refresh_logic(
         assert ".rental-deposit" in stylesheet
         assert ".dialog-actions" in stylesheet
         assert "updatePenaltyMode" in admin_script
-        assert "data-penalty-height" in admin_script
+        assert "data-penalty-size" in admin_script
+        assert "chooseDocumentExecutor" in script
+        assert "employeeAdminPassword" in script
+        assert "adminTariffPeriodRows" in admin_script
         assert 'elements.penaltyManual.checked ? "manual" : "linked"' in admin_script
     finally:
         css.close()

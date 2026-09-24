@@ -12,6 +12,8 @@
   class="journal-page-body"
   data-journal-url="{{ url_for('journal.journal_list') }}"
   data-journal-report-url="{{ url_for('journal.journal_report') }}"
+  data-cell-state-report-url="{{ url_for('journal.cell_state_report') }}"
+  data-today="{{ today }}"
   data-private-token="{{ private_token }}"
   data-runtime-enabled="{{ 'true' if runtime_enabled else 'false' }}"
   data-runtime-heartbeat-url="{{ url_for('system.runtime_heartbeat') }}"
@@ -47,6 +49,7 @@
             <option value="contract.created">Открытие</option>
             <option value="contract.renewed">Продление</option>
             <option value="contract.closed">Закрытие</option>
+            <option value="contract.action_cancelled">Отмена</option>
             <option value="overdue">Просрочка</option>
             <option value="cell.key_restored">Ключ восстановлен</option>
           </select>
@@ -80,6 +83,18 @@
         <span>Вернитесь на главный экран, выберите своё имя и снова откройте журнал.</span>
         <a class="secondary-button" href="{{ url_for('main.index') }}">Открыть главный экран</a>
       </div>
+
+      <section class="cell-state-report-panel" aria-labelledby="cellStateReportTitle">
+        <div>
+          <h3 id="cellStateReportTitle">Состояние всех ячеек на дату</h3>
+          <p>Отдельный Excel со свободными и занятыми ячейками на конец выбранного дня.</p>
+        </div>
+        <label>
+          <span>Дата состояния</span>
+          <input id="cellStateReportDate" type="text" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="ДД.ММ.ГГГГ" data-journal-date>
+        </label>
+        <button class="secondary-button" id="cellStateReport" type="button">Скачать состояние</button>
+      </section>
 
       <div class="journal-results-heading">
         <div class="journal-message" id="journalMessage" role="status">Загрузка журнала…</div>

@@ -10,6 +10,8 @@ from flask import Flask, request
 
 from app.config import Settings
 from app.routes import (
+    abs_integration_blueprint,
+    action_cancellations_blueprint,
     admin_blueprint,
     cells_blueprint,
     cell_blocks_blueprint,
@@ -26,13 +28,15 @@ from app.routes import (
     system_blueprint,
     statement_import_blueprint,
 )
+from app.services.abs_integration import AbsSessionManager
 from app.services.admin_auth import AdminAccessManager
 from app.services.document_downloads import DocumentDownloadStore
 from app.services.employee import (
     EmployeeDirectoryReadError,
     EmployeeSelectionManager,
     EmployeeSelectionRequiredError,
-    get_selected_employee,
+    get_document_employee_name,
+    get_selected_actor_name,
 )
 from app.services.instances import attach_instance_coordinator
 
@@ -60,16 +64,34 @@ def create_app(
     app.extensions["safe_cells_settings"] = settings
     app.extensions["safe_cells_private_token"] = token_urlsafe(32)
     app.extensions["safe_cells_admin_access"] = AdminAccessManager()
+    app.extensions["safe_cells_abs_session"] = AbsSessionManager()
     app.extensions["safe_cells_document_downloads"] = DocumentDownloadStore()
     if runtime_lifecycle is not None:
         app.extensions["safe_cells_runtime_lifecycle"] = runtime_lifecycle
     instance_coordinator = attach_instance_coordinator(app, settings)
     employee_selection = EmployeeSelectionManager()
     app.extensions["safe_cells_employee_selection"] = employee_selection
-    app.config["EMPLOYEE_PROVIDER"] = lambda: get_selected_employee(
+    app.config["EMPLOYEE_PROVIDER"] = lambda: get_selected_actor_name(
         settings, employee_selection
-    ).full_name
+    )
+    app.config["IS_ADMIN_PROVIDER"] = employee_selection.is_admin
+
+    def document_employee_provider(employee_id):
+        try:
+            return get_document_employee_name(
+                settings, employee_selection, employee_id
+            )
+        except EmployeeSelectionRequiredError:
+            if employee_selection.is_admin():
+                raise
+            # Tests and controlled integrations may provide the actor directly.
+            # The production provider still raises when nobody is selected.
+            return app.config["EMPLOYEE_PROVIDER"]()
+
+    app.config["DOCUMENT_EMPLOYEE_PROVIDER"] = document_employee_provider
+    app.register_blueprint(abs_integration_blueprint)
     app.register_blueprint(admin_blueprint)
+    app.register_blueprint(action_cancellations_blueprint)
     app.register_blueprint(main_blueprint)
     app.register_blueprint(cells_blueprint)
     app.register_blueprint(cell_blocks_blueprint)

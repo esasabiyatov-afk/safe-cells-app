@@ -69,9 +69,9 @@ select {
 
 .page-header {
   display: grid;
-  grid-template-columns: 260px 546px minmax(370px, 1fr);
+  grid-template-columns: minmax(250px, 1fr) minmax(420px, 500px) minmax(370px, 1fr);
   align-items: center;
-  gap: 14px;
+  gap: 22px;
   min-width: 1180px;
   padding: 9px 28px;
   border-bottom: 1px solid var(--line);
@@ -98,6 +98,10 @@ select {
 
 .brand-block h1 {
   font-size: 34px;
+}
+
+.brand-block .eyebrow {
+  margin: 4px 0 0;
 }
 
 .header-side {
@@ -168,10 +172,10 @@ main {
 
 .stats {
   display: grid;
-  grid-template-columns: 136px 400px;
-  gap: 8px;
+  grid-template-columns: 132px minmax(250px, 318px);
+  gap: 10px;
   width: 100%;
-  max-width: 546px;
+  max-width: 460px;
   margin: 0 auto;
 }
 
@@ -183,6 +187,7 @@ main {
   border: 0;
   border-radius: 5px;
   background: rgba(255, 253, 248, 0.72);
+  box-shadow: 0 4px 12px rgba(28, 41, 56, 0.06);
 }
 
 .stat-card::before {
@@ -196,7 +201,7 @@ main {
 .stat-occupied::before { background: var(--normal); }
 
 .stat-free { background: #edf5eb; }
-.stat-occupied { display: flex; align-items: center; gap: 18px; background: #edf4f8; }
+.stat-occupied { display: flex; align-items: center; gap: 14px; background: #edf4f8; }
 
 .stat-free strong { color: var(--free); }
 .stat-occupied strong { color: var(--normal); }
@@ -224,16 +229,15 @@ main {
 .occupied-breakdown {
   display: grid;
   flex: 1;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }
 
-.occupied-breakdown span { padding-left: 10px; border-left: 3px solid currentcolor; }
-.occupied-breakdown .normal { color: var(--normal); }
+.occupied-breakdown span { padding-left: 9px; border-left: 3px solid currentcolor; }
 .occupied-breakdown .expiring { color: var(--expiring); }
 .occupied-breakdown .overdue { color: var(--overdue); }
-.occupied-breakdown small { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-.occupied-breakdown b { display: block; margin-top: 3px; font-size: 20px; }
+.occupied-breakdown small { display: block; font-size: 9px; font-weight: 750; letter-spacing: .02em; text-transform: uppercase; }
+.occupied-breakdown b { display: block; margin-top: 4px; font-size: 17px; }
 
 .workspace {
   padding: clamp(14px, 2vw, 22px);
@@ -252,7 +256,7 @@ main {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(130px, 180px) minmax(130px, 180px) auto;
+  grid-template-columns: minmax(260px, 1fr) minmax(130px, 180px) minmax(130px, 180px) auto auto;
   gap: 10px;
   align-items: end;
   padding: 12px;
@@ -479,6 +483,54 @@ main {
   margin: 16px 0 10px;
 }
 
+.cell-state-report-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 190px auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--normal);
+  border-radius: 5px;
+  background: var(--surface);
+}
+
+.cell-state-report-panel h3 {
+  margin: 0 0 4px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+}
+
+.cell-state-report-panel p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.cell-state-report-panel label {
+  display: grid;
+  gap: 5px;
+}
+
+.cell-state-report-panel label > span {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cell-state-report-panel input {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
 .journal-message {
   margin: 0;
   color: var(--ink-soft);
@@ -529,6 +581,7 @@ main {
 
 .journal-action-created { background: var(--free-bg); color: var(--free); }
 .journal-action-closed { background: var(--overdue-bg); color: var(--overdue); }
+.journal-action-action_cancelled { background: #ece7f4; color: #5b4777; }
 .journal-action-edited { background: var(--expiring-bg); color: var(--expiring); }
 .journal-action-overdue { background: var(--overdue-bg); color: var(--overdue); }
 .journal-action-manual_occupied,
@@ -593,6 +646,51 @@ main {
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .admin-config-grid, .admin-password-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .admin-config-grid small, .admin-upload-form small { color: var(--ink-soft); font-size: 11px; font-weight: 400; line-height: 1.35; }
+.admin-display-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.admin-option-card { display: flex; align-items: flex-start; gap: 10px; padding: 13px; border: 1px solid var(--line-dark); border-radius: 5px; background: var(--paper); cursor: pointer; }
+.admin-option-card:has(input:checked) { border-color: var(--free); background: #f1f7f5; box-shadow: inset 0 0 0 1px var(--free); }
+.admin-option-card input { margin-top: 3px; }
+.admin-option-card span { display: grid; gap: 4px; }
+.admin-option-card small { color: var(--ink-soft); font-size: 11px; font-weight: 400; line-height: 1.4; }
+.admin-reminder-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.admin-reminder-template-grid textarea { width: 100%; min-height: 250px; padding: 10px 12px; border: 1px solid var(--line-dark); border-radius: 4px; outline: none; resize: vertical; background: var(--surface); color: #111b26; font: inherit; font-weight: 650; line-height: 1.5; }
+.admin-reminder-template-grid textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(28, 41, 56, 0.14); }
+.admin-placeholder-dictionary { display: grid; gap: 8px; margin-top: 16px; }
+.admin-placeholder-group { margin: 12px 0 2px; color: var(--ink); font-size: 13px; }
+.admin-placeholder-group:first-child { margin-top: 0; }
+.admin-placeholder-row { display: grid; grid-template-columns: minmax(170px, auto) 1fr; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); }
+.admin-placeholder-code { justify-self: start; min-height: 34px; padding: 6px 10px; border: 1px solid #9e8a57; border-radius: 4px; background: #fff8e6; color: var(--ink); font: 700 12px Consolas, monospace; cursor: pointer; }
+.admin-placeholder-code:hover { border-color: #6f5720; background: #f8edcf; }
+.admin-placeholder-description { display: grid; gap: 3px; color: var(--ink); font-size: 13px; line-height: 1.4; }
+.admin-placeholder-usage { color: var(--muted); font-size: 11px; font-weight: 700; }
+.admin-cell-add-form { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)) auto; gap: 12px; align-items: end; margin-top: 18px; }
+.admin-cell-add-form select { width: 100%; height: 42px; padding: 0 10px; border: 1px solid var(--line-dark); border-radius: 4px; background: var(--surface); color: var(--ink); }
+.admin-warning { margin: 14px 0; padding: 12px 14px; border-left: 4px solid var(--expiring); background: #fff6dc; color: var(--ink); line-height: 1.45; }
+.admin-cell-draft { margin-top: 18px; padding: 16px; border: 1px solid var(--line-dark); border-radius: 5px; background: #faf9f5; }
+.admin-cell-draft h4 { margin: 0 0 4px; font-family: Georgia, serif; font-size: 18px; }
+.admin-cell-confirmation { max-width: 420px; margin-top: 16px; }
+.admin-cell-search { max-width: 320px; margin-top: 14px; }
+.admin-cell-list-wrap { max-height: 380px; border: 1px solid var(--line); }
+.admin-cell-list-wrap thead { position: sticky; top: 0; z-index: 1; background: var(--paper); }
+.admin-cell-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-range-editor { margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 5px; background: #faf9f5; }
+.admin-range-rows { display: grid; gap: 8px; margin-top: 12px; }
+.admin-range-row { display: grid; grid-template-columns: 90px minmax(170px, 1fr) auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.admin-range-row label { display: flex; align-items: center; gap: 8px; }
+.admin-range-row input { width: 120px; height: 36px; padding: 0 8px; border: 1px solid var(--line-dark); border-radius: 4px; }
+.admin-new-size-tariffs { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-dark); }
+.admin-new-size-card { margin-top: 12px; padding: 12px; border: 1px solid #b9984b; border-radius: 5px; background: #fff8e6; }
+.admin-new-size-card h5 { margin: 0 0 10px; font: 700 15px Georgia, serif; }
+.admin-new-size-rate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.admin-startup-login { display: grid; gap: 12px; margin-top: 18px; padding: 16px; border: 1px solid var(--line-dark); border-radius: 5px; background: #faf9f5; }
+.admin-startup-login h3 { margin: 0; font-family: Georgia, "Times New Roman", serif; }
+.employee-choice-card--admin { border-color: #b9984b; background: #fff8e6; }
+.admin-table tr.is-retired td { color: var(--ink-soft); background: #eceae4; }
+.danger-outline { border-color: var(--overdue) !important; color: var(--overdue) !important; }
+.admin-tool-details { margin-top: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); }
+.admin-tool-details > summary { padding: 14px 16px; cursor: pointer; color: var(--ink); font-weight: 700; }
+.admin-tool-details[open] > summary { border-bottom: 1px solid var(--line); background: #f8f6f0; }
+.admin-tool-details__content { padding: 16px; }
 .admin-password-grid { grid-template-columns: repeat(3, 1fr); }
 .admin-password-grid .dialog-actions { grid-column: 1 / -1; }
 .admin-table-wrap { margin-top: 12px; overflow-x: auto; }
@@ -647,6 +745,90 @@ main {
 .admin-backup-row.is-valid { border-left: 5px solid var(--free); }
 .admin-backup-row.is-invalid { border-left: 5px solid var(--overdue); }
 .operation-result-summary { font-size: 15px; font-weight: 650; line-height: 1.5; }
+.payment-copy-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #b8c4cc;
+  border-radius: 5px;
+  background: #f4f7f8;
+}
+.payment-copy-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.payment-copy-heading h3 {
+  margin: 0 0 3px;
+  font: 700 16px Georgia, "Times New Roman", serif;
+}
+.payment-copy-heading p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+#paymentCopyStatus {
+  min-height: 16px;
+  color: var(--free);
+  font-size: 11px;
+  font-weight: 700;
+}
+.payment-copy-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, .34fr);
+  gap: 10px;
+}
+.payment-copy-group + .payment-copy-group {
+  padding-top: 11px;
+  border-top: 1px dashed #b8c4cc;
+}
+.payment-copy-group label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.payment-copy-control {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.payment-copy-control input {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  text-transform: none;
+}
+.payment-copy-control--amount input {
+  font-weight: 750;
+}
+.copy-field-button {
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid #aeb9c0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+.copy-field-button:hover,
+.copy-field-button:focus-visible {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
 .operation-documents-result { margin-top: 16px; padding: 15px; border: 1px solid var(--free-border); border-radius: 5px; background: #edf5eb; }
 .operation-documents-result h3 { margin: 0 0 8px; font-family: Georgia, "Times New Roman", serif; }
 .operation-documents-result p { margin: 0 0 8px; color: var(--ink-soft); }
@@ -654,6 +836,36 @@ main {
 .operation-documents-result li { display: flex; align-items: center; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
 .operation-documents-result li span { min-width: 0; }
 .document-download-button { flex: 0 0 auto; min-height: 34px; padding: 7px 13px; }
+.operation-undo-panel {
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid #b86d62;
+  border-radius: 5px;
+  background: #fff1ee;
+}
+.operation-undo-panel h3 { margin: 0 0 7px; font-family: Georgia, "Times New Roman", serif; }
+.operation-undo-panel p { margin: 0 0 12px; color: #663a34; font-size: 12px; line-height: 1.45; }
+.operation-undo-panel .contract-field { margin: 0; }
+.operation-undo-panel select {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.action-cancellation-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+.action-cancellation-warning {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid #b86d62;
+  background: #fff1ee;
+  color: #663a34;
+  font-size: 11px;
+  line-height: 1.45;
+}
 
 .refresh-button.loading span {
   animation: spin 0.8s linear infinite;
@@ -863,9 +1075,9 @@ main {
 
 .dialog-dimensions {
   margin: 3px 0 0;
-  color: var(--ink-soft);
+  color: #111b26;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .empty-state {
@@ -1065,6 +1277,159 @@ main {
   color: var(--danger);
 }
 
+.abs-login-dialog {
+  width: min(430px, calc(100vw - 28px));
+}
+
+.reminder-phone-dialog {
+  width: min(480px, calc(100vw - 28px));
+}
+
+.reminder-phone-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.reminder-phone-option {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #9ab9a8;
+  border-radius: 6px;
+  background: #f4fbf7;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.reminder-phone-option:hover,
+.reminder-phone-option:focus-visible {
+  border-color: #18794e;
+  background: #e5f5ec;
+  box-shadow: 0 0 0 3px rgba(24, 121, 78, .12);
+}
+
+.reminder-phone-option__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: #18794e;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 850;
+}
+
+.reminder-phone-option__text {
+  display: grid;
+  gap: 3px;
+}
+
+.reminder-phone-option__text small {
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.reminder-phone-option__text strong {
+  font-size: 15px;
+}
+
+.reminder-phone-option__action {
+  color: #0d613d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.abs-refresh-button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+.abs-login-dialog .contract-field + .contract-field {
+  margin-top: 12px;
+}
+
+.abs-customer-search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.abs-customer-search input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.abs-customer-results {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.abs-account-results {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.abs-account-heading {
+  margin: 2px 0;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.abs-account-button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #9c8e72;
+  border-radius: 4px;
+  background: #fffdf7;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.abs-account-button.is-selected {
+  border-color: #315d42;
+  background: #e5f5ec;
+  box-shadow: inset 3px 0 #315d42;
+}
+
+.abs-customer-result {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.abs-customer-result:hover,
+.abs-customer-result:focus-visible {
+  border-color: var(--navy);
+  background: #eef3f6;
+}
+
 .contract-field {
   display: grid;
   gap: 6px;
@@ -1075,9 +1440,9 @@ main {
 }
 
 .contract-field span {
-  color: var(--ink-soft);
+  color: #111b26;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1090,7 +1455,20 @@ main {
   border-radius: 4px;
   outline: none;
   background: var(--surface);
-  color: var(--ink);
+  color: #111b26;
+  font-weight: 700;
+}
+
+.contract-field select,
+.contract-field textarea {
+  color: #111b26;
+  font-weight: 700;
+}
+
+.contract-field input::placeholder,
+.rental-field input::placeholder {
+  color: #7a858e;
+  font-weight: 400;
 }
 
 .contract-field input:focus {
@@ -1121,8 +1499,9 @@ main {
 
 .rental-cell-summary {
   margin: 5px 0 22px;
-  color: var(--ink-soft);
+  color: #111b26;
   font-size: 13px;
+  font-weight: 750;
 }
 
 .rental-fields {
@@ -1137,9 +1516,9 @@ main {
 }
 
 .rental-field span {
-  color: var(--ink-soft);
+  color: #111b26;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1152,7 +1531,8 @@ main {
   border-radius: 4px;
   outline: none;
   background: var(--surface);
-  color: var(--ink);
+  color: #111b26;
+  font-weight: 700;
 }
 
 .rental-field input:focus {
@@ -1358,12 +1738,15 @@ main {
 }
 
 .quote-row span {
-  color: var(--ink-soft);
+  color: #111b26;
   font-size: 12px;
+  font-weight: 750;
 }
 
 .quote-row strong {
+  color: #111b26;
   font-size: 13px;
+  font-weight: 800;
   text-align: right;
 }
 
@@ -1493,6 +1876,29 @@ main {
   color: var(--ink-soft);
   font-size: 24px;
   line-height: 1;
+}
+
+.quiet-card-action {
+  position: absolute;
+  top: 50px;
+  right: 18px;
+  z-index: 1;
+  min-height: 0;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px dotted currentcolor;
+  border-radius: 0;
+  background: transparent;
+  color: #7d858b;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: .72;
+}
+
+.quiet-card-action:hover,
+.quiet-card-action:focus-visible {
+  color: #5f676d;
+  opacity: 1;
 }
 
 .status-badge {
@@ -1739,6 +2145,13 @@ main {
   padding-left: 4px;
 }
 
+.renewal-history li.is-cancelled {
+  padding: 8px;
+  border-left: 3px solid #746283;
+  background: #eeeaf2;
+  color: #54445f;
+}
+
 .renewal-history strong,
 .renewal-history span {
   display: block;
@@ -1763,7 +2176,13 @@ main {
   background: var(--surface);
   color: var(--ink);
   font-weight: 650;
+  box-shadow: inset 5px 0 0 var(--line-dark);
 }
+
+#renewAction { box-shadow: inset 5px 0 0 var(--free); }
+#closeAction { box-shadow: inset 5px 0 0 var(--overdue); }
+#editAction { box-shadow: inset 5px 0 0 var(--normal); }
+#documentAction { box-shadow: inset 5px 0 0 var(--expiring); }
 
 .card-actions button:disabled {
   cursor: not-allowed;
@@ -1776,6 +2195,14 @@ main {
   margin: 0;
   color: var(--ink-soft);
   font-size: 12px;
+}
+
+body.ui-hints-hidden .rental-hint,
+body.ui-hints-hidden .required-note,
+body.ui-hints-hidden .contract-field > small,
+body.ui-hints-hidden .private-card-heading p,
+body.ui-hints-hidden .page-footer span:last-child {
+  display: none !important;
 }
 
 @media (max-width: 860px) {
@@ -1802,6 +2229,14 @@ main {
   .journal-filter-actions {
     grid-column: 1 / -1;
     justify-content: flex-end;
+  }
+
+  .cell-state-report-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cell-state-report-panel > div {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1866,6 +2301,14 @@ main {
     flex-direction: column-reverse;
   }
 
+  .cell-state-report-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .cell-state-report-panel > div {
+    grid-column: auto;
+  }
+
   .journal-action {
     justify-self: start;
   }
@@ -1909,6 +2352,9 @@ main {
   .private-details,
   .card-actions,
   .admin-config-grid,
+  .admin-display-options,
+  .admin-reminder-template-grid,
+  .admin-cell-add-form,
   .admin-password-grid,
   .admin-upload-form,
   .admin-template-controls,
@@ -1918,6 +2364,10 @@ main {
   .admin-employee-row,
   .admin-employee-add-form,
   .admin-backup-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-placeholder-row {
     grid-template-columns: 1fr;
   }
 

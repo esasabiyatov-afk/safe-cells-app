@@ -18,6 +18,7 @@ from app.db.connections import (
 
 
 EMPLOYEES_CONFIG_KEY = "employees_json"
+ADMIN_FULL_NAME_CONFIG_KEY = "admin_full_name"
 MAX_EMPLOYEES = 200
 
 
@@ -112,10 +113,11 @@ def list_employees(settings: Settings, *, active_only: bool = False) -> list[Emp
 
 
 class EmployeeSelectionManager:
-    """Remember the selected employee only until this local process exits."""
+    """Remember the selected actor only until this local process exits."""
 
     def __init__(self) -> None:
         self._employee_id: str | None = None
+        self._admin_selected = False
         self._lock = Lock()
 
     def get(self) -> str | None:
@@ -125,10 +127,43 @@ class EmployeeSelectionManager:
     def set(self, employee_id: str) -> None:
         with self._lock:
             self._employee_id = employee_id
+            self._admin_selected = False
+
+    def set_admin(self) -> None:
+        with self._lock:
+            self._employee_id = None
+            self._admin_selected = True
+
+    def is_admin(self) -> bool:
+        with self._lock:
+            return self._admin_selected
 
     def clear(self) -> None:
         with self._lock:
             self._employee_id = None
+            self._admin_selected = False
+
+
+def get_admin_full_name(settings: Settings) -> str | None:
+    """Return the configured administrator name without exposing credentials."""
+
+    try:
+        paths = validate_database_pair(settings)
+        with open_readonly(
+            paths.working, busy_timeout_ms=settings.busy_timeout_ms
+        ) as connection:
+            row = connection.execute(
+                "SELECT value FROM config WHERE key = ?",
+                (ADMIN_FULL_NAME_CONFIG_KEY,),
+            ).fetchone()
+    except (DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
+        raise EmployeeDirectoryReadError(NETWORK_ERROR_MESSAGE) from exc
+    if row is None:
+        return None
+    try:
+        return validate_employee_full_name(row["value"])
+    except EmployeeProfileError as exc:
+        raise EmployeeDirectoryReadError("ФИО администратора повреждено.") from exc
 
 
 def select_employee(
@@ -173,3 +208,45 @@ def get_selected_employee(
             "Выбранный сотрудник отключён. Выберите другого сотрудника."
         )
     return record
+
+
+def get_selected_actor_name(
+    settings: Settings, manager: EmployeeSelectionManager
+) -> str:
+    if manager.is_admin():
+        full_name = get_admin_full_name(settings)
+        if full_name is None:
+            manager.clear()
+            raise EmployeeSelectionRequiredError(
+                "Завершите первоначальную настройку администратора."
+            )
+        return full_name
+    return get_selected_employee(settings, manager).full_name
+
+
+def get_document_employee_name(
+    settings: Settings,
+    manager: EmployeeSelectionManager,
+    employee_id: object,
+) -> str:
+    """Use an ordinary employee in documents created by the administrator."""
+
+    if not manager.is_admin():
+        return get_selected_employee(settings, manager).full_name
+    if not isinstance(employee_id, str) or not employee_id:
+        raise EmployeeSelectionRequiredError(
+            "Выберите сотрудника-исполнителя для документов."
+        )
+    record = next(
+        (
+            item
+            for item in list_employees(settings, active_only=True)
+            if item.employee_id == employee_id
+        ),
+        None,
+    )
+    if record is None:
+        raise EmployeeSelectionRequiredError(
+            "Исполнитель не найден или отключён. Выберите другого сотрудника."
+        )
+    return record.full_name

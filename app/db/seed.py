@@ -40,13 +40,19 @@ TARIFF_PERIODS: tuple[tuple[int, int | None], ...] = (
 INITIAL_CONFIG: dict[str, str] = {
     "expiring_soon_days": "7",
     "deposit_amount_minor": "1500",
+    "abs_session_minutes": "60",
+    "display_date_words": "1",
+    "show_ui_hints": "1",
     "admin_access_mode": "acknowledgement",
     "employees_json": "[]",
     "currency_code": "KGS",
     "currency_scale": "0",
     "penalty_rate_mode": "linked",
     "penalty_manual_rates_json": json.dumps(
-        {str(height): rates[0] for height, rates in TARIFF_RATES.items()},
+        {
+            f"{height}x220x330": rates[0]
+            for height, rates in TARIFF_RATES.items()
+        },
         sort_keys=True,
         separators=(",", ":"),
     ),
@@ -176,9 +182,10 @@ def seed_working_database(
             connection.execute(
                 """
                 INSERT OR IGNORE INTO main.tariffs(
-                    height_mm, period_from_days, period_to_days,
+                    height_mm, width_mm, depth_mm,
+                    period_from_days, period_to_days,
                     price_per_day_minor, updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?)
+                ) VALUES(?, 220, 330, ?, ?, ?, ?, ?)
                 """,
                 (height, period_from, period_to, rate, applied_at, "system-seed"),
             )

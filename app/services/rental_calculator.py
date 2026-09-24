@@ -160,12 +160,14 @@ def calculate_rental_quote_in_connection(
         SELECT
             cells.number,
             cells.height_mm,
+            COALESCE(cells.width_mm, defaults.width_mm) AS width_mm,
+            COALESCE(cells.depth_mm, defaults.depth_mm) AS depth_mm,
             contracts.contract_id,
             cell_blocks.block_kind
-        FROM cells
+        FROM cells CROSS JOIN vault_defaults defaults
         LEFT JOIN contracts ON contracts.cell_number = cells.number
         LEFT JOIN cell_blocks ON cell_blocks.cell_number = cells.number
-        WHERE cells.number = ?
+        WHERE cells.number = ? AND cells.is_active = 1 AND defaults.id = 1
         """,
         (normalized_number,),
     ).fetchone()
@@ -180,16 +182,19 @@ def calculate_rental_quote_in_connection(
         """
         SELECT period_from_days, period_to_days, price_per_day_minor
         FROM tariffs
-        WHERE height_mm = ?
+        WHERE height_mm = ? AND width_mm = ? AND depth_mm = ?
           AND period_from_days <= ?
           AND (period_to_days IS NULL OR period_to_days >= ?)
         ORDER BY period_from_days
         """,
-        (cell["height_mm"], rent_days, rent_days),
+        (
+            cell["height_mm"], cell["width_mm"], cell["depth_mm"],
+            rent_days, rent_days,
+        ),
     ).fetchall()
     if len(tariff_rows) != 1:
         raise RentalDataError(
-            "Для выбранной высоты и срока не найден единственный тариф."
+            "Для выбранного размера и срока не найден единственный тариф."
         )
     tariff = tariff_rows[0]
     deposit, currency_code, _currency_scale = _money_config(connection)

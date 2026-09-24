@@ -232,7 +232,7 @@ def occupy_cell_manually(
                 FROM main.cells
                 LEFT JOIN main.contracts ON contracts.cell_number=cells.number
                 LEFT JOIN main.cell_blocks ON cell_blocks.cell_number=cells.number
-                WHERE cells.number=?
+                WHERE cells.number=? AND cells.is_active=1
                 """,
                 (cell_number,),
             ).fetchone()

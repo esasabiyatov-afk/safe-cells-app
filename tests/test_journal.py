@@ -164,8 +164,14 @@ def test_journal_includes_client_but_excludes_edits_and_secret_fields(
     assert "admin.settings.updated" not in serialized
     assert "СЕКРЕТНОЕ" not in serialized
     assert "SECRET-" not in serialized
-    assert "Период продления: 31.07.2026 — 30.08.2026; Срок: 31 дн." in serialized
-    assert "Период аренды: 01.07.2026 — 30.07.2026; Срок: 30 дн." in serialized
+    assert (
+        "Период продления: 31 июля 2026 года — 30 августа 2026 года; "
+        "Срок: 31 дн."
+    ) in serialized
+    assert (
+        "Период аренды: 1 июля 2026 года — 30 июля 2026 года; "
+        "Срок: 30 дн."
+    ) in serialized
     assert "Дата закрытия:" not in serialized
     assert "Причина:" not in serialized
 
@@ -539,7 +545,14 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert 'id="journalClient"' in html
     assert 'id="journalEmployee"' in html
     assert '<option value="cell.key_restored">Ключ восстановлен</option>' in html
-    assert html.count("data-journal-date") == 2
+    assert html.count("data-journal-date") == 3
+    assert (
+        'data-cell-state-report-url="/api/journal/cell-state-report"'
+        in html
+    )
+    assert 'id="cellStateReportDate"' in html
+    assert 'id="cellStateReport"' in html
+    assert "Состояние всех ячеек на дату" in html
     assert cache_control == "no-store"
     assert "innerHTML" not in script
     assert "textContent" in script
@@ -547,6 +560,8 @@ def test_journal_interface_uses_text_content_and_local_assets(
     assert 'method: "POST"' in script
     assert "JSON.stringify(payload)" in script
     assert "URL.createObjectURL" in script
+    assert "cellStateReportUrl" in script
+    assert "downloadStateReport" in script
     assert "journal-action-group" in script
     assert "journal-action-overdue" in script
     assert "client_name: elements.client.value.trim()" in script

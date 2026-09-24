@@ -38,6 +38,10 @@ from app.services.legacy_contracts import (
     LEGACY_MISSING_TEXT,
     legacy_extra_fields,
 )
+from app.services.phone_numbers import (
+    PhoneNumberValidationError,
+    normalize_whatsapp_phone,
+)
 
 
 MAX_WORKBOOK_BYTES = 5 * 1024 * 1024
@@ -99,6 +103,15 @@ class LegacyImportRow:
     id_card_issue_date: date | None = None
     account_number: str | None = None
     deposit_amount_minor: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyAbsMatch:
+    cell_number: str
+    abs_customer_id: str
+    client_full_name: str
+    client_phone: str | None
+    client_whatsapp_phone: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -644,7 +657,12 @@ def _database_issues(
     as_of_date: date,
 ) -> tuple[LegacyImportIssue, ...]:
     issues: list[LegacyImportIssue] = []
-    database_cells = {str(row[0]) for row in working.execute("SELECT number FROM cells").fetchall()}
+    database_cells = {
+        str(row[0])
+        for row in working.execute(
+            "SELECT number FROM cells WHERE is_active = 1"
+        ).fetchall()
+    }
     file_cells = {row.cell_number for row in plan.rows}
     missing = sorted(database_cells - file_cells, key=lambda value: (len(value), value))
     extra = sorted(file_cells - database_cells, key=lambda value: (len(value), value))
@@ -731,27 +749,34 @@ def _insert_plan(
     operation_id: str,
     occurred_at: datetime,
     after_insert: Callable[[LegacyImportRow], None] | None,
+    abs_matches: dict[str, LegacyAbsMatch],
 ) -> None:
     timestamp = occurred_at.isoformat(timespec="seconds")
     for row in plan.rows:
         row_operation = str(uuid5(UUID(operation_id), f"cell:{row.cell_number}:{row.kind}"))
         if row.kind == "contract":
             assert row.client_full_name and row.start_date and row.end_date
+            abs_match = abs_matches.get(row.cell_number)
             contract_id = str(uuid5(NAMESPACE_URL, f"safe-cells-legacy:{plan.sha256}:{row.cell_number}"))
             created_at = datetime.combine(row.start_date, time.min, tzinfo=occurred_at.tzinfo).isoformat(timespec="seconds")
             rent_days = (row.end_date - row.start_date).days + 1
             connection.execute(
                 """
                 INSERT INTO main.contracts(
-                    contract_id, cell_number, client_full_name, id_card_number,
+                    contract_id, cell_number, client_full_name, client_phone,
+                    client_whatsapp_phone, abs_customer_id, id_card_number,
                     id_card_issuer, id_card_issue_date, account_number,
                     extra_fields_json, start_date, end_date, rent_days,
                     price_per_day_minor, rent_price_minor, deposit_amount_minor,
                     created_at, created_by, updated_at, updated_by
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
                 """,
                 (
-                    contract_id, row.cell_number, row.client_full_name,
+                    contract_id, row.cell_number,
+                    abs_match.client_full_name if abs_match else row.client_full_name,
+                    abs_match.client_phone if abs_match else None,
+                    abs_match.client_whatsapp_phone if abs_match else None,
+                    abs_match.abs_customer_id if abs_match else None,
                     row.id_card_number or LEGACY_MISSING_TEXT,
                     row.id_card_issuer or LEGACY_MISSING_TEXT,
                     (
@@ -846,11 +871,74 @@ def _insert_plan(
                     "contracts_count": plan.contracts_count,
                     "free_count": plan.free_count,
                     "manual_count": plan.manual_count,
+                    "abs_matched_count": len(abs_matches),
                 },
                 sort_keys=True, separators=(",", ":"),
             ),
         ),
     )
+
+
+def _validate_abs_matches(
+    value: object, plan: LegacyImportPlan
+) -> dict[str, LegacyAbsMatch]:
+    if value in (None, "", []):
+        return {}
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise LegacyImportValidationError(
+                "Список выбранных клиентов АБС повреждён."
+            ) from exc
+    if not isinstance(value, list):
+        raise LegacyImportValidationError(
+            "Передан неверный список выбранных клиентов АБС."
+        )
+    contract_cells = {
+        row.cell_number for row in plan.rows if row.kind == "contract"
+    }
+    result: dict[str, LegacyAbsMatch] = {}
+    allowed = {
+        "cell_number", "abs_customer_id", "client_full_name",
+        "client_phone", "client_whatsapp_phone",
+    }
+    for item in value:
+        if not isinstance(item, dict) or set(item) != allowed:
+            raise LegacyImportValidationError(
+                "Один из выбранных клиентов АБС содержит неверные поля."
+            )
+        cell_number = str(item["cell_number"] or "").strip()
+        customer_id = str(item["abs_customer_id"] or "").strip()
+        full_name = " ".join(str(item["client_full_name"] or "").split())
+        if cell_number not in contract_cells or cell_number in result:
+            raise LegacyImportValidationError(
+                "Список выбранных клиентов АБС не соответствует файлу Excel."
+            )
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,50}", customer_id):
+            raise LegacyImportValidationError("Некорректный ID клиента АБС.")
+        if not full_name or len(full_name) > 200:
+            raise LegacyImportValidationError("Некорректное ФИО клиента из АБС.")
+        phones: list[str | None] = []
+        for key in ("client_phone", "client_whatsapp_phone"):
+            raw = item[key]
+            phone = str(raw).strip() if raw not in (None, "") else None
+            if phone is not None:
+                if len(phone) > 50:
+                    raise LegacyImportValidationError("Номер телефона слишком длинный.")
+                try:
+                    normalize_whatsapp_phone(phone)
+                except PhoneNumberValidationError as exc:
+                    raise LegacyImportValidationError(str(exc)) from exc
+            phones.append(phone)
+        if not any(phones):
+            raise LegacyImportValidationError(
+                f"Для ячейки № {cell_number} в АБС не найден ни один телефон."
+            )
+        result[cell_number] = LegacyAbsMatch(
+            cell_number, customer_id, full_name, phones[0], phones[1]
+        )
+    return result
 
 
 def import_legacy_contracts(
@@ -862,6 +950,7 @@ def import_legacy_contracts(
     confirmation: object,
     operation_id: object,
     occurred_at: datetime,
+    abs_matches: object = None,
     after_insert: Callable[[LegacyImportRow], None] | None = None,
 ) -> LegacyImportResult:
     if not isinstance(file_name, str) or not file_name.casefold().endswith(".xlsx"):
@@ -876,6 +965,7 @@ def import_legacy_contracts(
         raise LegacyImportConflictError("Файл изменился после проверки. Проверьте его заново.")
     if plan.issues:
         raise LegacyImportValidationError("В файле остались ошибки. Выполните проверку заново.")
+    validated_abs_matches = _validate_abs_matches(abs_matches, plan)
     phase = "opening"
     try:
         with open_write(settings, attach_archive=True) as connection:
@@ -914,6 +1004,7 @@ def import_legacy_contracts(
                 operation_id=normalized_operation,
                 occurred_at=occurred_at,
                 after_insert=after_insert,
+                abs_matches=validated_abs_matches,
             )
             phase = "committing"
             connection.commit()

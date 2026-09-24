@@ -371,6 +371,48 @@ def test_import_uses_contract_number_as_account_and_known_deposit_for_follow_on_
     assert closure.deposit_amount == 1500
 
 
+def test_import_can_link_abs_id_and_both_phones_without_replacing_excel_account(
+    settings: Settings, initialized_databases,
+) -> None:
+    content = _workbook(
+        settings,
+        {"1": ("Тестовый Клиент", "01.02.2025", "31.12.2026")},
+        identity={
+            "1": (
+                "ID 22 13 31",
+                "Тестовый орган",
+                "02.03.2020",
+                "TEST-EXCEL-ACCOUNT",
+            )
+        },
+    )
+
+    _import(
+        settings,
+        content,
+        abs_matches=[
+            {
+                "cell_number": "1",
+                "abs_customer_id": "777",
+                "client_full_name": "Тестовый Клиент Обновлённый",
+                "client_phone": "+996 555 000 111",
+                "client_whatsapp_phone": "+996 700 000 222",
+            }
+        ],
+    )
+
+    with open_readonly(
+        settings.database_directory / settings.working_database_name
+    ) as connection:
+        contract = connection.execute(
+            "SELECT * FROM contracts WHERE cell_number='1'"
+        ).fetchone()
+    assert contract["abs_customer_id"] == "777"
+    assert contract["client_phone"] == "+996 555 000 111"
+    assert contract["client_whatsapp_phone"] == "+996 700 000 222"
+    assert contract["account_number"] == "TEST-EXCEL-ACCOUNT"
+
+
 def test_import_treats_without_number_as_missing_and_rejects_invalid_deposit(
     settings: Settings, initialized_databases,
 ) -> None:

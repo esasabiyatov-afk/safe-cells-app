@@ -41,6 +41,7 @@ from app.services.admin_settings import (
     _timestamp,
 )
 from app.services.documents import ALLOWED_DOCUMENT_PLACEHOLDERS
+from app.template_fields import invalid_document_placeholders
 
 
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
@@ -89,7 +90,30 @@ def _template_id(value: object | None) -> str:
         raise AdminValidationError("Неверный идентификатор шаблона.")
 
 
-def _stage_docx(template_directory: Path, stream: BinaryIO) -> tuple[Path, list[str]]:
+def _validate_placeholder_context(
+    placeholders: list[str],
+    *,
+    document_type: str,
+) -> None:
+    invalid = sorted(
+        invalid_document_placeholders(
+            set(placeholders), document_type=document_type
+        )
+    )
+    if invalid:
+        raise AdminValidationError(
+            "Эти поля доступны только для документа продления: "
+            + ", ".join(invalid)
+            + "."
+        )
+
+
+def _stage_docx(
+    template_directory: Path,
+    stream: BinaryIO,
+    *,
+    document_type: str,
+) -> tuple[Path, list[str]]:
     template_directory.mkdir(exist_ok=True)
     temporary_path: Path | None = None
     total = 0
@@ -128,6 +152,9 @@ def _stage_docx(template_directory: Path, stream: BinaryIO) -> tuple[Path, list[
             raise AdminValidationError(
                 "В шаблоне найдены неизвестные поля: " + ", ".join(unknown)
             )
+        _validate_placeholder_context(
+            placeholders, document_type=document_type
+        )
         return temporary_path, placeholders
     except Exception:
         if temporary_path is not None:
@@ -162,7 +189,9 @@ def save_document_template(
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
     template_directory = paths.directory / "templates"
     try:
-        staged_path, placeholders = _stage_docx(template_directory, stream)
+        staged_path, placeholders = _stage_docx(
+            template_directory, stream, document_type=normalized_type
+        )
     except OSError as exc:
         raise AdminNetworkError(NETWORK_ERROR_MESSAGE) from exc
 
@@ -337,6 +366,21 @@ def update_document_template(
             ).fetchone()
             if row is None:
                 raise AdminConflictError("Шаблон не найден. Обновите настройки.")
+            try:
+                stored_placeholders = json.loads(
+                    str(row["required_placeholders_json"])
+                )
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise AdminWriteError(
+                    "Список полей шаблона повреждён."
+                ) from exc
+            if not isinstance(stored_placeholders, list) or not all(
+                isinstance(item, str) for item in stored_placeholders
+            ):
+                raise AdminWriteError("Список полей шаблона повреждён.")
+            _validate_placeholder_context(
+                stored_placeholders, document_type=document_type
+            )
             if is_active and not (
                 settings.database_directory / "templates" / str(row["relative_file_name"])
             ).is_file():

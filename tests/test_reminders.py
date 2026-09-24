@@ -18,7 +18,10 @@ from app.services.renewals import renew_contract
 from app.services.reminders import (
     ReminderConflictError,
     ReminderValidationError,
+    ReminderWriteError,
     build_reminder_message,
+    client_greeting_name,
+    format_message_date,
     reminder_status_text,
     send_reminder,
 )
@@ -45,6 +48,28 @@ def test_phone_is_normalized_for_whatsapp_and_invalid_values_are_rejected():
             normalize_whatsapp_phone(value)
 
 
+@pytest.mark.parametrize(
+    ("full_name", "greeting"),
+    (
+        ("Иванов Иван Иванович", "Иван Иванович"),
+        ("Аманова Залия", "Залия"),
+        ("Ан Ульяна", "Ульяна"),
+        ("Эсенбек уулу Асан", "Асан"),
+        ("Асанбек кызы Венера", "Венера"),
+        ("Асан Эсенбек уулу", "Асан"),
+        ("Венера Асанбек кызы", "Венера"),
+        ("Мадина", "Мадина"),
+    ),
+)
+def test_client_greeting_supports_approved_name_formats(full_name, greeting):
+    assert client_greeting_name(full_name) == greeting
+
+
+def test_message_date_uses_russian_month_name():
+    assert format_message_date(date(2026, 1, 3)) == "3 января 2026 года"
+    assert format_message_date(date(2026, 7, 31)) == "31 июля 2026 года"
+
+
 def test_approved_messages_are_selected_by_current_status():
     expiring = build_reminder_message(
         status="expiring",
@@ -62,18 +87,112 @@ def test_approved_messages_are_selected_by_current_status():
     assert expiring == (
         "Здравствуйте, Иван Иванович!\n\n"
         "Напоминаем, что срок аренды вашей банковской сейфовой ячейки "
-        "№12 истекает 31.07.2026.\n\n"
+        "№12 истекает 31 июля 2026 года.\n\n"
         "Для продления аренды или освобождения ячейки просим обратиться "
         "в отделение банка.\n\n"
-        "С уважением, ЗАО АКБ «Толубай»."
+        "С уважением, Банк «Толубай»."
     )
     assert overdue == (
         "Здравствуйте, Иван Иванович!\n\n"
-        "Срок аренды вашей банковской сейфовой ячейки №12 истёк 20.07.2026.\n\n"
+        "Срок аренды вашей банковской сейфовой ячейки №12 истёк 20 июля 2026 года.\n\n"
         "Просим обратиться в отделение банка для продления аренды или "
         "освобождения ячейки. За период просрочки начисляется штраф "
         "согласно условиям договора.\n\n"
-        "С уважением, ЗАО АКБ «Толубай»."
+        "С уважением, Банк «Толубай»."
+    )
+
+
+def test_message_dictionary_replaces_all_supported_contract_data():
+    template = (
+        "[Клиент.Обращение]|[Клиент.ФИО]|[Сейф.Номер]|[Сейф.Размер]|"
+        "[Договор.Начало]|[Договор.Конец]|[Договор.Срок]|"
+        "[Клиент.Телефон]|[Счет.Номер]|[Договор.Статус]"
+    )
+
+    message = build_reminder_message(
+        status="overdue",
+        client_full_name="Аманова Залия",
+        cell_number="12",
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 30),
+        rent_days=30,
+        client_phone="+996 (555) 123-456",
+        account_number="TEST-ACCOUNT",
+        height_mm=100,
+        width_mm=220,
+        depth_mm=330,
+        template=template,
+    )
+
+    assert message == (
+        "Залия|Аманова Залия|12|100×220×330 мм|"
+        "1 июля 2026 года|30 июля 2026 года|30|"
+        "+996 (555) 123-456|TEST-ACCOUNT|Просрочено"
+    )
+
+
+def test_old_whatsapp_placeholders_remain_compatible():
+    message = build_reminder_message(
+        status="expiring",
+        client_full_name="Аманова Залия",
+        cell_number="5",
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 30),
+        rent_days=30,
+        client_phone="+996 (555) 123-456",
+        account_number="TEST-ACCOUNT",
+        height_mm=100,
+        width_mm=220,
+        depth_mm=330,
+        template=(
+            "[Обращение]|[ФИО клиента]|[Номер ячейки]|[Дата окончания]|"
+            "[Номер счёта]"
+        ),
+    )
+
+    assert message == (
+        "Залия|Аманова Залия|5|30 июля 2026 года|TEST-ACCOUNT"
+    )
+
+
+def test_saved_template_is_used_for_whatsapp_message(
+    settings, insert_test_contract
+):
+    custom = (
+        "Добрый день, [Обращение]!\n"
+        "Ячейка [Номер ячейки] действует до [Дата окончания].\n"
+        "Банк «Толубай»."
+    )
+    with open_write(settings) as connection:
+        connection.execute(
+            """
+            INSERT INTO config(key, value, updated_at, updated_by)
+            VALUES('whatsapp_reminder_expiring_template', ?, ?, 'test-admin')
+            """,
+            (custom, WHEN.isoformat()),
+        )
+        connection.commit()
+    insert_test_contract(
+        cell_number="1",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+        client_name="Аманова Залия",
+        client_phone="+996 (555) 123-456",
+    )
+
+    result = send_reminder(
+        settings,
+        payload=reminder_payload(),
+        employee="Тестовый Сотрудник",
+        occurred_at=WHEN,
+        as_of_date=WHEN.date(),
+    )
+
+    message = parse_qs(urlsplit(result.whatsapp_url).query)["text"][0]
+    assert message == (
+        "Добрый день, Залия!\n"
+        "Ячейка 1 действует до 28 июля 2026 года.\n"
+        "Банк «Толубай»."
     )
 
 
@@ -117,11 +236,13 @@ def test_reminder_saves_exact_contract_state_and_builds_encoded_whatsapp_link(
     assert result.repeated is False
     parsed = urlsplit(result.whatsapp_url)
     assert parsed.scheme == "https"
-    assert parsed.netloc == "wa.me"
-    assert parsed.path == "/996555123456"
-    message = parse_qs(parsed.query)["text"][0]
+    assert parsed.netloc == "web.whatsapp.com"
+    assert parsed.path == "/send"
+    query = parse_qs(parsed.query)
+    assert query["phone"] == ["996555123456"]
+    message = query["text"][0]
     assert "Здравствуйте, Иван Иванович!" in message
-    assert "истекает 28.07.2026" in message
+    assert "истекает 28 июля 2026 года" in message
 
     paths = DatabasePaths.from_settings(settings)
     with open_readonly(paths.working) as connection:
@@ -140,6 +261,37 @@ def test_reminder_saves_exact_contract_state_and_builds_encoded_whatsapp_link(
     assert changes["reminder_count"] == 1
     assert "client" not in audit["changes_json"]
     assert "phone" not in audit["changes_json"]
+
+
+def test_reminder_can_use_the_separate_whatsapp_phone(
+    settings, insert_test_contract
+):
+    insert_test_contract(
+        cell_number="1",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+        client_phone="+996 555 000 111",
+    )
+    with open_write(settings) as connection:
+        connection.execute(
+            "UPDATE contracts SET client_whatsapp_phone=? WHERE cell_number='1'",
+            ("+996 700 000 222",),
+        )
+        connection.commit()
+    request = reminder_payload()
+    request["phone_kind"] = "whatsapp"
+
+    result = send_reminder(
+        settings,
+        payload=request,
+        employee="Тестовый Сотрудник",
+        occurred_at=WHEN,
+        as_of_date=WHEN.date(),
+    )
+
+    assert parse_qs(urlsplit(result.whatsapp_url).query)["phone"] == [
+        "996700000222"
+    ]
 
 
 def test_repeat_operation_is_idempotent_and_new_click_increments_counter(
@@ -209,6 +361,44 @@ def test_invalid_or_missing_phone_does_not_change_notification_state(
         ).fetchone()[0]
     assert tuple(stored) == (None, 0)
     assert logs == 0
+
+
+def test_unreadable_contract_field_does_not_change_notification_state(
+    settings, insert_test_contract
+):
+    insert_test_contract(
+        cell_number="1",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+        client_phone="+996 (555) 123-456",
+    )
+    with open_write(settings) as connection:
+        connection.execute(
+            """
+            UPDATE contracts
+            SET id_card_issue_date='NOT-A-DATE'
+            WHERE contract_id='contract-test-1'
+            """
+        )
+        connection.commit()
+
+    with pytest.raises(ReminderWriteError):
+        send_reminder(
+            settings,
+            payload=reminder_payload(),
+            employee="Тестовый Сотрудник",
+            occurred_at=WHEN,
+        )
+
+    paths = DatabasePaths.from_settings(settings)
+    with open_readonly(paths.working) as connection:
+        stored = connection.execute(
+            """
+            SELECT last_reminded_at, reminder_count
+            FROM contracts WHERE contract_id='contract-test-1'
+            """
+        ).fetchone()
+    assert tuple(stored) == (None, 0)
 
 
 def test_normal_contract_cannot_be_reminded_and_state_stays_unchanged(

@@ -54,6 +54,15 @@ def _headers(token: str) -> dict[str, str]:
     return {"X-Safe-Cells-Admin-Token": token}
 
 
+def _cell(number: str, height_mm: int) -> dict[str, int | str]:
+    return {
+        "number": number,
+        "height_mm": height_mm,
+        "width_mm": 220,
+        "depth_mm": 330,
+    }
+
+
 def _snapshot(client, token: str) -> dict:
     response = client.get("/api/admin/settings", headers=_headers(token))
     assert response.status_code == 200
@@ -220,13 +229,18 @@ def test_update_tariffs_and_config_is_atomic_audited_and_backed_up(
     saved = _snapshot(client, token)
     assert saved["config"] == {
         "deposit_amount_minor": 2000,
+        "abs_session_minutes": 60,
         "expiring_soon_days": 10,
+        "display_date_words": True,
+        "show_ui_hints": True,
     }
     assert saved["tariffs"][0]["price_per_day_minor"] == 16
     assert len(saved["tariffs"]) == 24
     assert saved["penalty"]["mode"] == "manual"
     assert saved["penalty"]["manual_rates"][0] == {
         "height_mm": 50,
+        "width_mm": 220,
+        "depth_mm": 330,
         "price_per_day_minor": 23,
     }
     with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
@@ -237,6 +251,469 @@ def test_update_tariffs_and_config_is_atomic_audited_and_backed_up(
     assert row["employee"] == "test-admin"
     assert "password" not in row["changes_json"].lower()
     assert len(list_backup_sets(settings)) >= 2
+
+
+def test_admin_can_change_whatsapp_templates_with_required_placeholders(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+    before = _snapshot(client, token)
+    assert "[Клиент.Обращение]" in before["reminder_templates"]["expiring"]
+    assert "[Договор.Конец]" in before["reminder_templates"]["overdue"]
+    templates = {
+        "expiring": (
+            "Добрый день, [Обращение]!\n"
+            "Ячейка №[Номер ячейки] действует до [Дата окончания]."
+        ),
+        "overdue": (
+            "Здравствуйте, [Обращение]!\n"
+            "Ячейка №[Номер ячейки] просрочена с [Дата окончания]."
+        ),
+    }
+    operation_id = str(uuid4())
+
+    response = client.put(
+        "/api/admin/reminder-templates",
+        headers=_headers(token),
+        json={"operation_id": operation_id, "templates": templates},
+    )
+
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["backup_created"] is True
+    assert _snapshot(client, token)["reminder_templates"] == templates
+    with open_readonly(settings.database_directory / "vault_cells.sqlite3") as working:
+        stored = dict(
+            working.execute(
+                """
+                SELECT key, value FROM config
+                WHERE key LIKE 'whatsapp_reminder_%_template'
+                """
+            )
+        )
+    assert stored == {
+        "whatsapp_reminder_expiring_template": templates["expiring"],
+        "whatsapp_reminder_overdue_template": templates["overdue"],
+    }
+    with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
+        audit = archive.execute(
+            "SELECT action FROM log WHERE operation_id = ?", (operation_id,)
+        ).fetchone()
+    assert audit["action"] == "admin.reminder_templates.updated"
+
+
+@pytest.mark.parametrize(
+    "replacement, expected",
+    [
+        (
+            "[Обращение] [Номер ячейки] [Дата окончания] [Лишнее]",
+            "неизвестные подстановки",
+        ),
+        ("{{ID_CARD_NUMBER}}", "неизвестные подстановки"),
+        (" ", "не может быть пустым"),
+    ],
+)
+def test_invalid_whatsapp_template_is_rejected_without_change(
+    settings, initialized_databases, replacement, expected
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+    before = _snapshot(client, token)["reminder_templates"]
+
+    response = client.put(
+        "/api/admin/reminder-templates",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "templates": {
+                "expiring": replacement,
+                "overdue": before["overdue"],
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    assert expected in response.get_json()["message"]
+    assert _snapshot(client, token)["reminder_templates"] == before
+
+
+def test_whatsapp_template_can_remove_or_add_known_placeholders(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+    before = _snapshot(client, token)
+    expiring = "Уважаемый клиент! Ячейка [Номер ячейки], [Размер ячейки]."
+
+    response = client.put(
+        "/api/admin/reminder-templates",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "templates": {
+                "expiring": expiring,
+                "overdue": before["reminder_templates"]["overdue"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    snapshot = _snapshot(client, token)
+    assert snapshot["reminder_templates"]["expiring"] == expiring
+    assert any(
+        item["code"] == "[Клиент.ФИО]"
+        and item["usage"] == "WhatsApp и DOCX"
+        for item in snapshot["template_fields"]
+    )
+
+
+def test_admin_adds_new_cell_idempotently_with_audit_and_backup(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+    before = _snapshot(client, token)
+    assert before["cells"]["count"] == 126
+    assert before["cells"]["allowed_sizes"] == [
+        {"height_mm": height, "width_mm": 220, "depth_mm": 330}
+        for height in (50, 75, 100, 125, 175, 300)
+    ]
+    operation_id = str(uuid4())
+    payload = {
+        "operation_id": operation_id,
+        "cells": [
+            _cell("127", 50),
+            _cell("128", 75),
+        ],
+        "new_tariffs": [],
+        "new_penalty_rates": [],
+    }
+
+    first = client.post(
+        "/api/admin/cells", headers=_headers(token), json=payload
+    )
+    repeated = client.post(
+        "/api/admin/cells", headers=_headers(token), json=payload
+    )
+
+    assert first.status_code == 201, first.get_json()
+    assert first.get_json()["cells"] == [
+        _cell("127", 50),
+        _cell("128", 75),
+    ]
+    assert first.get_json()["backup_created"] is True
+    assert repeated.status_code == 200
+    assert repeated.get_json()["repeated"] is True
+    assert _snapshot(client, token)["cells"]["count"] == 128
+    with open_readonly(settings.database_directory / "vault_cells.sqlite3") as working:
+        cell = working.execute(
+            "SELECT number, height_mm, width_mm, depth_mm FROM cells "
+            "WHERE number IN ('127', '128') ORDER BY number"
+        ).fetchall()
+    assert [tuple(row) for row in cell] == [
+        ("127", 50, 220, 330),
+        ("128", 75, 220, 330),
+    ]
+    with open_readonly(settings.database_directory / "vault_archive.sqlite3") as archive:
+        audit = archive.execute(
+            "SELECT action, cell_number, changes_json FROM log WHERE operation_id=?",
+            (operation_id,),
+        ).fetchone()
+    assert audit["action"] == "admin.cells.created"
+    assert audit["cell_number"] is None
+    assert json.loads(audit["changes_json"]) == {
+        "cells": [
+            _cell("127", 50),
+            _cell("128", 75),
+        ],
+        "new_tariffs": [],
+    }
+
+
+def test_admin_can_change_shared_periods_and_add_a_completely_new_size(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    app.config["TODAY_PROVIDER"] = lambda: OCCURRED_AT.date()
+    client = app.test_client()
+    token = _setup(client)
+    snapshot = _snapshot(client, token)
+
+    periods = ((1, 45), (46, 120), (121, None))
+    rates_by_size = {
+        (
+            row["height_mm"],
+            row["width_mm"],
+            row["depth_mm"],
+        ): row["price_per_day_minor"]
+        for row in snapshot["tariffs"]
+        if row["period_from_days"] == 1
+    }
+    replacement_tariffs = [
+        {
+            "height_mm": size[0],
+            "width_mm": size[1],
+            "depth_mm": size[2],
+            "period_from_days": start,
+            "period_to_days": end,
+            "price_per_day_minor": rates_by_size[size] + index,
+        }
+        for size in sorted(rates_by_size)
+        for index, (start, end) in enumerate(periods)
+    ]
+    changed = client.put(
+        "/api/admin/settings",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "config": snapshot["config"],
+            "tariffs": replacement_tariffs,
+            "penalty": snapshot["penalty"],
+        },
+    )
+    assert changed.status_code == 200, changed.get_json()
+
+    new_size = {"height_mm": 60, "width_mm": 250, "depth_mm": 400}
+    new_tariffs = [
+        {
+            **new_size,
+            "period_from_days": start,
+            "period_to_days": end,
+            "price_per_day_minor": rate,
+        }
+        for (start, end), rate in zip(periods, (20, 18, 15), strict=True)
+    ]
+    added = client.post(
+        "/api/admin/cells",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "cells": [{"number": "127", **new_size}],
+            "new_tariffs": new_tariffs,
+            "new_penalty_rates": [],
+        },
+    )
+    assert added.status_code == 201, added.get_json()
+
+    with open_readonly(
+        settings.database_directory / settings.working_database_name
+    ) as working:
+        saved_cell = working.execute(
+            """
+            SELECT height_mm, width_mm, depth_mm
+            FROM cells WHERE number='127'
+            """
+        ).fetchone()
+        saved_tariffs = working.execute(
+            """
+            SELECT period_from_days, period_to_days, price_per_day_minor
+            FROM tariffs
+            WHERE height_mm=60 AND width_mm=250 AND depth_mm=400
+            ORDER BY period_from_days
+            """
+        ).fetchall()
+    assert tuple(saved_cell) == (60, 250, 400)
+    assert [tuple(row) for row in saved_tariffs] == [
+        (1, 45, 20),
+        (46, 120, 18),
+        (121, None, 15),
+    ]
+
+    quote = client.post(
+        "/api/rental/calculate",
+        json={
+            "cell_number": "127",
+            "start_date": "2026-07-14",
+            "end_date": "2026-08-28",
+            "rent_days": 46,
+        },
+    )
+    assert quote.status_code == 200, quote.get_json()
+    assert quote.get_json()["price_per_day"] == 18
+
+
+def test_admin_rejects_duplicate_cell_and_height_without_tariff(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+
+    duplicate = client.post(
+        "/api/admin/cells",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "cells": [_cell("1", 50)],
+            "new_tariffs": [],
+            "new_penalty_rates": [],
+        },
+    )
+    unknown_height = client.post(
+        "/api/admin/cells",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "cells": [_cell("127", 999)],
+            "new_tariffs": [],
+            "new_penalty_rates": [],
+        },
+    )
+
+    assert duplicate.status_code == 409
+    assert "уже есть" in duplicate.get_json()["message"]
+    assert unknown_height.status_code == 400
+    assert "тарифы" in unknown_height.get_json()["message"].lower()
+    assert _snapshot(client, token)["cells"]["count"] == 126
+
+
+def test_locked_database_does_not_partially_add_cell(
+    settings, initialized_databases
+):
+    short = Settings(
+        database_directory=settings.database_directory,
+        busy_timeout_ms=40,
+        testing=True,
+    )
+    app = _ready_app(short)
+    client = app.test_client()
+    token = _setup(client)
+
+    with open_write(short, attach_archive=True) as blocker:
+        blocker.execute("BEGIN IMMEDIATE")
+        response = client.post(
+            "/api/admin/cells",
+            headers=_headers(token),
+            json={
+                    "operation_id": str(uuid4()),
+                    "cells": [_cell("127", 50)],
+                    "new_tariffs": [],
+                    "new_penalty_rates": [],
+            },
+        )
+
+    assert response.status_code == 423
+    assert _snapshot(client, token)["cells"]["count"] == 126
+
+
+def test_batch_add_is_all_or_nothing(settings, initialized_databases):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+
+    response = client.post(
+        "/api/admin/cells",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "cells": [
+                _cell("127", 50),
+                _cell("1", 50),
+            ],
+            "new_tariffs": [],
+            "new_penalty_rates": [],
+        },
+    )
+
+    assert response.status_code == 409
+    with open_readonly(settings.database_directory / "vault_cells.sqlite3") as working:
+        assert working.execute(
+            "SELECT 1 FROM cells WHERE number='127'"
+        ).fetchone() is None
+
+
+def test_admin_can_retire_restore_and_delete_never_used_cell(
+    settings, initialized_databases
+):
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+    created = client.post(
+        "/api/admin/cells",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "cells": [_cell("127", 50)],
+            "new_tariffs": [],
+            "new_penalty_rates": [],
+        },
+    )
+    assert created.status_code == 201
+
+    retired = client.put(
+        "/api/admin/cells/lifecycle",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "number": "127",
+            "action": "retire",
+            "reason": "Сейф демонтирован",
+        },
+    )
+    assert retired.status_code == 200, retired.get_json()
+    snapshot = _snapshot(client, token)
+    assert snapshot["cells"]["count"] == 126
+    assert snapshot["cells"]["retired_count"] == 1
+    assert all(
+        cell["number"] != "127"
+        for cell in client.get("/api/cells").get_json()["cells"]
+    )
+
+    restored = client.put(
+        "/api/admin/cells/lifecycle",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "number": "127",
+            "action": "restore",
+            "reason": "",
+        },
+    )
+    assert restored.status_code == 200
+    assert _snapshot(client, token)["cells"]["count"] == 127
+
+    deleted = client.put(
+        "/api/admin/cells/lifecycle",
+        headers=_headers(token),
+        json={
+            "operation_id": str(uuid4()),
+            "number": "127",
+            "action": "delete",
+            "reason": "",
+        },
+    )
+    assert deleted.status_code == 200
+    with open_readonly(settings.database_directory / "vault_cells.sqlite3") as working:
+        assert working.execute(
+            "SELECT 1 FROM cells WHERE number='127'"
+        ).fetchone() is None
+
+
+def test_occupied_cell_cannot_be_retired_or_deleted(
+    settings, initialized_databases, insert_test_contract
+):
+    insert_test_contract(cell_number="1", end_date="2026-08-01")
+    app = _ready_app(settings)
+    client = app.test_client()
+    token = _setup(client)
+
+    for action in ("retire", "delete"):
+        response = client.put(
+            "/api/admin/cells/lifecycle",
+            headers=_headers(token),
+            json={
+                "operation_id": str(uuid4()),
+                "number": "1",
+                "action": action,
+                "reason": "Проверка" if action == "retire" else "",
+            },
+        )
+        assert response.status_code == 409
+        assert "Занятую" in response.get_json()["message"]
 
 
 def test_repeated_settings_operation_does_not_duplicate_audit(
@@ -440,6 +917,23 @@ def test_template_upload_rejects_unknown_field_and_path_escape(
             occurred_at=OCCURRED_AT,
         )
     assert not (settings.database_directory.parent / "outside.docx").exists()
+
+
+def test_template_upload_rejects_renewal_field_for_other_document_type(
+    settings, initialized_databases
+):
+    with pytest.raises(AdminValidationError, match="только для документа продления"):
+        save_document_template(
+            settings,
+            operation_id=str(uuid4()),
+            template_id=None,
+            document_type="closing",
+            display_name="ТЕСТ",
+            file_name="wrong-context.docx",
+            stream=_docx_bytes("Продление.Конец"),
+            employee="test-admin",
+            occurred_at=OCCURRED_AT,
+        )
 
 
 def test_static_docx_without_placeholders_can_be_uploaded_and_downloaded(

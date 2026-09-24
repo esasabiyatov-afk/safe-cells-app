@@ -1,19 +1,21 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 import sqlite3
 from typing import Callable
+from uuid import uuid4
 
 import pytest
 
 from app.config import Settings
-from app.db.connections import DatabasePaths
+from app.db.connections import DatabasePaths, open_write
 from app.services.cells import (
     InvalidStoredDataError,
     list_cells,
     search_cell_numbers,
 )
+from app.services.closures import close_contract
 
 
 AS_OF = date(2026, 7, 1)
@@ -34,6 +36,10 @@ def test_list_cells_returns_only_approved_client_display_name(
     payload = list_cells(settings, as_of_date=AS_OF)
     cell = payload["cells"][0]
 
+    assert payload["ui_preferences"] == {
+        "display_date_words": True,
+        "show_ui_hints": True,
+    }
     assert set(cell) == {
         "number",
         "height_mm",
@@ -53,6 +59,7 @@ def test_list_cells_returns_only_approved_client_display_name(
             "last_reminded_at",
             "reminder_count",
             "reminder_status",
+            "cancellable_action",
             "legacy_imported",
             "legacy_identity_complete",
             "legacy_deposit_known",
@@ -63,10 +70,126 @@ def test_list_cells_returns_only_approved_client_display_name(
     assert cell["rent_days"] == 1
     assert cell["total_days"] == 9
     assert cell["client_display_name"] == "Секретный Т. К."
+    assert cell["cancellable_action"] is None
     assert cell["legacy_imported"] is False
     serialized = repr(payload)
     assert "Секретный Тестовый" not in serialized
     assert "PRIVATE-TEST-ACCOUNT" not in serialized
+
+
+def test_list_cells_exposes_only_latest_same_day_cancellation_candidate(
+    settings: Settings,
+    initialized_databases,
+    insert_test_contract: Callable[..., None],
+) -> None:
+    insert_test_contract(
+        cell_number="1",
+        start_date="2026-06-01",
+        end_date="2026-07-09",
+    )
+    operation_id = str(uuid4())
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """
+            INSERT INTO archive.log(
+                log_id, operation_id, occurred_at, employee, action,
+                contract_id, cell_number, changes_json
+            ) VALUES(?, ?, ?, 'Тестовый Сотрудник', 'contract.renewed',
+                     'contract-test-1', '1', '{}')
+            """,
+            (
+                str(uuid4()),
+                operation_id,
+                "2026-07-01T10:00:00+06:00",
+            ),
+        )
+        connection.commit()
+
+    cell = list_cells(settings, as_of_date=AS_OF)["cells"][0]
+
+    assert cell["cancellable_action"] == {
+        "original_operation_id": operation_id,
+        "contract_ref": "contract-test-1",
+        "cell_number": "1",
+        "action_kind": "renewal",
+    }
+
+    with open_write(settings, attach_archive=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """
+            INSERT INTO archive.log(
+                log_id, operation_id, occurred_at, employee, action,
+                contract_id, cell_number, changes_json
+            ) VALUES(?, ?, ?, 'Тестовый Сотрудник', 'contract.edited',
+                     'contract-test-1', '1', '{}')
+            """,
+            (
+                str(uuid4()),
+                str(uuid4()),
+                "2026-07-01T10:01:00+06:00",
+            ),
+        )
+        connection.commit()
+
+    assert list_cells(settings, as_of_date=AS_OF)["cells"][0][
+        "cancellable_action"
+    ] is None
+
+
+def test_list_cells_exposes_cancelled_closure_on_now_free_cell(
+    settings: Settings,
+    initialized_databases,
+    insert_test_contract: Callable[..., None],
+) -> None:
+    insert_test_contract(
+        cell_number="1",
+        start_date="2026-06-01",
+        end_date="2026-07-09",
+    )
+    operation_id = str(uuid4())
+    close_contract(
+        settings,
+        payload={
+            "operation_id": operation_id,
+            "cell_number": "1",
+            "contract_ref": "contract-test-1",
+            "expected_end_date": "2026-07-09",
+            "reason_code": "standard",
+        },
+        employee="Тестовый Сотрудник",
+        close_date=AS_OF,
+        occurred_at=datetime.fromisoformat("2026-07-01T11:00:00+06:00"),
+    )
+
+    cell = list_cells(settings, as_of_date=AS_OF)["cells"][0]
+
+    assert cell["status"] == "free"
+    assert cell["cancellable_action"] == {
+        "original_operation_id": operation_id,
+        "contract_ref": "contract-test-1",
+        "cell_number": "1",
+        "action_kind": "closure",
+    }
+
+
+def test_old_database_without_ui_preferences_uses_safe_visible_defaults(
+    settings: Settings,
+    initialized_databases,
+) -> None:
+    with open_write(settings) as connection:
+        connection.execute(
+            "DELETE FROM config WHERE key IN ('display_date_words', 'show_ui_hints')"
+        )
+        connection.commit()
+
+    payload = list_cells(settings, as_of_date=AS_OF)
+
+    assert payload["ui_preferences"] == {
+        "display_date_words": True,
+        "show_ui_hints": True,
+    }
 
 
 def test_list_cells_calculates_counts_at_boundaries(

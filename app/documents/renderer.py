@@ -4,17 +4,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import re
 import tempfile
 from typing import Iterable, Mapping
 
 from docx import Document
 
-
-PLACEHOLDER_RE = re.compile(
-    r"\{\{(?P<legacy>[A-Z][A-Z0-9_]*)\}\}"
-    r"|\[(?P<bank>[А-Яа-яЁёA-Za-z][А-Яа-яЁёA-Za-z0-9_.]{0,79})\]"
-)
+from app.template_fields import DOCUMENT_PLACEHOLDER_RE
 
 
 class DocumentTemplateError(ValueError):
@@ -48,7 +43,7 @@ def _container_paragraphs(container) -> Iterable:
 def _replace_in_paragraph(paragraph, values: Mapping[str, str]) -> None:
     runs = list(paragraph.runs)
     original = "".join(run.text for run in runs)
-    if not original or not PLACEHOLDER_RE.search(original):
+    if not original or not DOCUMENT_PLACEHOLDER_RE.search(original):
         return
     boundaries: list[tuple[int, int]] = []
     offset = 0
@@ -62,7 +57,7 @@ def _replace_in_paragraph(paragraph, values: Mapping[str, str]) -> None:
                 return index, position - start
         raise DocumentTemplateError("Не удалось обработать расположение поля в DOCX.")
 
-    for match in reversed(list(PLACEHOLDER_RE.finditer(original))):
+    for match in reversed(list(DOCUMENT_PLACEHOLDER_RE.finditer(original))):
         start_run, start_offset = locate(match.start())
         end_run, end_offset_last = locate(match.end() - 1)
         end_offset = end_offset_last + 1
@@ -97,7 +92,7 @@ def inspect_placeholders(document) -> set[str]:
         text = "".join(run.text for run in paragraph.runs)
         found.update(
             match.group("legacy") or match.group("bank")
-            for match in PLACEHOLDER_RE.finditer(text)
+            for match in DOCUMENT_PLACEHOLDER_RE.finditer(text)
         )
     return found
 

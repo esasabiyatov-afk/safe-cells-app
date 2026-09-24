@@ -21,6 +21,7 @@ from app.services.admin_settings import (
     AdminValidationError,
     AdminWriteError,
     AdminWriteUncertainError,
+    add_admin_cells_batch,
     change_admin_password,
     create_admin_password,
     get_admin_access_mode,
@@ -30,6 +31,8 @@ from app.services.admin_settings import (
     update_admin_settings,
     update_admin_access_mode,
     update_admin_employee,
+    update_admin_cell_lifecycle,
+    update_reminder_templates,
 )
 from app.services.admin_templates import (
     get_document_template_path,
@@ -267,6 +270,82 @@ def settings_update():
     ) as exc:
         return _write_error(exc)
     return jsonify(result.to_dict())
+
+
+@admin_blueprint.put("/reminder-templates")
+def reminder_templates_update():
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        result = update_reminder_templates(
+            _settings(),
+            payload=request.get_json(silent=True),
+            employee=_employee(),
+            occurred_at=_occurred_at(),
+        )
+    except (
+        AdminValidationError,
+        AdminConflictError,
+        AdminBusyError,
+        AdminNetworkError,
+        AdminWriteError,
+        AdminWriteUncertainError,
+    ) as exc:
+        return _write_error(exc)
+    return jsonify(result.to_dict())
+
+
+@admin_blueprint.post("/cells")
+def cell_create():
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        result, cells = add_admin_cells_batch(
+            _settings(),
+            payload=request.get_json(silent=True),
+            employee=_employee(),
+            occurred_at=_occurred_at(),
+        )
+    except (
+        AdminValidationError,
+        AdminConflictError,
+        AdminBusyError,
+        AdminNetworkError,
+        AdminWriteError,
+        AdminWriteUncertainError,
+    ) as exc:
+        return _write_error(exc)
+    response = result.to_dict()
+    response["cells"] = cells
+    return jsonify(response), 200 if result.repeated else 201
+
+
+@admin_blueprint.put("/cells/lifecycle")
+def cell_lifecycle_update():
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        result, cell = update_admin_cell_lifecycle(
+            _settings(),
+            payload=request.get_json(silent=True),
+            employee=_employee(),
+            occurred_at=_occurred_at(),
+        )
+    except (
+        AdminValidationError,
+        AdminConflictError,
+        AdminBusyError,
+        AdminNetworkError,
+        AdminWriteError,
+        AdminWriteUncertainError,
+    ) as exc:
+        return _write_error(exc)
+    response = result.to_dict()
+    response["cell"] = cell
+    return jsonify(response)
 
 
 @admin_blueprint.put("/access")
@@ -558,7 +637,16 @@ def legacy_import_preview():
         LegacyImportWriteUncertainError,
     ) as exc:
         return _legacy_import_error(exc)
-    return jsonify(plan.to_dict())
+    payload = plan.to_dict()
+    payload["abs_lookup_rows"] = [
+        {
+            "cell_number": row.cell_number,
+            "client_full_name": row.client_full_name,
+        }
+        for row in plan.rows
+        if row.kind == "contract"
+    ]
+    return jsonify(payload)
 
 
 @admin_blueprint.post("/legacy-import/confirm")
@@ -578,6 +666,7 @@ def legacy_import_confirm():
             confirmation=request.form.get("confirmation"),
             operation_id=request.form.get("operation_id"),
             occurred_at=_occurred_at(),
+            abs_matches=request.form.get("abs_matches"),
         )
     except (
         LegacyImportValidationError,

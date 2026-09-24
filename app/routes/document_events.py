@@ -20,12 +20,20 @@ from app.services.employee import (
 
 
 def document_event_payload(
-    *, event_type: str, contract_ref: str, event_ref: str | None
+    *,
+    event_type: str,
+    contract_ref: str,
+    event_ref: str | None,
+    employee: str | None = None,
 ) -> dict[str, object]:
     """Return browser download handles or a warning without undoing committed data."""
 
     try:
-        employee = current_app.config["EMPLOYEE_PROVIDER"]()
+        effective_employee = (
+            employee
+            if employee is not None
+            else current_app.config["EMPLOYEE_PROVIDER"]()
+        )
         with tempfile.TemporaryDirectory(prefix="safe-cells-documents-") as staging:
             output_directory = Path(staging)
             generated = generate_event_documents(
@@ -34,7 +42,7 @@ def document_event_payload(
                 contract_ref=contract_ref,
                 event_ref=event_ref,
                 output_directory=output_directory,
-                employee=employee,
+                employee=effective_employee,
             )
             if not generated:
                 return {

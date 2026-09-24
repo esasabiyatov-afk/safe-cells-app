@@ -19,7 +19,7 @@ from app.db.connections import (
 from app.db.seed import load_cell_seed, seed_working_database
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 12
 
 
 class DatabaseInitializationError(RuntimeError):
@@ -56,7 +56,18 @@ WORKING_SCHEMA: tuple[str, ...] = (
         number TEXT PRIMARY KEY CHECK(length(trim(number)) > 0),
         height_mm INTEGER NOT NULL CHECK(height_mm > 0),
         width_mm INTEGER CHECK(width_mm IS NULL OR width_mm > 0),
-        depth_mm INTEGER CHECK(depth_mm IS NULL OR depth_mm > 0)
+        depth_mm INTEGER CHECK(depth_mm IS NULL OR depth_mm > 0),
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+        retired_at TEXT,
+        retired_by TEXT,
+        retirement_reason TEXT,
+        CHECK(
+            (is_active = 1 AND retired_at IS NULL AND retired_by IS NULL
+             AND retirement_reason IS NULL)
+            OR
+            (is_active = 0 AND retired_at IS NOT NULL AND retired_by IS NOT NULL
+             AND length(trim(retirement_reason)) BETWEEN 1 AND 300)
+        )
     )
     """,
     """
@@ -84,6 +95,8 @@ WORKING_SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS main.tariffs(
         height_mm INTEGER NOT NULL CHECK(height_mm > 0),
+        width_mm INTEGER NOT NULL CHECK(width_mm > 0),
+        depth_mm INTEGER NOT NULL CHECK(depth_mm > 0),
         period_from_days INTEGER NOT NULL CHECK(period_from_days >= 1),
         period_to_days INTEGER CHECK(
             period_to_days IS NULL OR period_to_days >= period_from_days
@@ -91,7 +104,7 @@ WORKING_SCHEMA: tuple[str, ...] = (
         price_per_day_minor INTEGER NOT NULL CHECK(price_per_day_minor >= 0),
         updated_at TEXT NOT NULL,
         updated_by TEXT NOT NULL,
-        PRIMARY KEY(height_mm, period_from_days)
+        PRIMARY KEY(height_mm, width_mm, depth_mm, period_from_days)
     )
     """,
     """
@@ -108,10 +121,12 @@ WORKING_SCHEMA: tuple[str, ...] = (
         cell_number TEXT NOT NULL UNIQUE REFERENCES cells(number),
         client_full_name TEXT NOT NULL CHECK(length(trim(client_full_name)) > 0),
         client_phone TEXT,
+        client_whatsapp_phone TEXT,
         id_card_number TEXT NOT NULL CHECK(length(trim(id_card_number)) > 0),
         id_card_issuer TEXT NOT NULL CHECK(length(trim(id_card_issuer)) > 0),
         id_card_issue_date TEXT NOT NULL,
         account_number TEXT NOT NULL CHECK(length(trim(account_number)) > 0),
+        abs_customer_id TEXT,
         extra_fields_json TEXT NOT NULL DEFAULT '{}',
         start_date TEXT NOT NULL,
         end_date TEXT NOT NULL CHECK(end_date >= start_date),
@@ -140,6 +155,17 @@ WORKING_SCHEMA: tuple[str, ...] = (
     END
     """,
     """
+    CREATE TRIGGER IF NOT EXISTS main.prevent_contract_on_inactive_cell
+    BEFORE INSERT ON contracts
+    WHEN EXISTS(
+        SELECT 1 FROM cells
+        WHERE number = NEW.cell_number AND is_active = 0
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'cell is inactive');
+    END
+    """,
+    """
     CREATE TRIGGER IF NOT EXISTS main.prevent_block_on_contracted_cell
     BEFORE INSERT ON cell_blocks
     WHEN EXISTS(
@@ -147,6 +173,28 @@ WORKING_SCHEMA: tuple[str, ...] = (
     )
     BEGIN
         SELECT RAISE(ABORT, 'cell has active contract');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS main.prevent_block_on_inactive_cell
+    BEFORE INSERT ON cell_blocks
+    WHEN EXISTS(
+        SELECT 1 FROM cells
+        WHERE number = NEW.cell_number AND is_active = 0
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'cell is inactive');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS main.prevent_retire_occupied_cell
+    BEFORE UPDATE OF is_active ON cells
+    WHEN NEW.is_active = 0 AND (
+        EXISTS(SELECT 1 FROM contracts WHERE cell_number = NEW.number)
+        OR EXISTS(SELECT 1 FROM cell_blocks WHERE cell_number = NEW.number)
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'occupied cell cannot be retired');
     END
     """,
     """
@@ -185,10 +233,12 @@ ARCHIVE_SCHEMA: tuple[str, ...] = (
         cell_number TEXT NOT NULL,
         client_full_name TEXT NOT NULL,
         client_phone TEXT,
+        client_whatsapp_phone TEXT,
         id_card_number TEXT NOT NULL,
         id_card_issuer TEXT NOT NULL,
         id_card_issue_date TEXT NOT NULL,
         account_number TEXT NOT NULL,
+        abs_customer_id TEXT,
         extra_fields_json TEXT NOT NULL,
         start_date TEXT NOT NULL,
         end_date TEXT NOT NULL,
@@ -250,6 +300,29 @@ ARCHIVE_SCHEMA: tuple[str, ...] = (
     """,
     "CREATE INDEX IF NOT EXISTS archive.idx_log_contract ON log(contract_id)",
     "CREATE INDEX IF NOT EXISTS archive.idx_log_cell ON log(cell_number)",
+    """
+    CREATE TABLE IF NOT EXISTS archive.operation_cancellations(
+        cancellation_id TEXT PRIMARY KEY,
+        cancellation_operation_id TEXT NOT NULL UNIQUE,
+        original_operation_id TEXT NOT NULL UNIQUE,
+        original_action TEXT NOT NULL CHECK(
+            original_action IN (
+                'contract.created', 'contract.renewed', 'contract.closed'
+            )
+        ),
+        contract_id TEXT NOT NULL,
+        cell_number TEXT NOT NULL,
+        reason_code TEXT NOT NULL CHECK(
+            reason_code IN ('client_changed', 'change_term', 'input_error')
+        ),
+        cancelled_at TEXT NOT NULL,
+        cancelled_by TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS archive.idx_operation_cancellations_contract
+    ON operation_cancellations(contract_id)
+    """,
 )
 
 

@@ -7,6 +7,13 @@ from io import BytesIO
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file
 
 from app.config import Settings
+from app.services.cell_state_reports import (
+    CellStateReportReadError,
+    CellStateReportValidationError,
+    build_cell_state_report,
+    list_cell_states_on_date,
+    validate_report_date,
+)
 from app.services.journal import (
     JournalReadError,
     JournalValidationError,
@@ -51,6 +58,7 @@ def journal_page():
         "journal.html",
         private_token=current_app.extensions["safe_cells_private_token"],
         runtime_enabled="safe_cells_runtime_lifecycle" in current_app.extensions,
+        today=current_app.config["TODAY_PROVIDER"]().isoformat(),
     )
 
 
@@ -98,5 +106,34 @@ def journal_report():
         mimetype=REPORT_MIMETYPE,
         as_attachment=True,
         download_name=f"Выписка_по_ячейкам_{generated_on.isoformat()}.xlsx",
+        max_age=0,
+    )
+
+
+@journal_blueprint.post("/api/journal/cell-state-report")
+def cell_state_report():
+    """Download the end-of-day state of every physical cell as XLSX."""
+
+    current_app.config["EMPLOYEE_PROVIDER"]()
+    today = current_app.config["TODAY_PROVIDER"]()
+    try:
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or set(payload) != {"as_of_date"}:
+            raise CellStateReportValidationError(
+                "Дата отчёта передана неверно."
+            )
+        as_of_date = validate_report_date(payload["as_of_date"], today=today)
+        rows = list_cell_states_on_date(_settings(), as_of_date=as_of_date)
+        report = build_cell_state_report(rows, as_of_date=as_of_date)
+    except CellStateReportValidationError as exc:
+        return jsonify({"message": str(exc)}), 400
+    except CellStateReportReadError as exc:
+        return jsonify({"message": str(exc)}), 503
+
+    return send_file(
+        BytesIO(report),
+        mimetype=REPORT_MIMETYPE,
+        as_attachment=True,
+        download_name=f"Состояние_всех_ячеек_{as_of_date.isoformat()}.xlsx",
         max_age=0,
     )

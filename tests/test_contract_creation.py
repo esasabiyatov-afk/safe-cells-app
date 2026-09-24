@@ -58,6 +58,23 @@ def _counts(settings: Settings) -> tuple[int, int]:
     return int(contracts), int(logs)
 
 
+def test_contract_keeps_abs_customer_id(
+    settings: Settings, initialized_databases
+) -> None:
+    create_contract(
+        settings,
+        payload=contract_payload(abs_customer_id="777"),
+        employee="Тестовый Сотрудник",
+        occurred_at=OCCURRED_AT,
+        as_of_date=OCCURRED_AT.date(),
+    )
+    with open_readonly(DatabasePaths.from_settings(settings).working) as connection:
+        saved = connection.execute(
+            "SELECT abs_customer_id FROM contracts WHERE cell_number='1'"
+        ).fetchone()
+    assert saved["abs_customer_id"] == "777"
+
+
 def test_document_failure_after_api_save_returns_warning_without_undoing_contract(
     settings: Settings, initialized_databases
 ) -> None:
@@ -554,6 +571,14 @@ def test_api_creates_contract_without_returning_personal_data(
     assert payload["cell_number"] == "1"
     assert payload["rent_price"] == 450
     assert payload["repeated"] is False
+    assert payload["payment_copy"] == {
+        "rent": {
+            "purpose": "Комиссия за ячейку №01 Тестовый К. (30 факт. дней)",
+            "amount": 450,
+            "amount_label": "Сумма аренды",
+        },
+        "penalty": None,
+    }
     assert "Тестовый Клиент" not in body
     assert "TEST-ID-001" not in body
     assert "TEST-ACCOUNT-001" not in body

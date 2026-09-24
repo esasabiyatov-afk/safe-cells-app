@@ -43,6 +43,10 @@ class RenewalDetails:
     penalty_days: int
     penalty_amount: int
     created_by: str
+    cancelled: bool
+    cancelled_at: str | None
+    cancelled_by: str | None
+    cancellation_reason: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,10 +54,12 @@ class PrivateContractDetails:
     cell_number: str
     client_full_name: str
     client_phone: str
+    client_whatsapp_phone: str
     id_card_number: str
     id_card_issuer: str
     id_card_issue_date: str
     account_number: str
+    abs_customer_id: str | None
     created_at: str
     created_by: str
     deposit_amount: int | None
@@ -131,8 +137,9 @@ def get_private_contract_details(
                 """
                 SELECT
                     contract_id, cell_number, client_full_name, id_card_number,
-                    client_phone, id_card_issuer, id_card_issue_date,
-                    account_number, extra_fields_json, deposit_amount_minor,
+                    client_phone, client_whatsapp_phone, id_card_issuer, id_card_issue_date,
+                    account_number, abs_customer_id, extra_fields_json,
+                    deposit_amount_minor,
                     created_at, created_by
                 FROM contracts
                 WHERE cell_number = ? AND contract_id = ?
@@ -149,12 +156,17 @@ def get_private_contract_details(
             renewal_rows = connection.execute(
                 """
                 SELECT
-                    renewal_date, old_end_date, new_start_date, new_end_date,
-                    renewal_days, renewal_price_minor, penalty_days,
-                    penalty_amount_minor, created_by
+                    renewals.renewal_date, renewals.old_end_date,
+                    renewals.new_start_date, renewals.new_end_date,
+                    renewals.renewal_days, renewals.renewal_price_minor,
+                    renewals.penalty_days, renewals.penalty_amount_minor,
+                    renewals.created_by, cancellations.cancelled_at,
+                    cancellations.cancelled_by, cancellations.reason_code
                 FROM renewals
-                WHERE contract_id = ?
-                ORDER BY created_at, renewal_id
+                LEFT JOIN operation_cancellations AS cancellations
+                  ON cancellations.original_operation_id=renewals.operation_id
+                WHERE renewals.contract_id = ?
+                ORDER BY renewals.created_at, renewals.renewal_id
                 """,
                 (contract["contract_id"],),
             ).fetchall()
@@ -174,6 +186,22 @@ def get_private_contract_details(
             penalty_days=int(row["penalty_days"]),
             penalty_amount=int(row["penalty_amount_minor"]),
             created_by=str(row["created_by"]),
+            cancelled=row["cancelled_at"] is not None,
+            cancelled_at=(
+                str(row["cancelled_at"]) if row["cancelled_at"] is not None else None
+            ),
+            cancelled_by=(
+                str(row["cancelled_by"]) if row["cancelled_by"] is not None else None
+            ),
+            cancellation_reason=(
+                {
+                    "client_changed": "Клиент изменил решение",
+                    "change_term": "Нужно изменить срок",
+                    "input_error": "Ошибка при вводе",
+                }.get(str(row["reason_code"]))
+                if row["reason_code"] is not None
+                else None
+            ),
         )
         for row in renewal_rows
     )
@@ -184,6 +212,7 @@ def get_private_contract_details(
         cell_number=str(contract["cell_number"]),
         client_full_name=str(contract["client_full_name"]),
         client_phone=str(contract["client_phone"] or ""),
+        client_whatsapp_phone=str(contract["client_whatsapp_phone"] or ""),
         id_card_number=(
             str(contract["id_card_number"])
             if contract["id_card_number"] != LEGACY_MISSING_TEXT
@@ -203,6 +232,11 @@ def get_private_contract_details(
             str(contract["account_number"])
             if contract["account_number"] != LEGACY_MISSING_TEXT
             else ""
+        ),
+        abs_customer_id=(
+            str(contract["abs_customer_id"])
+            if contract["abs_customer_id"] is not None
+            else None
         ),
         created_at=str(contract["created_at"]),
         created_by=str(contract["created_by"]),

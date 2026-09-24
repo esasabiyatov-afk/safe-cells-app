@@ -1,6 +1,10 @@
 "use strict";
 
 (() => {
+  const months = [
+    "", "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+  ];
   const elements = {
     body: document.body,
     container: document.getElementById("journalPage"),
@@ -13,6 +17,8 @@
     dateTo: document.getElementById("journalDateTo"),
     reset: document.getElementById("journalReset"),
     report: document.getElementById("journalReport"),
+    stateReport: document.getElementById("cellStateReport"),
+    stateReportDate: document.getElementById("cellStateReportDate"),
     message: document.getElementById("journalMessage"),
     list: document.getElementById("journalList"),
     empty: document.getElementById("journalEmpty"),
@@ -22,7 +28,13 @@
     selectionRequired: document.getElementById("journalSelectionRequired"),
   };
 
-  const state = { page: 1, busy: false, pageCount: 1, selectionRequired: false };
+  const state = {
+    page: 1,
+    busy: false,
+    pageCount: 1,
+    selectionRequired: false,
+    uiPreferences: { display_date_words: true, show_ui_hints: true },
+  };
 
   function setBusy(busy) {
     state.busy = busy;
@@ -31,6 +43,7 @@
       control.disabled = busy || state.selectionRequired;
     });
     elements.report.disabled = busy || state.selectionRequired;
+    elements.stateReport.disabled = busy || state.selectionRequired;
     if (busy) {
       elements.message.textContent = "Загрузка журнала…";
     }
@@ -40,6 +53,13 @@
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
       return "Время не указано";
+    }
+    if (state.uiPreferences.display_date_words) {
+      const time = new Intl.DateTimeFormat("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(parsed);
+      return `${parsed.getDate()} ${months[parsed.getMonth() + 1]} ${parsed.getFullYear()} года, ${time}`;
     }
     return new Intl.DateTimeFormat("ru-RU", {
       day: "2-digit",
@@ -122,6 +142,14 @@
   }
 
   function render(payload) {
+    state.uiPreferences = {
+      display_date_words: payload.ui_preferences?.display_date_words !== false,
+      show_ui_hints: payload.ui_preferences?.show_ui_hints !== false,
+    };
+    elements.body.classList.toggle(
+      "ui-hints-hidden",
+      !state.uiPreferences.show_ui_hints,
+    );
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
     const pagination = payload.pagination || {};
     const fragment = document.createDocumentFragment();
@@ -242,7 +270,56 @@
     }
   }
 
+  async function downloadStateReport() {
+    if (state.busy) return;
+    let asOfDate;
+    try {
+      asOfDate = dateFilterValue(elements.stateReportDate);
+      if (!asOfDate) throw new Error("Укажите дату состояния ячеек");
+    } catch (error) {
+      elements.message.textContent = error instanceof Error
+        ? error.message
+        : "Укажите дату состояния ячеек";
+      return;
+    }
+    setBusy(true);
+    elements.message.textContent = "Формирование состояния всех ячеек…";
+    try {
+      const response = await fetch(
+        elements.body.dataset.cellStateReportUrl,
+        postOptions({as_of_date: asOfDate}),
+      );
+      if (!response.ok) {
+        const payload = await response.json();
+        if (payload.selection_required) {
+          state.selectionRequired = true;
+          elements.selectionRequired.hidden = false;
+        }
+        throw new Error(payload.message || "Не удалось сформировать состояние ячеек");
+      }
+      const report = await response.blob();
+      const downloadUrl = URL.createObjectURL(report);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `Состояние_всех_ячеек_${asOfDate}.xlsx`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      elements.message.textContent = (
+        "Excel с состоянием всех ячеек сформирован."
+      );
+    } catch (error) {
+      elements.message.textContent = error instanceof Error
+        ? error.message
+        : "Не удалось сформировать состояние ячеек";
+    } finally {
+      setBusy(false);
+    }
+  }
+
   elements.report.addEventListener("click", downloadReport);
+  elements.stateReport.addEventListener("click", downloadStateReport);
   elements.filters.addEventListener("submit", (event) => {
     event.preventDefault();
     state.page = 1;
@@ -275,5 +352,9 @@
     });
   });
 
+  if (elements.body.dataset.today) {
+    const [year, month, day] = elements.body.dataset.today.split("-");
+    elements.stateReportDate.value = `${day}.${month}.${year}`;
+  }
   loadJournal();
 })();

@@ -40,7 +40,9 @@ def generate():
     if error_response is not None:
         return error_response
     try:
-        employee_full_name = current_app.config["EMPLOYEE_PROVIDER"]()
+        employee_full_name = current_app.config["DOCUMENT_EMPLOYEE_PROVIDER"](
+            payload.pop("document_employee_id", None)
+        )
         with tempfile.TemporaryDirectory(prefix="safe-cells-document-") as staging:
             output_directory = Path(staging)
             result = generate_active_contract_document(

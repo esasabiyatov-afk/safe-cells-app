@@ -26,6 +26,10 @@ from app.documents.values import (
     format_russian_date,
 )
 from app.services.legacy_contracts import legacy_status
+from app.template_fields import (
+    ALLOWED_DOCUMENT_PLACEHOLDERS as SHARED_DOCUMENT_PLACEHOLDERS,
+    client_greeting_name,
+)
 
 
 class DocumentValidationError(ValueError): pass
@@ -36,23 +40,7 @@ class DocumentReadError(RuntimeError): pass
 DOCUMENT_EVENT_TYPES = frozenset({"opening", "renewal", "closing"})
 
 # The admin upload validator accepts only fields the renderer can actually fill.
-ALLOWED_DOCUMENT_PLACEHOLDERS = frozenset(
-    {
-        "CLIENT_FULL_NAME", "ID_CARD_NUMBER", "ID_CARD_ISSUER",
-        "ID_CARD_ISSUE_DATE", "ACCOUNT_NUMBER", "SAFE_NUMBER", "SAFE_HEIGHT",
-        "SAFE_WIDTH", "SAFE_DEPTH", "START_DATE", "END_DATE", "RENT_DAYS",
-        "RENT_PRICE", "CREATION_DATE", "EMPLOYEE", "Дата.Сегодня",
-        "Дата.СегодняК", "Счет.Номер", "Клиент.ФИО",
-        "Клиент.Документ.Номер", "Клиент.Документ.Выдан",
-        "Клиент.Документ.ДатаВыдачи", "Система.Пользователь",
-        "Договор.Начало", "Договор.Конец", "Договор.НачалоК",
-        "Договор.КонецК", "Договор.НачалоД", "Договор.НачалоДК", "Сумма",
-        "Залог.Цифр", "Залог.Пропись", "Залог.ПрописьК", "Сейф.Номер",
-        "Сейф.Размер", "Продление.Начало", "Продление.Конец",
-        "Продление.НачалоК", "Продление.КонецК", "Продление.Сумма",
-        "Продление.Срок",
-    }
-)
+ALLOWED_DOCUMENT_PLACEHOLDERS = SHARED_DOCUMENT_PLACEHOLDERS
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +109,16 @@ def _format_document_cell_number(value: object) -> str:
     return cell_number
 
 
+def _optional_value(
+    values: Mapping[str, object] | sqlite3.Row,
+    key: str,
+) -> object | None:
+    try:
+        return values[key]
+    except (IndexError, KeyError):
+        return None
+
+
 def build_document_values(
     contract: Mapping[str, object] | sqlite3.Row,
     *,
@@ -157,13 +155,19 @@ def build_document_values(
         "Дата.Сегодня": format_russian_date(creation_date),
         "Дата.СегодняК": format_kyrgyz_date(creation_date),
         "Счет.Номер": contract["account_number"],
+        "Клиент.Обращение": client_greeting_name(
+            str(contract["client_full_name"])
+        ),
         "Клиент.ФИО": contract["client_full_name"],
+        "Клиент.Телефон": _optional_value(contract, "client_phone"),
         "Клиент.Документ.Номер": contract["id_card_number"],
         "Клиент.Документ.Выдан": contract["id_card_issuer"],
         "Клиент.Документ.ДатаВыдачи": format_document_issue_date(issue_date),
         "Система.Пользователь": employee,
         "Договор.Начало": format_russian_date(start_date),
         "Договор.Конец": format_russian_date(end_date),
+        "Договор.Срок": contract["rent_days"],
+        "Договор.Сумма": contract["rent_price_minor"],
         "Договор.НачалоК": format_kyrgyz_date(start_date),
         "Договор.КонецК": format_kyrgyz_date(end_date),
         "Договор.НачалоД": format_quoted_russian_date(start_date),
@@ -171,10 +175,14 @@ def build_document_values(
         "Договор.НачалоДК": format_quoted_kyrgyz_date_stem(start_date),
         "Сумма": contract["rent_price_minor"],
         "Залог.Цифр": deposit,
+        "Залог.Сумма": deposit,
         "Залог.Пропись": amount_in_words_ru(deposit),
         "Залог.ПрописьК": amount_in_words_ky(deposit),
         "Сейф.Номер": document_cell_number,
         "Сейф.Размер": safe_size,
+        "Сейф.Высота": contract["height_mm"],
+        "Сейф.Ширина": contract["width_mm"],
+        "Сейф.Глубина": contract["depth_mm"],
     }
     if renewal is not None:
         renewal_start = date.fromisoformat(str(renewal["new_start_date"]))
@@ -297,7 +305,14 @@ def generate_event_documents(
                 paths.archive, busy_timeout_ms=settings.busy_timeout_ms
             ) as connection:
                 renewal_row = connection.execute(
-                    "SELECT * FROM renewals WHERE renewal_id = ? AND contract_id = ?",
+                    """
+                    SELECT renewals.*,
+                           cancellations.cancellation_id AS cancellation_id
+                    FROM renewals
+                    LEFT JOIN operation_cancellations AS cancellations
+                      ON cancellations.original_operation_id=renewals.operation_id
+                    WHERE renewals.renewal_id=? AND renewals.contract_id=?
+                    """,
                     (event_ref, contract_ref),
                 ).fetchone()
                 renewal = dict(renewal_row) if renewal_row is not None else None
@@ -312,7 +327,20 @@ def generate_event_documents(
                        WHERE operation_id = ? AND contract_id = ?""",
                     (event_ref, contract_ref),
                 ).fetchone()
+                cancelled_closure = connection.execute(
+                    """
+                    SELECT 1 FROM operation_cancellations
+                    WHERE original_operation_id=?
+                      AND contract_id=?
+                      AND original_action='contract.closed'
+                    """,
+                    (event_ref, contract_ref),
+                ).fetchone()
                 contract = dict(archived) if archived is not None else None
+            if cancelled_closure is not None:
+                raise DocumentConflictError(
+                    "Это закрытие отменено. Документ по нему формировать нельзя."
+                )
             if contract is not None:
                 with open_readonly(
                     paths.working, busy_timeout_ms=settings.busy_timeout_ms
@@ -329,8 +357,14 @@ def generate_event_documents(
                     contract = None
                 else:
                     contract.update(dict(dimension_row))
-    except (DocumentValidationError, DatabaseUnavailableError, OSError, sqlite3.Error) as exc:
-        if isinstance(exc, DocumentValidationError):
+    except (
+        DocumentValidationError,
+        DocumentConflictError,
+        DatabaseUnavailableError,
+        OSError,
+        sqlite3.Error,
+    ) as exc:
+        if isinstance(exc, (DocumentValidationError, DocumentConflictError)):
             raise
         raise DocumentReadError(NETWORK_ERROR_MESSAGE) from exc
 
@@ -341,6 +375,14 @@ def generate_event_documents(
     if event_type == "renewal" and renewal is None:
         raise DocumentConflictError(
             "Сохранённое продление для формирования документа не найдено."
+        )
+    if (
+        event_type == "renewal"
+        and renewal is not None
+        and renewal.get("cancellation_id") is not None
+    ):
+        raise DocumentConflictError(
+            "Это продление отменено. Документ по нему формировать нельзя."
         )
     try:
         event_date = date.fromisoformat(

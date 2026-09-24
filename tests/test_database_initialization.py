@@ -101,7 +101,20 @@ def test_initialization_creates_two_complete_databases(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
-        assert {"schema_version", "contracts_archive", "renewals", "log"} <= tables
+        assert {
+            "schema_version",
+            "contracts_archive",
+            "renewals",
+            "log",
+            "operation_cancellations",
+        } <= tables
+        cancellation_sql = connection.execute(
+            """
+            SELECT sql FROM sqlite_master
+            WHERE type='table' AND name='operation_cancellations'
+            """
+        ).fetchone()[0]
+        assert "contract.closed" in cancellation_sql
         assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
 
 
@@ -129,14 +142,17 @@ def test_seed_values_are_exact(
         ).fetchone()[0] == 17
         config = dict(connection.execute("SELECT key, value FROM config"))
         assert config == {
+            "abs_session_minutes": "60",
             "admin_access_mode": "acknowledgement",
             "currency_code": "KGS",
             "currency_scale": "0",
             "deposit_amount_minor": "1500",
+            "display_date_words": "1",
             "employees_json": "[]",
             "expiring_soon_days": "7",
-            "penalty_manual_rates_json": '{"100":17,"125":20,"175":25,"300":30,"50":15,"75":17}',
+            "penalty_manual_rates_json": '{"100x220x330":17,"125x220x330":20,"175x220x330":25,"300x220x330":30,"50x220x330":15,"75x220x330":17}',
             "penalty_rate_mode": "linked",
+            "show_ui_hints": "1",
         }
 
 

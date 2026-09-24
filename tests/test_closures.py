@@ -146,7 +146,18 @@ def test_overdue_quote_can_use_independent_manual_penalty_rate(
         )
         connection.execute(
             "UPDATE config SET value = ? WHERE key = 'penalty_manual_rates_json'",
-            (json.dumps({"50": 28, "75": 17, "100": 17, "125": 20, "175": 25, "300": 30}),),
+            (
+                json.dumps(
+                    {
+                        "50x220x330": 28,
+                        "75x220x330": 17,
+                        "100x220x330": 17,
+                        "125x220x330": 20,
+                        "175x220x330": 25,
+                        "300x220x330": 30,
+                    }
+                ),
+            ),
         )
         connection.commit()
 

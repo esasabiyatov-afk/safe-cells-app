@@ -14,7 +14,9 @@ from app import create_app
 from app.db.connections import open_write
 from app.documents import DocumentPublishError, DocumentTemplateError, render_docx
 from app.services.closures import close_contract
+from app.services.action_cancellations import cancel_contract_action
 from app.services.documents import (
+    DocumentConflictError,
     GeneratedDocument,
     build_document_values,
     generate_active_contract_document,
@@ -406,6 +408,11 @@ def test_document_values_keep_leading_zero_for_single_digit_day():
     assert values["Договор.НачалоДК"] == "«03» сентябрь 2026"
     assert values["Продление.Начало"] == "«03» ноября 2026 г."
     assert values["Продление.НачалоК"] == "«03» ноябрь 2026-ж."
+    assert values["Клиент.Обращение"] == "Клиент"
+    assert values["Договор.Срок"] == 33
+    assert values["Договор.Сумма"] == 330
+    assert values["Залог.Сумма"] == 1500
+    assert values["Сейф.Высота"] == 100
 
 
 def test_renderer_supports_split_bank_square_codes(tmp_path: Path):
@@ -704,3 +711,71 @@ def test_event_bundle_is_not_published_when_one_template_is_invalid(
         )
 
     assert list(downloads.glob("*.docx")) == []
+
+
+def test_cancelled_closure_document_cannot_be_generated(
+    settings, initialized_databases, insert_test_contract, tmp_path: Path
+):
+    insert_test_contract(
+        cell_number="41",
+        start_date="2026-07-01",
+        end_date="2026-07-30",
+        client_name="Вымышленный Клиент",
+    )
+    templates = settings.database_directory / "templates"
+    templates.mkdir()
+    document = Document()
+    document.add_paragraph("ТЕСТОВЫЙ ДОКУМЕНТ: [Сейф.Номер]")
+    document.save(templates / "closing-cancelled.docx")
+    with open_write(settings) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """
+            INSERT INTO document_templates
+            VALUES(
+                'closing-cancelled', 'closing', 'ТЕСТ-ЗАКРЫТИЕ',
+                'closing-cancelled.docx', '["Сейф.Номер"]', 1, ?, ?
+            )
+            """,
+            ("2026-07-30T10:00:00+06:00", "test-user"),
+        )
+        connection.commit()
+    close_operation = str(uuid4())
+    occurred_at = datetime(
+        2026, 7, 30, 11, 0, tzinfo=timezone(timedelta(hours=6))
+    )
+    close_contract(
+        settings,
+        payload={
+            "operation_id": close_operation,
+            "cell_number": "41",
+            "contract_ref": "contract-test-41",
+            "expected_end_date": "2026-07-30",
+            "reason_code": "standard",
+        },
+        employee="test-user",
+        close_date=date(2026, 7, 30),
+        occurred_at=occurred_at,
+    )
+    cancel_contract_action(
+        settings,
+        payload={
+            "cancellation_operation_id": str(uuid4()),
+            "original_operation_id": close_operation,
+            "contract_ref": "contract-test-41",
+            "cell_number": "41",
+            "reason_code": "input_error",
+        },
+        employee="test-user",
+        occurred_at=occurred_at + timedelta(minutes=1),
+    )
+
+    with pytest.raises(DocumentConflictError, match="закрытие отменено"):
+        generate_event_documents(
+            settings,
+            event_type="closing",
+            contract_ref="contract-test-41",
+            event_ref=close_operation,
+            output_directory=tmp_path / "downloads",
+            employee="Тестовый Сотрудник",
+        )

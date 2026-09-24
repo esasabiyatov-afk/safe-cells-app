@@ -91,6 +91,7 @@ class RenewalResult:
     renewal_id: str
     contract_ref: str
     cell_number: str
+    client_full_name: str
     old_end_date: str
     renewal_date: str
     new_start_date: str
@@ -107,7 +108,9 @@ class RenewalResult:
     warning: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload.pop("client_full_name")
+        return payload
 
 
 def renewal_penalty_days(*, renewal_date: date, old_end_date: date) -> int:
@@ -182,20 +185,22 @@ def _new_period(
 
 
 def _single_tariff(
-    connection: sqlite3.Connection, *, height_mm: int, days: int
+    connection: sqlite3.Connection, *, height_mm: int,
+    width_mm: int, depth_mm: int, days: int
 ) -> int:
     rows = connection.execute(
         """
         SELECT price_per_day_minor
         FROM tariffs
-        WHERE height_mm = ? AND period_from_days <= ?
+        WHERE height_mm = ? AND width_mm = ? AND depth_mm = ?
+          AND period_from_days <= ?
           AND (period_to_days IS NULL OR period_to_days >= ?)
         """,
-        (height_mm, days, days),
+        (height_mm, width_mm, depth_mm, days, days),
     ).fetchall()
     if len(rows) != 1:
         raise RenewalWriteError(
-            "Для выбранной высоты и срока не найден единственный тариф."
+            "Для выбранного размера и срока не найден единственный тариф."
         )
     rate = int(rows[0]["price_per_day_minor"])
     if rate < 0:
@@ -220,10 +225,14 @@ def calculate_renewal_quote_in_connection(
         """
         SELECT contracts.contract_id,
                contracts.cell_number, contracts.end_date,
-               contracts.extra_fields_json, cells.height_mm
+               contracts.extra_fields_json, cells.height_mm,
+               COALESCE(cells.width_mm, defaults.width_mm) AS width_mm,
+               COALESCE(cells.depth_mm, defaults.depth_mm) AS depth_mm
         FROM contracts
         JOIN cells ON cells.number = contracts.cell_number
+        CROSS JOIN vault_defaults defaults
         WHERE contracts.cell_number = ? AND contracts.contract_id = ?
+          AND defaults.id = 1
         """,
         (normalized_cell, normalized_ref),
     ).fetchone()
@@ -245,14 +254,20 @@ def calculate_renewal_quote_in_connection(
         renewal_days_value=renewal_days_value,
     )
     height_mm = int(row["height_mm"])
+    width_mm = int(row["width_mm"])
+    depth_mm = int(row["depth_mm"])
     price_per_day = _single_tariff(
-        connection, height_mm=height_mm, days=renewal_days
+        connection, height_mm=height_mm, width_mm=width_mm,
+        depth_mm=depth_mm, days=renewal_days
     )
     penalty_days = renewal_penalty_days(
         renewal_date=renewal_date, old_end_date=old_end
     )
     try:
-        penalty_rate = resolve_penalty_rate(connection, height_mm=height_mm)
+        penalty_rate = resolve_penalty_rate(
+            connection, height_mm=height_mm,
+            width_mm=width_mm, depth_mm=depth_mm,
+        )
     except PenaltyRateConfigurationError as exc:
         raise RenewalWriteError(str(exc)) from exc
     renewal_price = renewal_days * price_per_day
@@ -316,6 +331,7 @@ def _result_from_row(
         renewal_id=str(row["renewal_id"]),
         contract_ref=str(row["contract_id"]),
         cell_number=str(row["cell_number"]),
+        client_full_name=str(row["client_full_name"]),
         old_end_date=str(row["old_end_date"]),
         renewal_date=str(row["renewal_date"]),
         new_start_date=str(row["new_start_date"]),
@@ -342,13 +358,28 @@ def _existing_result(
     contract_ref: str,
 ) -> RenewalResult | None:
     row = connection.execute(
-        "SELECT * FROM archive.renewals WHERE operation_id = ?", (operation_id,)
+        """
+        SELECT renewals.*, contracts.client_full_name,
+               cancellations.cancellation_id AS cancellation_id
+        FROM archive.renewals AS renewals
+        JOIN main.contracts AS contracts
+          ON contracts.contract_id=renewals.contract_id
+         AND contracts.cell_number=renewals.cell_number
+        LEFT JOIN archive.operation_cancellations AS cancellations
+          ON cancellations.original_operation_id=renewals.operation_id
+        WHERE renewals.operation_id=?
+        """,
+        (operation_id,),
     ).fetchone()
     if row is None:
         return None
     if row["cell_number"] != cell_number or row["contract_id"] != contract_ref:
         raise RenewalConflictError(
             "Этот идентификатор операции уже использован. Обновите форму."
+        )
+    if row["cancellation_id"] is not None:
+        raise RenewalConflictError(
+            "Это продление уже отменено. Выполните новый расчёт."
         )
     backup_created = has_valid_backup_for_operation(settings, operation_id)
     warning = None if backup_created else (
@@ -502,7 +533,15 @@ def renew_contract(
             connection.commit()
             phase = "verifying"
             saved = connection.execute(
-                "SELECT * FROM archive.renewals WHERE renewal_id = ?", (renewal_id,)
+                """
+                SELECT renewals.*, contracts.client_full_name
+                FROM archive.renewals AS renewals
+                JOIN main.contracts AS contracts
+                  ON contracts.contract_id=renewals.contract_id
+                 AND contracts.cell_number=renewals.cell_number
+                WHERE renewals.renewal_id=?
+                """,
+                (renewal_id,),
             ).fetchone()
             if saved is None:
                 raise RenewalWriteUncertainError(UNCERTAIN_MESSAGE)

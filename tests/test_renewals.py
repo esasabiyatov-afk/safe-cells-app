@@ -97,7 +97,18 @@ def test_renewal_can_use_independent_manual_penalty_rate(
         )
         connection.execute(
             "UPDATE config SET value = ? WHERE key = 'penalty_manual_rates_json'",
-            (json.dumps({"50": 33, "75": 17, "100": 17, "125": 20, "175": 25, "300": 30}),),
+            (
+                json.dumps(
+                    {
+                        "50x220x330": 33,
+                        "75x220x330": 17,
+                        "100x220x330": 17,
+                        "125x220x330": 20,
+                        "175x220x330": 25,
+                        "300x220x330": 30,
+                    }
+                ),
+            ),
         )
         connection.commit()
 
@@ -390,10 +401,14 @@ def test_uncertain_commit_can_be_checked_by_repeating_same_operation(
     ).repeated is True
 
 
-def test_renewal_api_uses_server_date_and_does_not_return_personal_data(
+def test_renewal_api_uses_server_date_and_returns_only_payment_short_name(
     settings: Settings, initialized_databases, insert_test_contract
 ):
-    insert_test_contract(cell_number="1", end_date="2026-07-10", client_name="PRIVATE-NAME")
+    insert_test_contract(
+        cell_number="1",
+        end_date="2026-07-10",
+        client_name="PRIVATE-SURNAME PRIVATE-NAME PRIVATE-PATRONYMIC",
+    )
     app = create_app(settings)
     app.config["TODAY_PROVIDER"] = lambda: TODAY
     app.config["TIMESTAMP_PROVIDER"] = lambda: OCCURRED_AT
@@ -408,5 +423,22 @@ def test_renewal_api_uses_server_date_and_does_not_return_personal_data(
     response = client.post("/api/renewals", json=payload())
     assert response.status_code == 201
     body = response.get_data(as_text=True)
-    assert "PRIVATE-NAME" not in body
+    payment = response.get_json()["payment_copy"]
+    assert payment["rent"] == {
+        "purpose": (
+            "Комиссия за ячейку №01 PRIVATE-SURNAME P. P. "
+            "(30 факт. дней)"
+        ),
+        "amount": 450,
+        "amount_label": "Сумма продления",
+    }
+    assert payment["penalty"] == {
+        "purpose": (
+            "Штраф за ячейку №01 PRIVATE-SURNAME P. P. "
+            "(1 факт. день)"
+        ),
+        "amount": 15,
+        "amount_label": "Сумма штрафа",
+    }
+    assert "PRIVATE-NAME PRIVATE-PATRONYMIC" not in body
     assert response.headers["Cache-Control"] == "no-store"
